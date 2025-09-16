@@ -1,0 +1,46 @@
+{
+  "appName": "portal-imagine",
+  "port": 3000,
+  "dockerfilePath": "./Dockerfile",
+  "buildContext": ".",
+  "environment": {
+    "NODE_ENV": "production",
+    "PORT": "3000",
+    "NEXT_PUBLIC_INSTITUTE_NAME": "Instituto Imagine",
+    "NEXT_PUBLIC_INSTITUTE_URL": "https://imagineinstituto.com"
+  },
+  "requiredEnvVars": [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "NEXTAUTH_URL",
+    "NEXTAUTH_SECRET"
+  ],
+  "deployment": {
+    "method": "git",
+    "repository": "https://github.com/seu-usuario/portal-imagine",
+    "branch": "main",
+    "autoDeploy": true
+  },
+  "domain": {
+    "customDomain": "portal.imagineinstituto.com",
+    "enableHTTPS": true,
+    "forceHTTPS": true
+  },
+  "monitoring": {
+    "healthCheck": "/api/health",
+    "expectedResponse": {
+      "status": "ok"
+    }
+  },
+  "scaling": {
+    "minInstances": 1,
+    "maxInstances": 3,
+    "cpuThreshold": 80,
+    "memoryThreshold": 80
+  }
+}
+

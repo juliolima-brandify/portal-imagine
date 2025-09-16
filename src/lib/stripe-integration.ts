@@ -1,0 +1,290 @@
+import { stripe } from './stripe'
+import { createDonation, updateDonationStatus } from './database'
+
+// =============================================
+// TIPOS
+// =============================================
+
+export interface CreatePaymentIntentData {
+  amount: number
+  currency: string
+  projectId: string
+  userId: string
+  isRecurring?: boolean
+  recurringFrequency?: string
+  message?: string
+  anonymous?: boolean
+}
+
+export interface PaymentIntentResult {
+  success: boolean
+  paymentIntentId?: string
+  clientSecret?: string
+  donationId?: string
+  error?: string
+}
+
+// =============================================
+// FUNÇÕES DO STRIPE
+// =============================================
+
+export async function createPaymentIntent(data: CreatePaymentIntentData): Promise<PaymentIntentResult> {
+  try {
+    // Criar doação no banco primeiro
+    const donation = await createDonation({
+      user_id: data.userId,
+      project_id: data.projectId,
+      amount: data.amount,
+      currency: data.currency,
+      status: 'pending',
+      is_recurring: data.isRecurring || false,
+      recurring_frequency: data.recurringFrequency,
+      message: data.message,
+      anonymous: data.anonymous || false
+    })
+
+    if (!donation) {
+      return {
+        success: false,
+        error: 'Erro ao criar doação no banco de dados'
+      }
+    }
+
+    // Criar Payment Intent no Stripe
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(data.amount * 100), // Converter para centavos
+      currency: data.currency.toLowerCase(),
+      metadata: {
+        donationId: donation.id,
+        projectId: data.projectId,
+        userId: data.userId
+      },
+      description: `Doação para projeto - ID: ${data.projectId}`,
+      automatic_payment_methods: {
+        enabled: true,
+      },
+    })
+
+    // Atualizar doação com Payment Intent ID
+    await updateDonationStatus(donation.id, 'pending', paymentIntent.id)
+
+    return {
+      success: true,
+      paymentIntentId: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || undefined,
+      donationId: donation.id
+    }
+  } catch (error) {
+    console.error('Erro ao criar Payment Intent:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Erro desconhecido'
+    }
+  }
+}
+
+export async function confirmPayment(paymentIntentId: string): Promise<boolean> {
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+    
+    if (paymentIntent.status === 'succeeded') {
+      const donationId = paymentIntent.metadata.donationId
+      if (donationId) {
+        await updateDonationStatus(donationId, 'completed', paymentIntentId)
+        return true
+      }
+    }
+    
+    return false
+  } catch (error) {
+    console.error('Erro ao confirmar pagamento:', error)
+    return false
+  }
+}
+
+export async function handleWebhook(payload: string, signature: string): Promise<boolean> {
+  try {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+    if (!webhookSecret) {
+      console.error('STRIPE_WEBHOOK_SECRET não configurado')
+      return false
+    }
+
+    const event = stripe.webhooks.constructEvent(payload, signature, webhookSecret)
+
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        const paymentIntent = event.data.object as any
+        const donationId = paymentIntent.metadata.donationId
+        
+        if (donationId) {
+          await updateDonationStatus(donationId, 'completed', paymentIntent.id)
+        }
+        break
+
+      case 'payment_intent.payment_failed':
+        const failedPayment = event.data.object as any
+        const failedDonationId = failedPayment.metadata.donationId
+        
+        if (failedDonationId) {
+          await updateDonationStatus(failedDonationId, 'failed', failedPayment.id)
+        }
+        break
+
+      default:
+        console.log(`Evento não tratado: ${event.type}`)
+    }
+
+    return true
+  } catch (error) {
+    console.error('Erro no webhook:', error)
+    return false
+  }
+}
+
+// =============================================
+// FUNÇÕES DE PRODUTOS E PREÇOS
+// =============================================
+
+export async function createStripeProduct(project: any): Promise<string | null> {
+  try {
+    const product = await stripe.products.create({
+      name: project.title,
+      description: project.description,
+      metadata: {
+        projectId: project.id,
+        category: project.category
+      }
+    })
+
+    return product.id
+  } catch (error) {
+    console.error('Erro ao criar produto no Stripe:', error)
+    return null
+  }
+}
+
+export async function createStripePrice(productId: string, amount: number, currency: string = 'brl'): Promise<string | null> {
+  try {
+    const price = await stripe.prices.create({
+      product: productId,
+      unit_amount: Math.round(amount * 100),
+      currency: currency.toLowerCase(),
+    })
+
+    return price.id
+  } catch (error) {
+    console.error('Erro ao criar preço no Stripe:', error)
+    return null
+  }
+}
+
+// =============================================
+// FUNÇÕES DE CUSTOMER
+// =============================================
+
+export async function createStripeCustomer(user: any): Promise<string | null> {
+  try {
+    const customer = await stripe.customers.create({
+      email: user.email,
+      name: user.name,
+      metadata: {
+        userId: user.id
+      }
+    })
+
+    return customer.id
+  } catch (error) {
+    console.error('Erro ao criar customer no Stripe:', error)
+    return null
+  }
+}
+
+export async function getStripeCustomer(userId: string): Promise<string | null> {
+  try {
+    const customers = await stripe.customers.list({
+      limit: 1,
+      email: userId // Assumindo que userId é o email
+    })
+
+    return customers.data[0]?.id || null
+  } catch (error) {
+    console.error('Erro ao buscar customer no Stripe:', error)
+    return null
+  }
+}
+
+// =============================================
+// FUNÇÕES DE DOAÇÃO RECORRENTE
+// =============================================
+
+export async function createSubscription(
+  customerId: string,
+  priceId: string,
+  donationId: string
+): Promise<string | null> {
+  try {
+    const subscription = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [{ price: priceId }],
+      metadata: {
+        donationId: donationId
+      },
+      payment_behavior: 'default_incomplete',
+      payment_settings: { save_default_payment_method: 'on_subscription' },
+      expand: ['latest_invoice.payment_intent'],
+    })
+
+    return subscription.id
+  } catch (error) {
+    console.error('Erro ao criar subscription:', error)
+    return null
+  }
+}
+
+// =============================================
+// FUNÇÕES DE RELATÓRIOS
+// =============================================
+
+export async function getStripeBalance(): Promise<any> {
+  try {
+    const balance = await stripe.balance.retrieve()
+    return balance
+  } catch (error) {
+    console.error('Erro ao buscar saldo do Stripe:', error)
+    return null
+  }
+}
+
+export async function getStripeCharges(limit: number = 100): Promise<any[]> {
+  try {
+    const charges = await stripe.charges.list({
+      limit: limit,
+      expand: ['data.customer']
+    })
+
+    return charges.data
+  } catch (error) {
+    console.error('Erro ao buscar charges do Stripe:', error)
+    return []
+  }
+}
+
+// =============================================
+// FUNÇÕES DE UTILIDADE
+// =============================================
+
+export function formatAmount(amount: number, currency: string = 'BRL'): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: currency
+  }).format(amount)
+}
+
+export function formatStripeAmount(amount: number): number {
+  return Math.round(amount * 100)
+}
+
+export function parseStripeAmount(amount: number): number {
+  return amount / 100
+}
