@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { loginSchema, createUserSchema } from '@/lib/validations'
 
 export default function Home() {
+  const router = useRouter()
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -49,7 +51,7 @@ export default function Home() {
         if (error) throw error
         setMessage('Login realizado com sucesso!')
         // Redirecionar para dashboard após login
-        window.location.href = '/dashboard'
+        router.push('/dashboard')
       } else {
         // Validar dados de registro
         const validatedData = createUserSchema.parse({ email, password, name })
