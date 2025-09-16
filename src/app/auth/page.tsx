@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { loginSchema, createUserSchema } from '@/lib/validations'
 
 export default function AuthPage() {
@@ -19,6 +19,13 @@ export default function AuthPage() {
     setMessage('')
 
     try {
+      // Verificar se Supabase está configurado
+      if (!isSupabaseConfigured()) {
+        setMessage('⚠️ Supabase não configurado. Use as contas demo para testar o sistema!')
+        setLoading(false)
+        return
+      }
+
       if (isLogin) {
         // Validar dados de login
         const validatedData = loginSchema.parse({ email, password })
@@ -69,10 +76,22 @@ export default function AuthPage() {
         setMessage('Conta criada com sucesso! Verifique seu email.')
       }
     } catch (error: any) {
-      if (error.message?.includes('supabaseUrl is required')) {
-        setMessage('⚠️ Supabase não configurado. Use as contas demo para testar!')
+      console.error('Erro de autenticação:', error)
+      
+      if (error.message?.includes('supabaseUrl is required') || 
+          error.message?.includes('Failed to fetch') ||
+          error.message?.includes('placeholder')) {
+        setMessage('⚠️ Supabase não configurado. Use as contas demo para testar o sistema!')
+      } else if (error.message?.includes('Invalid login credentials')) {
+        setMessage('❌ Email ou senha incorretos. Verifique suas credenciais.')
+      } else if (error.message?.includes('User already registered')) {
+        setMessage('❌ Este email já está cadastrado. Tente fazer login.')
+      } else if (error.message?.includes('Password should be at least')) {
+        setMessage('❌ A senha deve ter pelo menos 6 caracteres.')
+      } else if (error.message?.includes('Invalid email')) {
+        setMessage('❌ Email inválido. Verifique o formato do email.')
       } else {
-        setMessage(error.message || 'Erro ao processar solicitação')
+        setMessage(`❌ Erro: ${error.message || 'Falha na conexão. Verifique sua internet e tente novamente.'}`)
       }
     } finally {
       setLoading(false)
@@ -124,6 +143,22 @@ export default function AuthPage() {
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">
               Portal Instituto Imagine - Transformando vidas
+            </p>
+          </div>
+
+          {/* Status da Configuração */}
+          <div className={`card p-4 ${isSupabaseConfigured() ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+            <div className="flex items-center space-x-2">
+              <div className={`w-2 h-2 rounded-full ${isSupabaseConfigured() ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+              <p className={`text-sm font-medium ${isSupabaseConfigured() ? 'text-green-700' : 'text-yellow-700'}`}>
+                {isSupabaseConfigured() ? 'Sistema configurado' : 'Modo demonstração'}
+              </p>
+            </div>
+            <p className={`text-xs mt-1 ${isSupabaseConfigured() ? 'text-green-600' : 'text-yellow-600'}`}>
+              {isSupabaseConfigured() 
+                ? 'Conexão com Supabase ativa - Criação de contas disponível' 
+                : 'Supabase não configurado - Use as contas demo para testar'
+              }
             </p>
           </div>
 

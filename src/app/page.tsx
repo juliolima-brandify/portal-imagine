@@ -79,16 +79,6 @@ export default function Home() {
     }
   }
 
-  const handleDemoLogin = (role: 'donor' | 'admin') => {
-    if (role === 'donor') {
-      setEmail('demo@doador.com')
-      setPassword('demo123456')
-    } else {
-      setEmail('admin@institutoimagine.org')
-      setPassword('admin123456')
-    }
-    setIsLogin(true)
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -127,27 +117,6 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Demo Buttons */}
-          <div className="card p-6">
-            <p className="text-sm text-gray-600 mb-4 text-center font-medium">Teste com contas demo:</p>
-            <div className="flex space-x-3">
-              <button
-                onClick={() => handleDemoLogin('donor')}
-                className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
-              >
-                Demo Doador
-              </button>
-              <button
-                onClick={() => handleDemoLogin('admin')}
-                className="flex-1 bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-200 transition-colors"
-              >
-                Demo Admin
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-3 text-center">
-              Clique nos botões acima para preencher automaticamente os dados de login
-            </p>
-          </div>
 
           <form className="mt-8 space-y-6" onSubmit={handleAuth}>
             <div className="space-y-4">
