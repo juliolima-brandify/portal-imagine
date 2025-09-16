@@ -14,6 +14,8 @@
     "docker:run": "docker run -p 3000:3000 portal-imagine"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^4.0.2",
+    "@stripe/stripe-js": "^7.9.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/auth-ui-react": "^0.4.7",
     "@supabase/ssr": "^0.1.0",

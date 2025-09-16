@@ -9,12 +9,14 @@ export default function DoacaoSucessoPage() {
   const [donationData, setDonationData] = useState({
     projectId: '',
     amount: '',
-    projectName: ''
+    projectName: '',
+    donationId: ''
   })
 
   useEffect(() => {
     const projectId = searchParams.get('project') || ''
     const amount = searchParams.get('amount') || ''
+    const donationId = searchParams.get('donation') || ''
     
     // Buscar nome do projeto baseado no ID
     const mockProjects = [
@@ -28,7 +30,8 @@ export default function DoacaoSucessoPage() {
     setDonationData({
       projectId,
       amount,
-      projectName: project?.title || 'Projeto'
+      projectName: project?.title || 'Projeto',
+      donationId
     })
   }, [searchParams])
 
@@ -78,6 +81,12 @@ export default function DoacaoSucessoPage() {
                 <span className="text-gray-600">Status:</span>
                 <span className="font-medium text-green-600">Confirmada</span>
               </div>
+              {donationData.donationId && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">ID da Doação:</span>
+                  <span className="font-medium text-xs text-gray-500">{donationData.donationId}</span>
+                </div>
+              )}
             </div>
           </div>
 
