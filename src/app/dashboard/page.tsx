@@ -36,22 +36,28 @@ export default function DashboardPage() {
 
       // Se não for demo, tentar com Supabase
       try {
+        console.log('🔍 Buscando usuário...')
         const { data: { user } } = await supabase.auth.getUser()
+        console.log('👤 Usuário encontrado:', user?.email)
         setUser(user)
         
         // Buscar role do usuário na tabela profiles
         if (user) {
-          const { data: profile } = await supabase
+          console.log('🔍 Buscando perfil do usuário...')
+          const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('role')
             .eq('id', user.id)
             .single()
           
+          console.log('📋 Perfil encontrado:', profile, 'Erro:', profileError)
+          
           if (profile) {
             setUserRole(profile.role as 'donor' | 'admin')
           } else {
+            console.log('➕ Criando novo perfil...')
             // Se não encontrar perfil, criar um como doador
-            await supabase
+            const { error: insertError } = await supabase
               .from('profiles')
               .insert({
                 id: user.id,
@@ -59,6 +65,7 @@ export default function DashboardPage() {
                 name: user.user_metadata?.name || 'Usuário',
                 role: 'donor'
               })
+            console.log('✅ Perfil criado, erro:', insertError)
             setUserRole('donor')
           }
         }
