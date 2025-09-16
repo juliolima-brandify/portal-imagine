@@ -12,7 +12,9 @@ export default function EmbedCheckoutPage() {
     isRecurring: false,
     frequency: 'monthly',
     message: '',
-    anonymous: false
+    anonymous: false,
+    name: '',
+    email: ''
   })
 
   const handleAmountChange = (amount: number) => {
@@ -20,6 +22,19 @@ export default function EmbedCheckoutPage() {
   }
 
   const handleNext = () => {
+    // Validar campos obrigatórios
+    if (!donationData.name.trim() || !donationData.email.trim()) {
+      alert('Por favor, preencha seu nome e email para continuar.')
+      return
+    }
+    
+    // Validar email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(donationData.email)) {
+      alert('Por favor, insira um email válido.')
+      return
+    }
+    
     setCurrentStep(2)
   }
 
@@ -31,7 +46,16 @@ export default function EmbedCheckoutPage() {
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({ 
         type: "PAYMENT_SUCCESS", 
-        data: { donationId, amount: donationData.amount }, 
+        data: { 
+          donationId, 
+          amount: donationData.amount,
+          name: donationData.anonymous ? 'Anônimo' : donationData.name,
+          email: donationData.email,
+          isRecurring: donationData.isRecurring,
+          frequency: donationData.frequency,
+          message: donationData.message,
+          anonymous: donationData.anonymous
+        }, 
         source: "portal-checkout" 
       }, "*")
     }
@@ -77,6 +101,31 @@ export default function EmbedCheckoutPage() {
 
         {currentStep === 1 && (
           <div className="space-y-6">
+            {/* Dados pessoais */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Seus dados
+              </label>
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={donationData.name}
+                  onChange={(e) => setDonationData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Seu nome completo"
+                  required
+                />
+                <input
+                  type="email"
+                  value={donationData.email}
+                  onChange={(e) => setDonationData(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Seu email"
+                  required
+                />
+              </div>
+            </div>
+
             {/* Valor da doação */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -186,6 +235,12 @@ export default function EmbedCheckoutPage() {
             <div className="bg-gray-50 p-4 rounded-lg">
               <h3 className="font-medium text-gray-900 mb-2">Resumo da doação</h3>
               <div className="space-y-1 text-sm text-gray-600">
+                {!donationData.anonymous && (
+                  <div className="flex justify-between">
+                    <span>Doador:</span>
+                    <span className="font-medium">{donationData.name}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Valor:</span>
                   <span className="font-medium">R$ {donationData.amount}</span>
@@ -203,6 +258,12 @@ export default function EmbedCheckoutPage() {
                 {donationData.anonymous && (
                   <div className="text-blue-600 font-medium">Doação anônima</div>
                 )}
+                {donationData.message && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <span className="text-gray-500">Mensagem:</span>
+                    <p className="text-gray-700 mt-1 italic">&quot;{donationData.message}&quot;</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -218,7 +279,7 @@ export default function EmbedCheckoutPage() {
             <StripePaymentForm
               projectId={params.id as string}
               amount={donationData.amount}
-              userId="anonymous"
+              userId={donationData.email}
               isRecurring={donationData.isRecurring}
               recurringFrequency={donationData.frequency}
               message={donationData.message}
