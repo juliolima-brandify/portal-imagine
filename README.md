@@ -455,9 +455,10 @@ Este projeto está sob a licença MIT.
 
 ### **🌐 Sistema Online:**
 - **Deploy**: Vercel com GitHub Integration
-- **URL**: Disponível no dashboard do Vercel
+- **URL**: `https://portal.imagineinstituto.com`
 - **Status**: Funcionando perfeitamente
 - **Atualizações**: Automáticas a cada push
+- **Domínio**: Personalizado e ativo
 
 ### **📱 Funcionalidades Ativas:**
 - ✅ **Sistema de doações com Stripe** - 100% funcional com Stripe Elements
