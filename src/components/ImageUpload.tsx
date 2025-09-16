@@ -187,7 +187,7 @@ export default function ImageUpload({
       </div>
 
       {/* Remove Button */}
-      {currentImage !== '/api/placeholder/150/150' && (
+      {currentImage !== 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face' && (
         <div className="pt-4 border-t border-gray-200">
           <button
             type="button"

@@ -40,7 +40,7 @@ export default function PerfilPage() {
   const [profile, setProfile] = useState(mockProfile)
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState(profile)
-  const [profileImage, setProfileImage] = useState('/api/placeholder/150/150')
+  const [profileImage, setProfileImage] = useState('https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face')
   const [isUploading, setIsUploading] = useState(false)
 
   useEffect(() => {
@@ -128,7 +128,7 @@ export default function PerfilPage() {
   }
 
   const removeProfileImage = () => {
-    setProfileImage('/api/placeholder/150/150')
+    setProfileImage('https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face')
   }
 
   if (loading) {

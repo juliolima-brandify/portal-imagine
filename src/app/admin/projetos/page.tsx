@@ -19,7 +19,7 @@ const mockProjects = [
     startDate: '2024-01-01',
     endDate: '2024-12-31',
     category: 'Educação',
-    image: '/api/placeholder/400/200'
+    image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&h=200&fit=crop&crop=center'
   },
   {
     id: '2',
@@ -32,7 +32,7 @@ const mockProjects = [
     startDate: '2024-02-01',
     endDate: '2024-11-30',
     category: 'Alimentação',
-    image: '/api/placeholder/400/200'
+    image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&h=200&fit=crop&crop=center'
   },
   {
     id: '3',
@@ -45,7 +45,7 @@ const mockProjects = [
     startDate: '2024-06-01',
     endDate: '2025-05-31',
     category: 'Infraestrutura',
-    image: '/api/placeholder/400/200'
+    image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&h=200&fit=crop&crop=center'
   },
   {
     id: '4',
@@ -58,7 +58,7 @@ const mockProjects = [
     startDate: '2023-09-01',
     endDate: '2023-12-31',
     category: 'Educação',
-    image: '/api/placeholder/400/200'
+    image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&h=200&fit=crop&crop=center'
   }
 ]
 

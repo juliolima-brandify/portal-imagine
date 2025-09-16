@@ -70,7 +70,7 @@ export default function ProjectsPage() {
                 id: '1',
                 title: 'Educação Digital',
                 description: 'Levando tecnologia e educação para comunidades carentes através de laboratórios de informática.',
-                image_url: '/api/placeholder/400/300',
+                image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&h=300&fit=crop&crop=center',
                 current_amount: 45000,
                 target_amount: 60000,
                 status: 'active'
@@ -85,7 +85,7 @@ export default function ProjectsPage() {
                 id: '2',
                 title: 'Saúde Comunitária',
                 description: 'Clínicas móveis levando saúde básica, exames e vacinação para regiões remotas.',
-                image_url: '/api/placeholder/400/300',
+                image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&h=300&fit=crop&crop=center',
                 current_amount: 32000,
                 target_amount: 50000,
                 status: 'active'
@@ -245,11 +245,10 @@ export default function ProjectsPage() {
         {/* Page Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Nossos Projetos
+            Escolha um Projeto para Apoiar
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Conheça os projetos que estão transformando vidas e faça parte dessa mudança.
-            Cada doação faz a diferença!
+            Transforme vidas com sua doação. Escolha um projeto e faça a diferença hoje mesmo!
           </p>
         </div>
 
@@ -496,8 +495,10 @@ export default function ProjectsPage() {
                     {/* Actions */}
                     <div className="flex space-x-3">
                       <Link
-                        href={`/projetos/${project.id}`}
+                        href={`https://imagineinstituto.com/projetos/${project.id}`}
                         className="flex-1 btn-secondary text-center"
+                        target="_blank"
+                        rel="noopener noreferrer"
                       >
                         Ver Detalhes
                       </Link>
@@ -518,16 +519,16 @@ export default function ProjectsPage() {
         {/* CTA Section */}
         <div className="mt-16 bg-gray-900 rounded-lg p-8 text-center text-white">
           <h2 className="text-3xl font-bold mb-4">
-            Não encontrou o projeto ideal?
+            Quer Apoiar Todos os Projetos?
           </h2>
           <p className="text-xl mb-6 opacity-90">
-            Entre em contato conosco e vamos conversar sobre como você pode ajudar.
+            Faça uma doação geral e ajude todos os nossos projetos de uma vez.
           </p>
           <Link
-            href="/contato"
+            href="/doar/geral?demo_email=demo@doador.com"
             className="bg-white text-gray-900 px-8 py-3 rounded-lg text-lg font-semibold hover:bg-gray-100 transition-colors inline-block"
           >
-            Entrar em Contato
+            Doar para Todos os Projetos
           </Link>
         </div>
       </main>

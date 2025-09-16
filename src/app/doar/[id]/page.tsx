@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import StripePaymentForm from '@/components/StripePaymentForm'
+import TestStripe from '@/components/TestStripe'
 
 // Mock data para demonstração
 const mockProjects = [
@@ -19,7 +20,7 @@ const mockProjects = [
     currentAmount: 45000,
     status: 'ativo',
     location: 'São Paulo, SP',
-    imageUrl: '/api/placeholder/600/400',
+    imageUrl: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=400&fit=crop&crop=center',
     impact: {
       students: 500,
       schools: 10,
@@ -38,7 +39,7 @@ const mockProjects = [
     currentAmount: 32000,
     status: 'ativo',
     location: 'Bahia, BA',
-    imageUrl: '/api/placeholder/600/400',
+    imageUrl: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=400&fit=crop&crop=center',
     impact: {
       patients: 1000,
       communities: 15,
@@ -57,7 +58,7 @@ const mockProjects = [
     currentAmount: 18000,
     status: 'ativo',
     location: 'Amazonas, AM',
-    imageUrl: '/api/placeholder/600/400',
+    imageUrl: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=400&fit=crop&crop=center',
     impact: {
       trees: 2000,
       students: 300,
@@ -244,6 +245,19 @@ export default function DoarPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Breadcrumb */}
+        <nav className="mb-8">
+          <div className="flex items-center space-x-2 text-sm text-gray-600">
+            <Link href="/projetos" className="hover:text-gray-900">
+              Projetos
+            </Link>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span className="text-gray-900">Doar para {project.title}</span>
+          </div>
+        </nav>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Project Info */}
           <div className="lg:col-span-2">
@@ -323,6 +337,25 @@ export default function DoarPage() {
           <div className="lg:col-span-1">
             <div className="card p-6 sticky top-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Fazer Doação</h2>
+
+              {/* Progress Indicator */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">Progresso</span>
+                  <span className="text-sm text-gray-500">Passo {step} de 3</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-gray-600 h-2 rounded-full transition-all duration-300" 
+                    style={{width: `${(step / 3) * 100}%`}}
+                  ></div>
+                </div>
+                <div className="flex justify-between mt-2 text-xs text-gray-500">
+                  <span>Valor</span>
+                  <span>Detalhes</span>
+                  <span>Pagamento</span>
+                </div>
+              </div>
 
               {/* Step 1: Amount */}
               {step === 1 && (
@@ -555,6 +588,13 @@ export default function DoarPage() {
                           </div>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Teste de configuração (apenas em desenvolvimento) */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="mb-6">
+                      <TestStripe />
                     </div>
                   )}
 
