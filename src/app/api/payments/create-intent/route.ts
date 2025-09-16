@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase-server'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { amount, projectId, isRecurring, recurringFrequency, message, anonymous } = body
+    const { amount, projectId, isRecurring, recurringFrequency, message, anonymous, userName, userEmail } = body
 
     // Validar dados
     if (!amount || !projectId) {
@@ -16,12 +16,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Amount must be at least 1' }, { status: 400 })
     }
 
-    // Verificar autenticação
+    // Verificar autenticação ou dados do usuário
     const supabase = createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    let userId: string
+    let finalUserName: string
+    let finalUserEmail: string
+
+    if (user) {
+      // Usuário autenticado
+      userId = user.id
+      finalUserName = user.user_metadata?.name || 'Usuário'
+      finalUserEmail = user.email || ''
+    } else if (userEmail && userName) {
+      // Doação anônima com dados do usuário
+      userId = userEmail // Usar email como ID temporário
+      finalUserName = userName
+      finalUserEmail = userEmail
+    } else {
+      return NextResponse.json({ error: 'Unauthorized or missing user data' }, { status: 401 })
     }
 
     // Criar Payment Intent
@@ -29,7 +43,9 @@ export async function POST(request: NextRequest) {
       amount: parseFloat(amount),
       currency: 'BRL',
       projectId,
-      userId: user.id,
+      userId,
+      userName: finalUserName,
+      userEmail: finalUserEmail,
       isRecurring,
       recurringFrequency,
       message,

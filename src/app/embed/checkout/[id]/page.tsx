@@ -280,6 +280,8 @@ export default function EmbedCheckoutPage() {
               projectId={params.id as string}
               amount={donationData.amount}
               userId={donationData.email}
+              userName={donationData.name}
+              userEmail={donationData.email}
               isRecurring={donationData.isRecurring}
               recurringFrequency={donationData.frequency}
               message={donationData.message}

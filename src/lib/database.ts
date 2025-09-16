@@ -477,3 +477,79 @@ export async function getProjectStats(projectId: string): Promise<any> {
     return null
   }
 }
+
+// =============================================
+// FUNÇÕES DE AUTENTICAÇÃO
+// =============================================
+
+export async function createUserFromDonation(email: string, name: string): Promise<string | null> {
+  try {
+    // Verificar se usuário já existe
+    const { data: existingUser } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .single()
+
+    if (existingUser) {
+      return existingUser.id
+    }
+
+    // Criar novo usuário no Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password: Math.random().toString(36).slice(-12), // Senha temporária
+      options: {
+        data: {
+          name,
+          role: 'donor'
+        }
+      }
+    })
+
+    if (authError || !authData.user) {
+      console.error('Erro ao criar usuário no auth:', authError)
+      return null
+    }
+
+    // Criar perfil do usuário
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        id: authData.user.id,
+        email,
+        name,
+        role: 'donor',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select('id')
+      .single()
+
+    if (profileError) {
+      console.error('Erro ao criar perfil:', profileError)
+      return null
+    }
+
+    return profileData.id
+  } catch (error) {
+    console.error('Erro ao criar usuário da doação:', error)
+    return null
+  }
+}
+
+export async function sendWelcomeEmail(email: string, name: string, tempPassword: string): Promise<boolean> {
+  try {
+    // Aqui você pode integrar com um serviço de email como SendGrid, Resend, etc.
+    // Por enquanto, vamos apenas logar
+    console.log(`Email de boas-vindas para ${email}:`)
+    console.log(`Nome: ${name}`)
+    console.log(`Senha temporária: ${tempPassword}`)
+    console.log(`Link para redefinir senha: https://portal.imagineinstituto.com/auth?email=${email}`)
+    
+    return true
+  } catch (error) {
+    console.error('Erro ao enviar email de boas-vindas:', error)
+    return false
+  }
+}

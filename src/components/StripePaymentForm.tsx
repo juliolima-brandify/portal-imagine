@@ -17,6 +17,8 @@ interface StripePaymentFormProps {
   amount: number
   projectId: string
   userId: string
+  userName?: string
+  userEmail?: string
   isRecurring?: boolean
   recurringFrequency?: string
   message?: string
@@ -30,6 +32,8 @@ function PaymentForm({
   amount,
   projectId,
   userId,
+  userName,
+  userEmail,
   isRecurring,
   recurringFrequency,
   message,
@@ -68,7 +72,9 @@ function PaymentForm({
           isRecurring,
           recurringFrequency,
           message,
-          anonymous
+          anonymous,
+          userName,
+          userEmail
         }),
       })
 

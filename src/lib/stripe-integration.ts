@@ -1,5 +1,5 @@
 import { stripe } from './stripe'
-import { createDonation, updateDonationStatus } from './database'
+import { createDonation, updateDonationStatus, createUserFromDonation, sendWelcomeEmail } from './database'
 
 // =============================================
 // TIPOS
@@ -10,6 +10,8 @@ export interface CreatePaymentIntentData {
   currency: string
   projectId: string
   userId: string
+  userName?: string
+  userEmail?: string
   isRecurring?: boolean
   recurringFrequency?: string
   message?: string
@@ -57,7 +59,13 @@ export async function createPaymentIntent(data: CreatePaymentIntentData): Promis
       metadata: {
         donationId: donation.id,
         projectId: data.projectId,
-        userId: data.userId
+        userId: data.userId,
+        userEmail: data.userEmail || data.userId,
+        userName: data.userName || 'Usuário',
+        isRecurring: data.isRecurring?.toString() || 'false',
+        recurringFrequency: data.recurringFrequency || '',
+        message: data.message || '',
+        anonymous: data.anonymous?.toString() || 'false'
       },
       description: `Doação para projeto - ID: ${data.projectId}`,
       automatic_payment_methods: {
@@ -116,9 +124,25 @@ export async function handleWebhook(payload: string, signature: string): Promise
       case 'payment_intent.succeeded':
         const paymentIntent = event.data.object as any
         const donationId = paymentIntent.metadata.donationId
+        const userEmail = paymentIntent.metadata.userEmail
+        const userName = paymentIntent.metadata.userName
         
         if (donationId) {
           await updateDonationStatus(donationId, 'completed', paymentIntent.id)
+          
+          // Criar usuário automaticamente se não existir
+          if (userEmail && userName) {
+            try {
+              const userId = await createUserFromDonation(userEmail, userName)
+              if (userId) {
+                console.log(`Usuário criado automaticamente: ${userEmail}`)
+                // Aqui você pode enviar email de boas-vindas
+                // await sendWelcomeEmail(userEmail, userName, 'senha_temporaria')
+              }
+            } catch (error) {
+              console.error('Erro ao criar usuário automaticamente:', error)
+            }
+          }
         }
         break
 
