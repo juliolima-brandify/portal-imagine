@@ -24,6 +24,25 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // Permitir iframe apenas para páginas embed
+        source: '/embed/(.*)',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'origin-when-cross-origin',
+          },
+        ],
+      },
+      {
+        // Bloquear iframe para todas as outras páginas
         source: '/(.*)',
         headers: [
           {
