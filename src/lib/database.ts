@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { sendWelcomeEmail } from './resend'
 
 // =============================================
 // TIPOS
@@ -482,7 +483,12 @@ export async function getProjectStats(projectId: string): Promise<any> {
 // FUNÇÕES DE AUTENTICAÇÃO
 // =============================================
 
-export async function createUserFromDonation(email: string, name: string): Promise<string | null> {
+export async function createUserFromDonation(
+  email: string, 
+  name: string, 
+  donationAmount: number = 0,
+  projectTitle?: string
+): Promise<string | null> {
   try {
     // Verificar se usuário já existe
     const { data: existingUser } = await supabase
@@ -495,10 +501,13 @@ export async function createUserFromDonation(email: string, name: string): Promi
       return existingUser.id
     }
 
+    // Gerar senha temporária
+    const tempPassword = Math.random().toString(36).slice(-12)
+
     // Criar novo usuário no Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
-      password: Math.random().toString(36).slice(-12), // Senha temporária
+      password: tempPassword,
       options: {
         data: {
           name,
@@ -531,6 +540,21 @@ export async function createUserFromDonation(email: string, name: string): Promi
       return null
     }
 
+    // Enviar email de boas-vindas
+    try {
+      await sendWelcomeEmail({
+        name,
+        email,
+        tempPassword,
+        donationAmount,
+        projectTitle
+      })
+      console.log(`Email de boas-vindas enviado para: ${email}`)
+    } catch (emailError) {
+      console.error('Erro ao enviar email de boas-vindas:', emailError)
+      // Não falhar a criação do usuário por causa do email
+    }
+
     return profileData.id
   } catch (error) {
     console.error('Erro ao criar usuário da doação:', error)
@@ -538,18 +562,3 @@ export async function createUserFromDonation(email: string, name: string): Promi
   }
 }
 
-export async function sendWelcomeEmail(email: string, name: string, tempPassword: string): Promise<boolean> {
-  try {
-    // Aqui você pode integrar com um serviço de email como SendGrid, Resend, etc.
-    // Por enquanto, vamos apenas logar
-    console.log(`Email de boas-vindas para ${email}:`)
-    console.log(`Nome: ${name}`)
-    console.log(`Senha temporária: ${tempPassword}`)
-    console.log(`Link para redefinir senha: https://portal.imagineinstituto.com/auth?email=${email}`)
-    
-    return true
-  } catch (error) {
-    console.error('Erro ao enviar email de boas-vindas:', error)
-    return false
-  }
-}

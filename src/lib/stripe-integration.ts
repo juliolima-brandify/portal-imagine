@@ -1,5 +1,5 @@
 import { stripe } from './stripe'
-import { createDonation, updateDonationStatus, createUserFromDonation, sendWelcomeEmail } from './database'
+import { createDonation, updateDonationStatus, createUserFromDonation } from './database'
 
 // =============================================
 // TIPOS
@@ -62,6 +62,7 @@ export async function createPaymentIntent(data: CreatePaymentIntentData): Promis
         userId: data.userId,
         userEmail: data.userEmail || data.userId,
         userName: data.userName || 'Usuário',
+        projectTitle: 'Projeto Instituto Imagine', // Você pode buscar o título real do projeto
         isRecurring: data.isRecurring?.toString() || 'false',
         recurringFrequency: data.recurringFrequency || '',
         message: data.message || '',
@@ -133,11 +134,17 @@ export async function handleWebhook(payload: string, signature: string): Promise
           // Criar usuário automaticamente se não existir
           if (userEmail && userName) {
             try {
-              const userId = await createUserFromDonation(userEmail, userName)
+              const donationAmount = paymentIntent.amount / 100 // Converter de centavos
+              const projectTitle = paymentIntent.metadata.projectTitle || 'Projeto'
+              
+              const userId = await createUserFromDonation(
+                userEmail, 
+                userName, 
+                donationAmount,
+                projectTitle
+              )
               if (userId) {
                 console.log(`Usuário criado automaticamente: ${userEmail}`)
-                // Aqui você pode enviar email de boas-vindas
-                // await sendWelcomeEmail(userEmail, userName, 'senha_temporaria')
               }
             } catch (error) {
               console.error('Erro ao criar usuário automaticamente:', error)
