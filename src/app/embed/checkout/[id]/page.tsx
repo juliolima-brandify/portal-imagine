@@ -36,16 +36,12 @@ export default function EmbedCheckoutPage() {
       window.parent.postMessage({ 
         type: "REDIRECT_TO_CHECKOUT", 
         data: {
-          amount: donationData.amount
+          amount: donationData.amount,
+          checkoutUrl: checkoutUrl
         }, 
         source: "portal-embed" 
       }, "*")
-      
-      // Redirecionar o parent window, não o iframe
-      setTimeout(() => {
-        console.log('Redirecionando parent window...')
-        window.parent.location.href = checkoutUrl
-      }, 500)
+      console.log('Mensagem enviada para parent. Aguardando redirecionamento...')
     } else {
       // Se não estiver em iframe, redirecionar imediatamente
       console.log('Redirecionando diretamente...')

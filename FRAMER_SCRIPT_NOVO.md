@@ -84,18 +84,15 @@
   function handleRedirectToCheckout(data) {
     console.log('Redirecionando para checkout:', data);
     
-    // Criar URL com parâmetros (apenas valor)
-    const urlParams = new URLSearchParams({
-      amount: data.amount
-    });
-    
-    const checkoutUrl = `${CHECKOUT_URL}?${urlParams.toString()}`;
+    // Usar URL enviada pelo embed ou criar uma nova
+    const checkoutUrl = data.checkoutUrl || `${CHECKOUT_URL}?amount=${data.amount}`;
     
     // Mostrar loading
     showLoading('Redirecionando para finalizar doação...');
     
     // Redirecionar após um pequeno delay
     setTimeout(() => {
+      console.log('Redirecionando para:', checkoutUrl);
       window.location.href = checkoutUrl;
     }, 1000);
   }
