@@ -42,6 +42,12 @@ export default function EmbedCheckoutPage() {
         source: "portal-embed" 
       }, "*")
       console.log('Mensagem enviada para parent. Aguardando redirecionamento...')
+      
+      // Fallback: se não receber resposta em 2 segundos, redirecionar diretamente
+      setTimeout(() => {
+        console.log('Timeout: redirecionando diretamente...')
+        window.location.href = checkoutUrl
+      }, 2000)
     } else {
       // Se não estiver em iframe, redirecionar imediatamente
       console.log('Redirecionando diretamente...')
