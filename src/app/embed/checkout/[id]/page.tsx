@@ -14,6 +14,14 @@ export default function EmbedCheckoutPage() {
   }
 
   const handleContinue = () => {
+    // Validar se tem valor
+    if (!donationData.amount || donationData.amount <= 0) {
+      alert('Por favor, escolha um valor para a doação.')
+      return
+    }
+
+    console.log('Enviando dados para checkout:', donationData.amount)
+    
     // Enviar dados para o parent window (Framer)
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({ 
@@ -23,6 +31,10 @@ export default function EmbedCheckoutPage() {
         }, 
         source: "portal-embed" 
       }, "*")
+    } else {
+      // Se não estiver em iframe, redirecionar diretamente
+      const checkoutUrl = `https://portal.imagineinstituto.com/doar/${params.id}?amount=${donationData.amount}`
+      window.location.href = checkoutUrl
     }
   }
 
@@ -70,7 +82,10 @@ export default function EmbedCheckoutPage() {
         {/* Botão continuar */}
         <button
           onClick={handleContinue}
-          className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          className="w-full text-white py-3 px-4 rounded-lg font-medium transition-colors"
+          style={{ backgroundColor: '#22C55E' }}
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#16A34A'}
+          onMouseLeave={(e) => e.target.style.backgroundColor = '#22C55E'}
         >
           Continuar Doação
         </button>
