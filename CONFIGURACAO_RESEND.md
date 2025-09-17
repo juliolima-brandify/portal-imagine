@@ -25,7 +25,7 @@ O Resend é um serviço de email transacional que permite enviar emails automati
 3. Clique em "Settings" > "Environment Variables"
 4. Adicione:
    ```
-   RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   RESEND_API_KEY=re_GRZ1apgC_Cf3M4P5VAGTdbgKWNpcou454
    ```
 
 #### **No arquivo .env.local (desenvolvimento):**

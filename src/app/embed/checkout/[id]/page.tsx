@@ -84,8 +84,8 @@ export default function EmbedCheckoutPage() {
           onClick={handleContinue}
           className="w-full text-white py-3 px-4 rounded-lg font-medium transition-colors"
           style={{ backgroundColor: '#22C55E' }}
-          onMouseEnter={(e) => e.target.style.backgroundColor = '#16A34A'}
-          onMouseLeave={(e) => e.target.style.backgroundColor = '#22C55E'}
+          onMouseEnter={(e) => (e.target as HTMLButtonElement).style.backgroundColor = '#16A34A'}
+          onMouseLeave={(e) => (e.target as HTMLButtonElement).style.backgroundColor = '#22C55E'}
         >
           Continuar Doação
         </button>
