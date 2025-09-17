@@ -473,5 +473,16 @@ Este projeto está sob a licença MIT.
 - ✅ **Pagamentos seguros** (PIX, cartão, boleto)
 - ✅ **Doações recorrentes**
 - ✅ **Webhooks** para atualização automática
+- ✅ **Iframe embed** para Framer - 100% funcional
+- ✅ **Criação automática de usuários** após doação
+- ✅ **Emails automáticos** via Resend com templates profissionais
+- ✅ **Sistema de login** completo para doadores
 
-**🎉 Portal Instituto Imagine - PRONTO PARA PRODUÇÃO!**
+### **🖼️ Iframe para Framer:**
+- ✅ **URL**: `https://portal.imagineinstituto.com/embed/checkout/1`
+- ✅ **X-Frame-Options** configurado corretamente
+- ✅ **Design responsivo** e moderno
+- ✅ **Integração completa** com Stripe
+- ✅ **Código pronto** para uso no Framer (veja `IFRAME_FRAMER_FINAL.md`)
+
+**🎉 Portal Instituto Imagine - 100% COMPLETO E FUNCIONAL!**
