@@ -9,21 +9,30 @@ export default function EmbedCheckoutPage() {
     amount: 50
   })
 
+  console.log('Embed carregado! Params:', params)
+
   const handleAmountChange = (amount: number) => {
     setDonationData(prev => ({ ...prev, amount }))
   }
 
   const handleContinue = () => {
+    console.log('Botão clicado! Valor:', donationData.amount)
+    
     // Validar se tem valor
     if (!donationData.amount || donationData.amount <= 0) {
       alert('Por favor, escolha um valor para a doação.')
       return
     }
 
-    console.log('Enviando dados para checkout:', donationData.amount)
+    console.log('Valor válido, redirecionando...')
     
-    // Enviar dados para o parent window (Framer)
+    // Sempre redirecionar diretamente para o checkout
+    const checkoutUrl = `https://portal.imagineinstituto.com/doar/${params.id}?amount=${donationData.amount}`
+    console.log('URL de checkout:', checkoutUrl)
+    
+    // Tentar enviar mensagem para parent (se estiver em iframe)
     if (window.parent && window.parent !== window) {
+      console.log('Enviando mensagem para parent...')
       window.parent.postMessage({ 
         type: "REDIRECT_TO_CHECKOUT", 
         data: {
@@ -31,11 +40,10 @@ export default function EmbedCheckoutPage() {
         }, 
         source: "portal-embed" 
       }, "*")
-    } else {
-      // Se não estiver em iframe, redirecionar diretamente
-      const checkoutUrl = `https://portal.imagineinstituto.com/doar/${params.id}?amount=${donationData.amount}`
-      window.location.href = checkoutUrl
     }
+    
+    // Redirecionar diretamente
+    window.location.href = checkoutUrl
   }
 
   return (
