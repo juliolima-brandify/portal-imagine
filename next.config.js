@@ -32,12 +32,30 @@ const nextConfig = {
             value: 'ALLOWALL',
           },
           {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors *;",
+          },
+          {
             key: 'X-Content-Type-Options',
             value: 'nosniff',
           },
           {
             key: 'Referrer-Policy',
             value: 'origin-when-cross-origin',
+          },
+        ],
+      },
+      {
+        // Permitir iframe para página raiz também (caso haja redirecionamento)
+        source: '/',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'ALLOWALL',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors *;",
           },
         ],
       },
