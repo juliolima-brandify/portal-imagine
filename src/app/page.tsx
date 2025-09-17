@@ -88,15 +88,12 @@ export default function Home() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <Link href="/" className="flex items-center space-x-3">
+            <Link href="/" className="flex items-center">
               <img 
                 src="/images/logo.png" 
                 alt="Instituto Imagine" 
                 className="h-10 w-auto"
               />
-              <span className="text-2xl font-semibold text-gray-900">
-                Instituto Imagine
-              </span>
             </Link>
             <Link
               href="https://imagineinstituto.com"

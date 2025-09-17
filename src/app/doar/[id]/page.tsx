@@ -234,7 +234,7 @@ export default function DoarPage() {
   const progress = (project.currentAmount / project.targetAmount) * 100
 
   return (
-    <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -354,7 +354,7 @@ export default function DoarPage() {
           {/* Donation Form */}
           <div className="lg:col-span-1">
             <div className="card p-6 sticky top-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>Fazer Doação</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Fazer Doação</h2>
 
               {/* Progress Indicator */}
               <div className="mb-6">
@@ -378,7 +378,7 @@ export default function DoarPage() {
               {/* Step 1: Amount */}
               {step === 1 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>Escolha o valor</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Escolha o valor</h3>
                   
                   {/* Quick amounts */}
                   <div className="grid grid-cols-2 gap-3 mb-4">
@@ -391,7 +391,6 @@ export default function DoarPage() {
                             ? 'border-green-500 bg-green-50 text-green-600 shadow-md'
                             : 'border-gray-300 text-gray-700 hover:border-green-400 hover:bg-green-50'
                         }`}
-                        style={{ fontFamily: 'Instrument Sans, sans-serif' }}
                       >
                         R$ {amount}
                       </button>
@@ -400,18 +399,17 @@ export default function DoarPage() {
 
                   {/* Custom amount */}
                   <div className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-2" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Ou digite um valor personalizado
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>R$</span>
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">R$</span>
                       <input
                         type="number"
                         value={donationData.customAmount}
                         onChange={(e) => handleCustomAmount(e.target.value)}
                         placeholder="0,00"
-                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-                        style={{ fontFamily: 'Instrument Sans, sans-serif' }}
+                        className="input-modern pl-8"
                         min="1"
                       />
                     </div>
@@ -432,8 +430,7 @@ export default function DoarPage() {
                       <select
                         value={donationData.frequency}
                         onChange={(e) => setDonationData(prev => ({ ...prev, frequency: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 mt-2"
-                        style={{ fontFamily: 'Instrument Sans, sans-serif' }}
+                        className="input-modern mt-2"
                       >
                         <option value="monthly">Mensal</option>
                         <option value="quarterly">Trimestral</option>
@@ -445,26 +442,7 @@ export default function DoarPage() {
                   <button
                     onClick={handleNext}
                     disabled={!getFinalAmount()}
-                    className="w-full text-white py-4 px-6 rounded-full font-semibold transition-all duration-200 hover:shadow-lg transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                    style={{ 
-                      backgroundColor: '#22C55E',
-                      fontFamily: 'Instrument Sans, sans-serif',
-                      fontSize: '16px'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!e.currentTarget.disabled) {
-                        const target = e.target as HTMLButtonElement
-                        target.style.backgroundColor = '#16A34A'
-                        target.style.transform = 'scale(1.02)'
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!e.currentTarget.disabled) {
-                        const target = e.target as HTMLButtonElement
-                        target.style.backgroundColor = '#22C55E'
-                        target.style.transform = 'scale(1)'
-                      }
-                    }}
+                    className="w-full btn-primary py-4 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   >
                     Continuar
                   </button>
@@ -515,42 +493,39 @@ export default function DoarPage() {
 
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Nome completo
                       </label>
                       <input
                         type="text"
                         value={donationData.name}
                         onChange={(e) => setDonationData(prev => ({ ...prev, name: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-                        style={{ fontFamily: 'Instrument Sans, sans-serif' }}
+                        className="input-modern"
                         required
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Email
                       </label>
                       <input
                         type="email"
                         value={donationData.email}
                         onChange={(e) => setDonationData(prev => ({ ...prev, email: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-                        style={{ fontFamily: 'Instrument Sans, sans-serif' }}
+                        className="input-modern"
                         required
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2" style={{ fontFamily: 'Instrument Sans, sans-serif' }}>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Mensagem (opcional)
                       </label>
                       <textarea
                         value={donationData.message}
                         onChange={(e) => setDonationData(prev => ({ ...prev, message: e.target.value }))}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200"
-                        style={{ fontFamily: 'Instrument Sans, sans-serif' }}
                         rows={3}
                         placeholder="Deixe uma mensagem de apoio ao projeto..."
                       />
@@ -572,28 +547,13 @@ export default function DoarPage() {
                   <div className="flex gap-3 mt-6">
                     <button
                       onClick={handleBack}
-                      className="flex-1 py-3 px-4 rounded-full font-medium transition-all duration-200 border-2 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50"
-                      style={{ fontFamily: 'Instrument Sans, sans-serif' }}
+                      className="flex-1 btn-secondary"
                     >
                       Voltar
                     </button>
                     <button
                       onClick={handleNext}
-                      className="flex-1 text-white py-3 px-4 rounded-full font-semibold transition-all duration-200 hover:shadow-lg transform hover:scale-105"
-                      style={{ 
-                        backgroundColor: '#22C55E',
-                        fontFamily: 'Instrument Sans, sans-serif'
-                      }}
-                      onMouseEnter={(e) => {
-                        const target = e.target as HTMLButtonElement
-                        target.style.backgroundColor = '#16A34A'
-                        target.style.transform = 'scale(1.02)'
-                      }}
-                      onMouseLeave={(e) => {
-                        const target = e.target as HTMLButtonElement
-                        target.style.backgroundColor = '#22C55E'
-                        target.style.transform = 'scale(1)'
-                      }}
+                      className="flex-1 btn-primary"
                     >
                       Continuar
                     </button>
@@ -699,8 +659,7 @@ export default function DoarPage() {
                   <div className="mt-6">
                     <button
                       onClick={handleBack}
-                      className="w-full py-3 px-4 rounded-full font-medium transition-all duration-200 border-2 border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50"
-                      style={{ fontFamily: 'Instrument Sans, sans-serif' }}
+                      className="w-full btn-secondary"
                     >
                       Voltar
                     </button>
