@@ -43,10 +43,10 @@ export default function EmbedCheckoutPage() {
       }, "*")
       console.log('Mensagem enviada para parent. Aguardando redirecionamento...')
       
-      // Fallback: se não receber resposta em 2 segundos, redirecionar diretamente
+      // Fallback: se não receber resposta em 2 segundos, abrir em nova aba
       setTimeout(() => {
-        console.log('Timeout: redirecionando diretamente...')
-        window.location.href = checkoutUrl
+        console.log('Timeout: abrindo checkout em nova aba...')
+        window.open(checkoutUrl, '_blank')
       }, 2000)
     } else {
       // Se não estiver em iframe, redirecionar imediatamente

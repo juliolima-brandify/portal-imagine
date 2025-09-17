@@ -90,10 +90,10 @@
     // Mostrar loading
     showLoading('Redirecionando para finalizar doação...');
     
-    // Redirecionar após um pequeno delay
+    // Abrir em nova aba após um pequeno delay
     setTimeout(() => {
-      console.log('Redirecionando para:', checkoutUrl);
-      window.location.href = checkoutUrl;
+      console.log('Abrindo checkout em nova aba:', checkoutUrl);
+      window.open(checkoutUrl, '_blank');
     }, 1000);
   }
 
