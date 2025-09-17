@@ -60,6 +60,20 @@ const nextConfig = {
         ],
       },
       {
+        // Permitir iframe para páginas de doação
+        source: '/doar/:path*',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'ALLOWALL',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors *;",
+          },
+        ],
+      },
+      {
         // Bloquear iframe para todas as outras páginas
         source: '/:path*',
         headers: [
