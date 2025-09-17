@@ -41,10 +41,10 @@ export default function EmbedCheckoutPage() {
         source: "portal-embed" 
       }, "*")
       
-      // Aguardar um pouco e depois redirecionar
+      // Redirecionar o parent window, não o iframe
       setTimeout(() => {
-        console.log('Redirecionando após mensagem...')
-        window.location.href = checkoutUrl
+        console.log('Redirecionando parent window...')
+        window.parent.location.href = checkoutUrl
       }, 500)
     } else {
       // Se não estiver em iframe, redirecionar imediatamente
