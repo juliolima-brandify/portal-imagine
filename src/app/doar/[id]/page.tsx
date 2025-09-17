@@ -98,6 +98,27 @@ export default function DoarPage() {
       const urlParams = new URLSearchParams(window.location.search)
       const demoEmail = urlParams.get('demo_email')
       
+      // Processar parâmetros vindos do embed
+      const embedAmount = urlParams.get('amount')
+      const embedRecurring = urlParams.get('recurring')
+      const embedFrequency = urlParams.get('frequency')
+      const embedMessage = urlParams.get('message')
+      const embedAnonymous = urlParams.get('anonymous')
+      
+      // Se vier do embed, preencher os dados automaticamente
+      if (embedAmount) {
+        setDonationData(prev => ({
+          ...prev,
+          amount: embedAmount,
+          isRecurring: embedRecurring === 'true',
+          frequency: embedFrequency || 'monthly',
+          message: embedMessage || '',
+          anonymous: embedAnonymous === 'true'
+        }))
+        // Pular direto para o passo 2 (dados pessoais)
+        setStep(2)
+      }
+      
       if (demoEmail === 'demo@doador.com') {
         setUser({
           id: 'demo-user',
@@ -436,15 +457,39 @@ export default function DoarPage() {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Detalhes da Doação</h3>
                   
-                  <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600">Valor da doação:</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      R$ {getFinalAmount()}
-                      {donationData.isRecurring && (
-                        <span className="text-sm font-normal text-gray-600 ml-2">
-                          ({donationData.frequency === 'monthly' ? 'mensal' : 
-                            donationData.frequency === 'quarterly' ? 'trimestral' : 'anual'})
+                  {/* Resumo da doação */}
+                  <div className="mb-6 p-6 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="text-lg font-semibold text-blue-900 mb-4">📋 Resumo da Doação</h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-700">Projeto:</span>
+                        <span className="font-medium text-gray-900">{project?.title}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-700">Valor:</span>
+                        <span className="text-xl font-bold text-blue-600">
+                          R$ {getFinalAmount()}
+                          {donationData.isRecurring && (
+                            <span className="text-sm font-normal text-gray-600 ml-2">
+                              ({donationData.frequency === 'monthly' ? 'mensal' : 
+                                donationData.frequency === 'quarterly' ? 'trimestral' : 'anual'})
+                            </span>
+                          )}
                         </span>
+                      </div>
+                      {donationData.anonymous && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700">Tipo:</span>
+                          <span className="text-blue-600 font-medium">Doação anônima</span>
+                        </div>
+                      )}
+                      {donationData.message && (
+                        <div className="pt-3 border-t border-blue-200">
+                          <span className="text-gray-700 block mb-1">Mensagem:</span>
+                          <p className="text-gray-800 italic bg-white p-3 rounded border">
+                            &quot;{donationData.message}&quot;
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
