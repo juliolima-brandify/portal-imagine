@@ -3,15 +3,16 @@
 ## 📋 **Nova Estratégia Implementada:**
 
 ### **1. Embed (Framer) - Apenas Valor:**
-- ✅ Seleção de valor
-- ✅ Opções recorrentes  
-- ✅ Mensagem personalizada
+- ✅ Seleção de valor (botões + campo personalizado)
 - ✅ Botão "Continuar Doação"
 
 ### **2. Checkout (Portal) - Dados + Pagamento:**
-- ✅ Dados pessoais (nome, email, CPF, telefone)
-- ✅ Resumo da doação
-- ✅ Formulário de pagamento Stripe
+- ✅ **Doação recorrente** (checkbox + frequência)
+- ✅ **Mensagem personalizada** (campo de texto)
+- ✅ **Doação anônima** (checkbox)
+- ✅ **Resumo da doação** (projeto + valor + opções)
+- ✅ **Dados pessoais** (nome, email, CPF, telefone)
+- ✅ **Formulário de pagamento** Stripe
 - ✅ Processamento completo
 
 ---
@@ -83,13 +84,9 @@
   function handleRedirectToCheckout(data) {
     console.log('Redirecionando para checkout:', data);
     
-    // Criar URL com parâmetros
+    // Criar URL com parâmetros (apenas valor)
     const urlParams = new URLSearchParams({
-      amount: data.amount,
-      recurring: data.isRecurring,
-      frequency: data.frequency,
-      message: data.message,
-      anonymous: data.anonymous
+      amount: data.amount
     });
     
     const checkoutUrl = `${CHECKOUT_URL}?${urlParams.toString()}`;

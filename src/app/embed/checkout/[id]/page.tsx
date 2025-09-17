@@ -6,11 +6,7 @@ import { useParams } from "next/navigation"
 export default function EmbedCheckoutPage() {
   const params = useParams()
   const [donationData, setDonationData] = useState({
-    amount: 50,
-    isRecurring: false,
-    frequency: 'monthly',
-    message: '',
-    anonymous: false
+    amount: 50
   })
 
   const handleAmountChange = (amount: number) => {
@@ -23,11 +19,7 @@ export default function EmbedCheckoutPage() {
       window.parent.postMessage({ 
         type: "REDIRECT_TO_CHECKOUT", 
         data: {
-          amount: donationData.amount,
-          isRecurring: donationData.isRecurring,
-          frequency: donationData.frequency,
-          message: donationData.message,
-          anonymous: donationData.anonymous
+          amount: donationData.amount
         }, 
         source: "portal-embed" 
       }, "*")
@@ -74,93 +66,6 @@ export default function EmbedCheckoutPage() {
           </div>
         </div>
 
-        {/* Doação recorrente */}
-        <div className="mb-6">
-          <label className="flex items-center space-x-3">
-            <input
-              type="checkbox"
-              checked={donationData.isRecurring}
-              onChange={(e) => setDonationData(prev => ({ ...prev, isRecurring: e.target.checked }))}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <span className="text-sm text-gray-700">Fazer doação recorrente</span>
-          </label>
-          
-          {donationData.isRecurring && (
-            <div className="mt-3">
-              <select
-                value={donationData.frequency}
-                onChange={(e) => setDonationData(prev => ({ ...prev, frequency: e.target.value }))}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="monthly">Mensal</option>
-                <option value="quarterly">Trimestral</option>
-                <option value="yearly">Anual</option>
-              </select>
-            </div>
-          )}
-        </div>
-
-        {/* Mensagem personalizada */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Mensagem (opcional)
-          </label>
-          <textarea
-            value={donationData.message}
-            onChange={(e) => setDonationData(prev => ({ ...prev, message: e.target.value }))}
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            rows={3}
-            placeholder="Deixe uma mensagem de apoio..."
-            maxLength={200}
-          />
-          <div className="text-xs text-gray-500 mt-1">
-            {donationData.message.length}/200 caracteres
-          </div>
-        </div>
-
-        {/* Doação anônima */}
-        <div className="mb-6">
-          <label className="flex items-center space-x-3">
-            <input
-              type="checkbox"
-              checked={donationData.anonymous}
-              onChange={(e) => setDonationData(prev => ({ ...prev, anonymous: e.target.checked }))}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <span className="text-sm text-gray-700">Fazer doação anônima</span>
-          </label>
-        </div>
-
-        {/* Resumo */}
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-          <h3 className="font-medium text-gray-900 mb-2">Resumo da doação</h3>
-          <div className="space-y-1 text-sm text-gray-600">
-            <div className="flex justify-between">
-              <span>Valor:</span>
-              <span className="font-medium">R$ {donationData.amount}</span>
-            </div>
-            {donationData.isRecurring && (
-              <div className="flex justify-between">
-                <span>Frequência:</span>
-                <span className="font-medium">
-                  {donationData.frequency === 'monthly' && 'Mensal'}
-                  {donationData.frequency === 'quarterly' && 'Trimestral'}
-                  {donationData.frequency === 'yearly' && 'Anual'}
-                </span>
-              </div>
-            )}
-            {donationData.anonymous && (
-              <div className="text-blue-600 font-medium">Doação anônima</div>
-            )}
-            {donationData.message && (
-              <div className="mt-2 pt-2 border-t border-gray-200">
-                <span className="text-gray-500">Mensagem:</span>
-                <p className="text-gray-700 mt-1 italic">&quot;{donationData.message}&quot;</p>
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* Botão continuar */}
         <button

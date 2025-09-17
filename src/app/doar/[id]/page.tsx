@@ -100,20 +100,12 @@ export default function DoarPage() {
       
       // Processar parâmetros vindos do embed
       const embedAmount = urlParams.get('amount')
-      const embedRecurring = urlParams.get('recurring')
-      const embedFrequency = urlParams.get('frequency')
-      const embedMessage = urlParams.get('message')
-      const embedAnonymous = urlParams.get('anonymous')
       
-      // Se vier do embed, preencher os dados automaticamente
+      // Se vier do embed, preencher apenas o valor e pular para dados pessoais
       if (embedAmount) {
         setDonationData(prev => ({
           ...prev,
-          amount: embedAmount,
-          isRecurring: embedRecurring === 'true',
-          frequency: embedFrequency || 'monthly',
-          message: embedMessage || '',
-          anonymous: embedAnonymous === 'true'
+          amount: embedAmount
         }))
         // Pular direto para o passo 2 (dados pessoais)
         setStep(2)
