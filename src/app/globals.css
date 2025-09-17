@@ -166,9 +166,10 @@ a {
 
 /* Modern Button Styles - Green Theme with Instrument Sans */
 .btn-primary {
-  @apply text-white px-6 py-3 rounded-full font-semibold transition-all duration-200 hover:shadow-lg transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2;
+  @apply text-white px-6 py-4 rounded-full font-semibold transition-all duration-200 hover:shadow-lg transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-2;
   background-color: #22C55E;
   font-family: 'Instrument Sans', sans-serif;
+  font-size: 16px;
 }
 
 .btn-primary:hover {
@@ -192,8 +193,21 @@ a {
 
 /* Modern Input Styles - Green Theme */
 .input-modern {
-  @apply w-full px-4 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 bg-white hover:border-gray-400;
+  @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200;
+  background-color: #f9fafb;
+  border-color: #e5e7eb;
   font-family: 'Instrument Sans', sans-serif;
+}
+
+.input-modern:focus {
+  background-color: #ffffff;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+.input-modern:hover {
+  background-color: #ffffff;
+  border-color: #d1d5db;
 }
 
 /* Green Button Variants */

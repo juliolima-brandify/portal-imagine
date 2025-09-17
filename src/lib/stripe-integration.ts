@@ -9,7 +9,7 @@ export interface CreatePaymentIntentData {
   amount: number
   currency: string
   projectId: string
-  userId: string
+  userId: string | null
   userName?: string
   userEmail?: string
   isRecurring?: boolean

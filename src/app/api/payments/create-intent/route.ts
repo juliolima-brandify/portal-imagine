@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const supabase = createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    let userId: string
+    let userId: string | null
     let finalUserName: string
     let finalUserEmail: string
 
@@ -31,7 +31,8 @@ export async function POST(request: NextRequest) {
       finalUserEmail = user.email || ''
     } else if (userEmail && userName) {
       // Doação anônima com dados do usuário
-      userId = userEmail // Usar email como ID temporário
+      // Para doações anônimas, não usar user_id (será null)
+      userId = null
       finalUserName = userName
       finalUserEmail = userEmail
     } else {
