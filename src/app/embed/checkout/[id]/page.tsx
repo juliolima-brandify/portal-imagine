@@ -40,10 +40,17 @@ export default function EmbedCheckoutPage() {
         }, 
         source: "portal-embed" 
       }, "*")
+      
+      // Aguardar um pouco e depois redirecionar
+      setTimeout(() => {
+        console.log('Redirecionando após mensagem...')
+        window.location.href = checkoutUrl
+      }, 500)
+    } else {
+      // Se não estiver em iframe, redirecionar imediatamente
+      console.log('Redirecionando diretamente...')
+      window.location.href = checkoutUrl
     }
-    
-    // Redirecionar diretamente
-    window.location.href = checkoutUrl
   }
 
   return (
