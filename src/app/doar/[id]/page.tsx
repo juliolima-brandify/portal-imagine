@@ -76,6 +76,8 @@ export default function DoarPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+
+  console.log('DoarPage: Componente carregado, params:', params)
   const [project, setProject] = useState<any>(null)
   const [donationData, setDonationData] = useState({
     amount: '',
@@ -94,15 +96,19 @@ export default function DoarPage() {
 
   useEffect(() => {
     const getUser = async () => {
+      console.log('DoarPage: Iniciando getUser...')
+      
       // Primeiro, verificar se é modo demo via URL
       const urlParams = new URLSearchParams(window.location.search)
       const demoEmail = urlParams.get('demo_email')
       
       // Processar parâmetros vindos do embed
       const embedAmount = urlParams.get('amount')
+      console.log('DoarPage: embedAmount =', embedAmount)
       
       // Se vier do embed, preencher apenas o valor e pular para dados pessoais
       if (embedAmount) {
+        console.log('DoarPage: Preenchendo valor do embed:', embedAmount)
         setDonationData(prev => ({
           ...prev,
           amount: embedAmount
@@ -140,9 +146,11 @@ export default function DoarPage() {
         console.log('Erro ao obter usuário:', error)
         // Não redirecionar, permitir doação anônima
       }
+      console.log('DoarPage: Finalizando getUser, setLoading(false)')
       setLoading(false)
     }
 
+    console.log('DoarPage: Chamando getUser...')
     getUser()
   }, [])
 
@@ -199,7 +207,7 @@ export default function DoarPage() {
 
   const handlePaymentError = (error: string) => {
     setPaymentError(error)
-    setProcessing(false)
+      setProcessing(false)
   }
 
   if (loading) {
@@ -460,12 +468,12 @@ export default function DoarPage() {
                       <div className="flex justify-between items-center">
                         <span className="text-gray-700">Valor:</span>
                         <span className="text-xl font-bold text-blue-600">
-                          R$ {getFinalAmount()}
-                          {donationData.isRecurring && (
-                            <span className="text-sm font-normal text-gray-600 ml-2">
-                              ({donationData.frequency === 'monthly' ? 'mensal' : 
-                                donationData.frequency === 'quarterly' ? 'trimestral' : 'anual'})
-                            </span>
+                      R$ {getFinalAmount()}
+                      {donationData.isRecurring && (
+                        <span className="text-sm font-normal text-gray-600 ml-2">
+                          ({donationData.frequency === 'monthly' ? 'mensal' : 
+                            donationData.frequency === 'quarterly' ? 'trimestral' : 'anual'})
+                        </span>
                           )}
                         </span>
                       </div>
@@ -598,7 +606,7 @@ export default function DoarPage() {
                           <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                           </svg>
-                        </div>
+                          </div>
                         <div className="ml-3">
                           <h3 className="text-sm font-medium text-red-800">Erro no pagamento</h3>
                           <div className="mt-2 text-sm text-red-700">
@@ -616,8 +624,8 @@ export default function DoarPage() {
                         <div className="flex-shrink-0">
                           <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                        </div>
+                            </svg>
+                          </div>
                         <div className="ml-3">
                           <h3 className="text-sm font-medium text-green-800">Pagamento realizado com sucesso!</h3>
                           <div className="mt-2 text-sm text-green-700">
@@ -632,7 +640,7 @@ export default function DoarPage() {
                   {process.env.NODE_ENV === 'development' && (
                     <div className="mb-6">
                       <TestStripe />
-                    </div>
+                  </div>
                   )}
 
                   {/* Formulário de pagamento Stripe */}
