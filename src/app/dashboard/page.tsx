@@ -15,59 +15,91 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const getUser = async () => {
-      // Primeiro, verificar se é modo demo via URL
-      const urlParams = new URLSearchParams(window.location.search)
-      const demoEmail = urlParams.get('demo_email')
-      
-      if (demoEmail === 'demo@doador.com' || demoEmail === 'admin@institutoimagine.org') {
-        setIsDemoMode(true)
-        setUser({
-          id: 'demo-user',
-          email: demoEmail,
-          user_metadata: { name: demoEmail === 'admin@institutoimagine.org' ? 'Admin Demo' : 'Doador Demo' },
-          app_metadata: {},
-          aud: 'authenticated',
-          created_at: new Date().toISOString()
-        } as User)
-        setUserRole(demoEmail === 'admin@institutoimagine.org' ? 'admin' : 'donor')
-        setLoading(false)
-        return
-      }
-
-      // Se não for demo, tentar com Supabase
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        setUser(user)
-        
-        // Buscar role do usuário na tabela profiles
-        if (user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
-          
-          if (profile) {
-            setUserRole(profile.role as 'donor' | 'admin')
-          } else {
-            // Se não encontrar perfil, criar um como doador
-            await supabase
-              .from('profiles')
-              .insert({
-                id: user.id,
-                email: user.email,
-                name: user.user_metadata?.name || 'Usuário',
-                role: 'donor'
-              })
-            setUserRole('donor')
-          }
+      // Timeout de segurança para evitar loading infinito
+      const timeoutId = setTimeout(() => {
+        if (loading) {
+          setLoading(false)
+          console.error('Timeout ao carregar dashboard')
         }
-      } catch (error) {
-        // Se houver erro, não definir usuário (vai mostrar acesso negado)
-        console.log('Erro ao obter usuário:', error)
+      }, 10000) // 10 segundos
+
+      try {
+        // Primeiro, verificar se é modo demo via URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const demoEmail = urlParams.get('demo_email')
+        
+        if (demoEmail === 'demo@doador.com' || demoEmail === 'admin@institutoimagine.org') {
+          setIsDemoMode(true)
+          setUser({
+            id: 'demo-user',
+            email: demoEmail,
+            user_metadata: { name: demoEmail === 'admin@institutoimagine.org' ? 'Admin Demo' : 'Doador Demo' },
+            app_metadata: {},
+            aud: 'authenticated',
+            created_at: new Date().toISOString()
+          } as User)
+          setUserRole(demoEmail === 'admin@institutoimagine.org' ? 'admin' : 'donor')
+          setLoading(false)
+          clearTimeout(timeoutId)
+          return
+        }
+
+        // Se não for demo, tentar com Supabase com timeout
+        try {
+          const getUserPromise = supabase.auth.getUser()
+          const { data: { user }, error } = await Promise.race([
+            getUserPromise,
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Timeout ao obter usuário')), 8000)
+            )
+          ]) as any
+
+          if (error) throw error
+          setUser(user)
+          
+          // Buscar role do usuário na tabela profiles
+          if (user) {
+            try {
+              const profilePromise = supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', user.id)
+                .single()
+              
+              const { data: profile } = await Promise.race([
+                profilePromise,
+                new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error('Timeout ao buscar perfil')), 5000)
+                )
+              ]) as any
+              
+              if (profile) {
+                setUserRole(profile.role as 'donor' | 'admin')
+              } else {
+                // Se não encontrar perfil, criar um como doador
+                await supabase
+                  .from('profiles')
+                  .insert({
+                    id: user.id,
+                    email: user.email,
+                    name: user.user_metadata?.name || 'Usuário',
+                    role: 'donor'
+                  })
+                setUserRole('donor')
+              }
+            } catch (profileError) {
+              console.log('Erro ao buscar/criar perfil:', profileError)
+              setUserRole('donor') // Default para doador
+            }
+          }
+        } catch (error) {
+          // Se houver erro, não definir usuário (vai mostrar acesso negado)
+          console.log('Erro ao obter usuário:', error)
+        }
+      } finally {
+        setLoading(false)
+        clearTimeout(timeoutId)
       }
-      
-      setLoading(false)
     }
 
     getUser()

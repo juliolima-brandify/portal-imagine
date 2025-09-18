@@ -18,21 +18,29 @@ export default function AuthPage() {
     setLoading(true)
     setMessage('')
 
+    // Timeout de segurança para evitar loading infinito
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        setLoading(false)
+        setMessage('❌ Timeout: A conexão está demorando muito. Tente novamente ou use as contas demo.')
+      }
+    }, 10000) // 10 segundos
+
     try {
       // Verificar se Supabase está configurado
       if (!isSupabaseConfigured()) {
         setMessage('⚠️ Supabase não configurado. Use as contas demo para testar o sistema!')
         setLoading(false)
+        clearTimeout(timeoutId)
         return
       }
 
       if (isLogin) {
-        // Validar dados de login
-        const validatedData = loginSchema.parse({ email, password })
-        
-        // Verificar se é uma conta demo
+        // Verificar se é uma conta demo PRIMEIRO
         if (email === 'demo@doador.com' && password === 'demo123456') {
           setMessage('Login demo realizado com sucesso! (Modo de demonstração)')
+          setLoading(false)
+          clearTimeout(timeoutId)
           setTimeout(() => {
             window.location.href = `/dashboard?demo_email=${encodeURIComponent(email)}`
           }, 1500)
@@ -41,27 +49,41 @@ export default function AuthPage() {
         
         if (email === 'admin@institutoimagine.org' && password === 'admin123456') {
           setMessage('Login admin realizado com sucesso! (Modo de demonstração)')
+          setLoading(false)
+          clearTimeout(timeoutId)
           setTimeout(() => {
             window.location.href = `/dashboard?demo_email=${encodeURIComponent(email)}`
           }, 1500)
           return
         }
 
-        // Para outras contas, tentar com Supabase
-        const { error } = await supabase.auth.signInWithPassword({
+        // Validar dados de login
+        const validatedData = loginSchema.parse({ email, password })
+        
+        // Para outras contas, tentar com Supabase com timeout
+        const authPromise = supabase.auth.signInWithPassword({
           email: validatedData.email,
           password: validatedData.password,
         })
 
+        const { error } = await Promise.race([
+          authPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout na autenticação')), 8000)
+          )
+        ]) as any
+
         if (error) throw error
         setMessage('Login realizado com sucesso!')
+        setLoading(false)
+        clearTimeout(timeoutId)
         // Redirecionar para dashboard após login
         window.location.href = '/dashboard'
       } else {
         // Validar dados de registro
         const validatedData = createUserSchema.parse({ email, password, name })
         
-        const { error } = await supabase.auth.signUp({
+        const signupPromise = supabase.auth.signUp({
           email: validatedData.email,
           password: validatedData.password,
           options: {
@@ -72,16 +94,29 @@ export default function AuthPage() {
           },
         })
 
+        const { error } = await Promise.race([
+          signupPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout no registro')), 8000)
+          )
+        ]) as any
+
         if (error) throw error
         setMessage('Conta criada com sucesso! Verifique seu email.')
+        setLoading(false)
+        clearTimeout(timeoutId)
       }
     } catch (error: any) {
       console.error('Erro de autenticação:', error)
+      clearTimeout(timeoutId)
       
-      if (error.message?.includes('supabaseUrl is required') || 
+      if (error.message?.includes('Timeout')) {
+        setMessage('❌ Timeout: A conexão está demorando muito. Verifique sua internet ou tente as contas demo.')
+      } else if (error.message?.includes('supabaseUrl is required') || 
           error.message?.includes('Failed to fetch') ||
-          error.message?.includes('placeholder')) {
-        setMessage('⚠️ Supabase não configurado. Use as contas demo para testar o sistema!')
+          error.message?.includes('placeholder') ||
+          error.message?.includes('NetworkError')) {
+        setMessage('⚠️ Problema de conexão. Use as contas demo para testar o sistema!')
       } else if (error.message?.includes('Invalid login credentials')) {
         setMessage('❌ Email ou senha incorretos. Verifique suas credenciais.')
       } else if (error.message?.includes('User already registered')) {
@@ -95,6 +130,7 @@ export default function AuthPage() {
       }
     } finally {
       setLoading(false)
+      clearTimeout(timeoutId)
     }
   }
 
@@ -237,6 +273,20 @@ export default function AuthPage() {
             {message && (
               <div className={`text-sm p-3 rounded-lg ${message.includes('sucesso') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                 {message}
+                {message.includes('Timeout') && (
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMessage('')
+                        setLoading(false)
+                      }}
+                      className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors"
+                    >
+                      Tentar Novamente
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
