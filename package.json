@@ -11,7 +11,11 @@
     "build:production": "NODE_ENV=production next build",
     "analyze": "ANALYZE=true next build",
     "docker:build": "docker build -t portal-imagine .",
-    "docker:run": "docker run -p 3000:3000 portal-imagine"
+    "docker:run": "docker run -p 3000:3000 portal-imagine",
+    "deploy:local": "bash scripts/deploy-local.sh",
+    "deploy:dev": "bash scripts/deploy-dev.sh",
+    "deploy:prod": "bash scripts/deploy-prod.sh",
+    "setup:dev": "bash scripts/setup-dev-environment.sh"
   },
   "dependencies": {
     "@react-email/render": "^1.2.3",
