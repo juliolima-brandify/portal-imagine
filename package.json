@@ -15,7 +15,9 @@
     "deploy:local": "bash scripts/deploy-local.sh",
     "deploy:dev": "bash scripts/deploy-dev.sh",
     "deploy:prod": "bash scripts/deploy-prod.sh",
-    "setup:dev": "bash scripts/setup-dev-environment.sh"
+    "setup:dev": "bash scripts/setup-dev-environment.sh",
+    "configure:dev-db": "bash scripts/configure-dev-database.sh",
+    "setup:dev-db": "bash scripts/setup-dev-database.sh"
   },
   "dependencies": {
     "@react-email/render": "^1.2.3",
