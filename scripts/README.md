@@ -1,132 +1,129 @@
-# 🚀 Scripts de Automação para Checkout
+# 📜 Scripts Portal Instituto Imagine
 
-Este diretório contém scripts para automatizar o preenchimento do checkout durante os testes.
+Scripts utilitários para desenvolvimento, deploy e configuração do Portal Instituto Imagine.
 
-## 📁 Arquivos Disponíveis
+## 📁 Scripts Disponíveis
 
-### 1. `auto-fill-checkout.js` - Script Completo
-Script avançado com múltiplas funções e opções de teste.
+### **🚀 Deploy**
+- `deploy-local.sh` - Deploy ambiente local
+- `deploy-dev.sh` - Deploy ambiente dev
+- `deploy-prod.sh` - Deploy ambiente prod
 
-### 2. `console-script.js` - Script Simples
-Script básico para copiar e colar diretamente no console.
+### **⚙️ Configuração**
+- `setup-dev-environment.sh` - Configurar ambiente dev
+- `configure-dev-database.sh` - Configurar banco dev
+- `setup-dev-database.sh` - Setup do banco dev
+- `generate-secrets.js` - Gerar secrets NextAuth
+
+### **🧪 Testes**
+- `test-supabase-connection.js` - Testar conexão Supabase
+- `test-supabase.js` - Testes do Supabase
+- `check-projects.js` - Verificar projetos
+- `test-donation-*.js` - Testes de doação
+
+### **🔧 Automação**
+- `auto-fill-checkout.js` - Preenchimento automático checkout
+- `console-script.js` - Script para console
+- `simple-fill.js` - Preenchimento simples
+- `universal-fill.js` - Preenchimento universal
+
+### **🌐 Deploy**
+- `setup-caprover.sh` - Setup CapRover
+- `check-dns.sh` - Verificar DNS
 
 ## 🎯 Como Usar
 
-### Método 1: Script Completo
+### **Scripts NPM**
+```bash
+# Deploy
+npm run deploy:local     # Deploy local
+npm run deploy:dev       # Deploy dev
+npm run deploy:prod      # Deploy prod
 
-1. **Abra o console do navegador** (F12)
-2. **Copie o conteúdo** de `auto-fill-checkout.js`
-3. **Cole no console** e pressione Enter
-4. **Execute**: `autoFillCheckout()`
+# Configuração
+npm run setup:dev        # Setup ambiente dev
+npm run configure:dev-db # Configurar banco dev
+npm run generate:secrets # Gerar secrets
 
-### Método 2: Script Simples
-
-1. **Abra o console do navegador** (F12)
-2. **Copie o conteúdo** de `console-script.js`
-3. **Cole no console** e pressione Enter
-4. **Aguarde** o preenchimento automático
-
-## 🛠️ Comandos Disponíveis (Script Completo)
-
-```javascript
-// Preencher com dados padrão
-autoFillCheckout()
-
-// Preencher com projeto e valor específicos
-autoFillCheckout('550e8400-e29b-41d4-a716-446655440002', 100)
-
-// Limpar todos os campos
-clearCheckout()
-
-// Testar diferentes cartões
-testCard('visa')        // Visa
-testCard('mastercard')  // MasterCard
-testCard('amex')        // American Express
-testCard('declined')    // Cartão recusado
-testCard('insufficient') // Fundos insuficientes
-
-// Preencher com dados customizados
-fillWithData({
-  name: 'Maria Santos',
-  email: 'maria@email.com',
-  amount: 250
-})
+# Testes
+npm run test-supabase    # Testar Supabase
 ```
 
-## 🧪 Dados de Teste
+### **Scripts Diretos**
+```bash
+# Configurar ambiente dev
+./scripts/setup-dev-environment.sh
 
-### Cartões de Teste (Stripe)
+# Deploy para produção
+./scripts/deploy-prod.sh
 
-| Tipo | Número | Resultado |
-|------|--------|-----------|
-| **Visa** | `4242 4242 4242 4242` | ✅ Aprovado |
-| **MasterCard** | `5555 5555 5555 4444` | ✅ Aprovado |
-| **American Express** | `3782 822463 10005` | ✅ Aprovado |
-| **Recusado** | `4000 0000 0000 0002` | ❌ Recusado |
-| **Fundos Insuficientes** | `4000 0000 0000 9995` | ❌ Insuficiente |
-
-### Dados Padrão
-
-- **Nome**: João Silva
-- **Email**: joao.silva@email.com
-- **Validade**: 12 / 25
-- **CVC**: 123
-- **Valor**: R$ 50
-
-## 🔧 URLs de Teste
-
-- **Educação Digital**: `/prototype/checkout/550e8400-e29b-41d4-a716-446655440001`
-- **Saúde Comunitária**: `/prototype/checkout/550e8400-e29b-41d4-a716-446655440002`
-- **Meio Ambiente**: `/prototype/checkout/550e8400-e29b-41d4-a716-446655440003`
-
-## 🎯 Fluxo de Teste Completo
-
-1. **Acesse** uma das URLs de teste
-2. **Abra o console** (F12)
-3. **Execute** o script de preenchimento
-4. **Clique** em "Finalizar doação"
-5. **Verifique** o resultado
-
-## 🐛 Troubleshooting
-
-### Script não funciona
-- Verifique se está na página correta do checkout
-- Confirme se o console está aberto
-- Recarregue a página e tente novamente
-
-### Campos não preenchidos
-- Verifique se os seletores CSS estão corretos
-- Use `clearCheckout()` para limpar e tentar novamente
-- Verifique se há erros no console
-
-### Erro de UUID
-- Use as URLs com UUIDs válidos
-- Verifique se o projeto existe no banco
-
-## 📝 Personalização
-
-Para personalizar os dados, edite as variáveis no início dos scripts:
-
-```javascript
-// Dados padrão
-const defaultData = {
-  name: 'Seu Nome',
-  email: 'seu@email.com',
-  cardNumber: '4242 4242 4242 4242',
-  expiry: '12 / 25',
-  cvc: '123'
-}
+# Gerar secrets
+node scripts/generate-secrets.js
 ```
 
-## 🎉 Benefícios
+## 🔧 Configuração
 
-- ✅ **Testes rápidos**: Preenchimento em segundos
-- ✅ **Dados consistentes**: Sempre os mesmos dados de teste
-- ✅ **Múltiplos cenários**: Diferentes cartões e valores
-- ✅ **Fácil uso**: Copiar, colar, executar
-- ✅ **Debugging**: Logs detalhados no console
+### **Permissões**
+```bash
+# Dar permissão de execução
+chmod +x scripts/*.sh
+```
+
+### **Dependências**
+```bash
+# Instalar dependências
+npm install
+
+# Verificar Node.js
+node --version
+```
+
+## 📚 Documentação
+
+### **Scripts de Deploy**
+- **Local**: Desenvolvimento sem banco
+- **Dev**: Testes com integrações reais
+- **Prod**: Ambiente final
+
+### **Scripts de Configuração**
+- **Ambiente Dev**: Setup completo
+- **Banco Dev**: Configuração do Supabase
+- **Secrets**: Geração automática
+
+### **Scripts de Teste**
+- **Supabase**: Teste de conexão
+- **Doações**: Teste de funcionalidades
+- **Projetos**: Verificação de dados
+
+## ⚠️ Importante
+
+### **Segurança**
+- **Nunca** commite credenciais
+- **Sempre** use variáveis de ambiente
+- **Mantenha** scripts seguros
+
+### **Uso**
+- **Teste** antes de usar em produção
+- **Verifique** configurações
+- **Mantenha** backups
+
+## 🎯 Benefícios
+
+### **✅ Automação**
+- Deploy automático
+- Configuração simplificada
+- Testes automatizados
+
+### **✅ Produtividade**
+- Scripts prontos
+- Configuração rápida
+- Deploy fácil
+
+### **✅ Manutenção**
+- Scripts organizados
+- Documentação completa
+- Fácil atualização
 
 ---
 
-**💡 Dica**: Use estes scripts para acelerar seus testes de desenvolvimento e garantir que o checkout funcione corretamente em diferentes cenários!
-
+**🎯 Scripts organizados e documentados para máxima produtividade**
