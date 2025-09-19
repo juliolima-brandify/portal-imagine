@@ -17,7 +17,8 @@
     "deploy:prod": "bash scripts/deploy-prod.sh",
     "setup:dev": "bash scripts/setup-dev-environment.sh",
     "configure:dev-db": "bash scripts/configure-dev-database.sh",
-    "setup:dev-db": "bash scripts/setup-dev-database.sh"
+    "setup:dev-db": "bash scripts/setup-dev-database.sh",
+    "generate:secrets": "node scripts/generate-secrets.js"
   },
   "dependencies": {
     "@react-email/render": "^1.2.3",
