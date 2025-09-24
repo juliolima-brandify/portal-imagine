@@ -23,12 +23,13 @@ export default function PerfilPage() {
       const urlParams = new URLSearchParams(window.location.search)
       const demoEmail = urlParams.get('demo_email')
       
-        if (demoEmail === 'demo@doador.com' || demoEmail === 'volunteer@institutoimagine.org') {
+        if (demoEmail === 'demo@doador.com' || demoEmail === 'volunteer@institutoimagine.org' || demoEmail === 'admin@institutoimagine.org') {
         setUser({
             id: '00000000-0000-0000-0000-000000000001', // UUID válido para demo
           email: demoEmail,
             user_metadata: { 
-              name: demoEmail === 'volunteer@institutoimagine.org' ? 'Voluntário Demo' : 'Doador Demo' 
+              name: demoEmail === 'volunteer@institutoimagine.org' ? 'Voluntário Demo' : 
+                    demoEmail === 'admin@institutoimagine.org' ? 'Admin Demo' : 'Doador Demo' 
             },
           app_metadata: {},
           aud: 'authenticated',
@@ -46,7 +47,8 @@ export default function PerfilPage() {
               const defaultProfile = {
                 id: '00000000-0000-0000-0000-000000000001',
                 email: demoEmail,
-                name: demoEmail === 'volunteer@institutoimagine.org' ? 'Voluntário Demo' : 'Doador Demo',
+                name: demoEmail === 'volunteer@institutoimagine.org' ? 'Voluntário Demo' : 
+                      demoEmail === 'admin@institutoimagine.org' ? 'Admin Demo' : 'Doador Demo',
                 phone: '',
                 cpf: '',
                 address: {
