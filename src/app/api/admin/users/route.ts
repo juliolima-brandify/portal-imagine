@@ -82,23 +82,46 @@ export async function POST(request: Request) {
     }
 
     // Verificar se o usuário já existe no Supabase Auth
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers()
+    console.log('🔍 [API] Verificando se usuário já existe...')
+    const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+    
+    if (listError) {
+      console.error('❌ [API] Erro ao listar usuários:', listError)
+      return NextResponse.json({ error: 'Erro ao verificar usuários existentes' }, { status: 500 })
+    }
+    
+    console.log('🔍 [API] Usuários existentes:', existingUsers?.users?.length || 0)
     const existingUser = existingUsers?.users?.find(user => user.email === userData.email)
     
     if (existingUser) {
-      console.log('⚠️ [API] Usuário já existe no Auth, verificando perfil...')
+      console.log('⚠️ [API] Usuário já existe no Auth:', existingUser.id)
       
       // Verificar se já tem perfil
-      const { data: existingProfile } = await supabaseAdmin
+      const { data: existingProfile, error: profileCheckError } = await supabaseAdmin
         .from('profiles')
-        .select('id')
+        .select('id, email, name, role')
         .eq('id', existingUser.id)
         .single()
       
-      if (existingProfile) {
-        return NextResponse.json({ error: 'Usuário já existe no sistema' }, { status: 400 })
+      if (profileCheckError && profileCheckError.code !== 'PGRST116') {
+        console.error('❌ [API] Erro ao verificar perfil:', profileCheckError)
+        return NextResponse.json({ error: 'Erro ao verificar perfil existente' }, { status: 500 })
       }
       
+      if (existingProfile) {
+        console.log('⚠️ [API] Usuário já tem perfil completo:', existingProfile)
+        return NextResponse.json({ 
+          error: 'Usuário já existe no sistema',
+          user: {
+            id: existingProfile.id,
+            email: existingProfile.email,
+            name: existingProfile.name,
+            role: existingProfile.role
+          }
+        }, { status: 400 })
+      }
+      
+      console.log('✅ [API] Usuário existe no Auth mas não tem perfil, criando perfil...')
       // Usuário existe no Auth mas não tem perfil, criar apenas o perfil
       const { error: profileError } = await supabaseAdmin
         .from('profiles')
@@ -125,6 +148,8 @@ export async function POST(request: Request) {
         }
       }, { status: 201 })
     }
+    
+    console.log('✅ [API] Usuário não existe, criando novo usuário...')
 
     // Criar usuário no Supabase Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
