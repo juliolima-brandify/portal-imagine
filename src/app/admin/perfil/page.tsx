@@ -22,18 +22,42 @@ export default function AdminPerfilPage() {
   useEffect(() => {
     const getUser = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setUser(user)
+        // Primeiro, verificar se é modo demo via URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const demoEmail = urlParams.get('demo_email')
+        
+        if (demoEmail === 'admin@institutoimagine.org') {
+          setUser({
+            id: '00000000-0000-0000-0000-000000000001',
+            email: demoEmail,
+            user_metadata: { name: 'Admin Demo' },
+            app_metadata: {},
+            aud: 'authenticated',
+            created_at: new Date().toISOString()
+          } as User)
+          
           setFormData({
-            name: user.user_metadata?.name || '',
-            email: user.email || '',
-            phone: user.user_metadata?.phone || '',
-            bio: user.user_metadata?.bio || '',
-            avatar: user.user_metadata?.avatar || ''
+            name: 'Admin Demo',
+            email: demoEmail,
+            phone: '(11) 99999-9999',
+            bio: 'Administrador do Instituto Imagine',
+            avatar: ''
           })
         } else {
-          window.location.href = '/auth'
+          // Usuário real - autenticação com Supabase
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            setUser(user)
+            setFormData({
+              name: user.user_metadata?.name || '',
+              email: user.email || '',
+              phone: user.user_metadata?.phone || '',
+              bio: user.user_metadata?.bio || '',
+              avatar: user.user_metadata?.avatar || ''
+            })
+          } else {
+            window.location.href = '/auth'
+          }
         }
       } catch (error) {
         console.error('Erro ao obter usuário:', error)

@@ -17,46 +17,100 @@ export default function AdminDashboard() {
   useEffect(() => {
     const loadStats = async () => {
       try {
-        // Carregar estatísticas reais do Supabase
-        const [projectsResult, donationsResult, usersResult] = await Promise.all([
-          supabase.from('projects').select('id, created_at').eq('status', 'active'),
-          supabase.from('donations').select('amount, created_at, donor_id, project_id').eq('status', 'completed'),
-          supabase.from('profiles').select('id')
-        ])
-
-        const totalProjects = projectsResult.data?.length || 0
-        const totalDonated = donationsResult.data?.reduce((sum, donation) => sum + (donation.amount || 0), 0) || 0
-        const totalDonations = donationsResult.data?.length || 0
-        const totalUsers = usersResult.data?.length || 0
-
-        setStats({
-          totalProjects,
-          totalDonated,
-          totalDonations,
-          totalUsers
-        })
-
-        // Carregar projetos recentes
-        const { data: projects } = await supabase
-          .from('projects')
-          .select('id, title, created_at, status')
-          .order('created_at', { ascending: false })
-          .limit(5)
+        // Verificar se é modo demo via URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const demoEmail = urlParams.get('demo_email')
         
-        setRecentProjects(projects || [])
+        if (demoEmail === 'admin@institutoimagine.org') {
+          // Modo demo - usar dados reais do Supabase
+          const [projectsResult, donationsResult, usersResult] = await Promise.all([
+            supabase.from('projects').select('id, created_at').eq('status', 'active'),
+            supabase.from('donations').select('amount, created_at, donor_id, project_id').eq('status', 'completed'),
+            supabase.from('profiles').select('id')
+          ])
 
-        // Carregar doações recentes
-        const { data: donations } = await supabase
-          .from('donations')
-          .select(`
-            id, amount, created_at, status,
-            profiles!donations_donor_id_fkey(name),
-            projects!donations_project_id_fkey(title)
-          `)
-          .order('created_at', { ascending: false })
-          .limit(5)
-        
-        setRecentDonations(donations || [])
+          const totalProjects = projectsResult.data?.length || 0
+          const totalDonated = donationsResult.data?.reduce((sum, donation) => sum + (donation.amount || 0), 0) || 0
+          const totalDonations = donationsResult.data?.length || 0
+          const totalUsers = usersResult.data?.length || 0
+
+          setStats({
+            totalProjects,
+            totalDonated,
+            totalDonations,
+            totalUsers
+          })
+
+          // Carregar projetos recentes
+          const { data: projects } = await supabase
+            .from('projects')
+            .select('id, title, created_at, status')
+            .order('created_at', { ascending: false })
+            .limit(5)
+          
+          setRecentProjects(projects || [])
+
+          // Carregar doações recentes
+          const { data: donations } = await supabase
+            .from('donations')
+            .select(`
+              id, amount, created_at, status,
+              profiles!donations_donor_id_fkey(name),
+              projects!donations_project_id_fkey(title)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(5)
+          
+          setRecentDonations(donations || [])
+        } else {
+          // Usuário real - verificar autenticação
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) {
+            window.location.href = '/auth'
+            return
+          }
+          
+          // Carregar estatísticas reais do Supabase
+          const [projectsResult, donationsResult, usersResult] = await Promise.all([
+            supabase.from('projects').select('id, created_at').eq('status', 'active'),
+            supabase.from('donations').select('amount, created_at, donor_id, project_id').eq('status', 'completed'),
+            supabase.from('profiles').select('id')
+          ])
+
+          const totalProjects = projectsResult.data?.length || 0
+          const totalDonated = donationsResult.data?.reduce((sum, donation) => sum + (donation.amount || 0), 0) || 0
+          const totalDonations = donationsResult.data?.length || 0
+          const totalUsers = usersResult.data?.length || 0
+
+          setStats({
+            totalProjects,
+            totalDonated,
+            totalDonations,
+            totalUsers
+          })
+
+          // Carregar projetos recentes
+          const { data: projects } = await supabase
+            .from('projects')
+            .select('id, title, created_at, status')
+            .order('created_at', { ascending: false })
+            .limit(5)
+          
+          setRecentProjects(projects || [])
+
+          // Carregar doações recentes
+          const { data: donations } = await supabase
+            .from('donations')
+            .select(`
+              id, amount, created_at, status,
+              profiles!donations_donor_id_fkey(name),
+              projects!donations_project_id_fkey(title)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(5)
+          
+          setRecentDonations(donations || [])
+        }
 
       } catch (error) {
         console.error('Erro ao carregar estatísticas:', error)

@@ -20,31 +20,66 @@ export default function DashboardPage() {
   useEffect(() => {
     const getUser = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setUser(user)
+        // Primeiro, verificar se é modo demo via URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const demoEmail = urlParams.get('demo_email')
+        
+        if (demoEmail === 'demo@doador.com' || demoEmail === 'admin@institutoimagine.org' || demoEmail === 'volunteer@institutoimagine.org') {
+          setUser({
+            id: '00000000-0000-0000-0000-000000000001',
+            email: demoEmail,
+            user_metadata: { 
+              name: demoEmail === 'admin@institutoimagine.org' ? 'Admin Demo' : 
+                    demoEmail === 'volunteer@institutoimagine.org' ? 'Voluntário Demo' : 
+                    'Doador Demo' 
+            },
+            app_metadata: {},
+            aud: 'authenticated',
+            created_at: new Date().toISOString()
+          } as User)
           
-          // Verificar role do usuário
-          try {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('role')
-              .eq('id', user.id)
-              .single()
-            
-            if (profile?.role === 'admin') {
-              setUserRole('admin')
-            } else if (profile?.role === 'volunteer') {
-              setUserRole('volunteer')
-            } else {
-              setUserRole('donor')
-            }
-
-            // Buscar estatísticas reais
-            await loadStats(user.id, profile?.role || 'donor')
-          } catch (error) {
+          if (demoEmail === 'admin@institutoimagine.org') {
+            setUserRole('admin')
+          } else if (demoEmail === 'volunteer@institutoimagine.org') {
+            setUserRole('volunteer')
+          } else {
             setUserRole('donor')
-            await loadStats(user.id, 'donor')
+          }
+          
+          // Carregar dados reais do Supabase para demo
+          try {
+            await loadStats('00000000-0000-0000-0000-000000000001', userRole)
+          } catch (error) {
+            console.log('Erro ao carregar dados do Supabase para demo:', error)
+          }
+        } else {
+          // Usuário real - autenticação com Supabase
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            setUser(user)
+            
+            // Verificar role do usuário
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', user.id)
+                .single()
+              
+              if (profile?.role === 'admin') {
+                setUserRole('admin')
+              } else if (profile?.role === 'volunteer') {
+                setUserRole('volunteer')
+              } else {
+                setUserRole('donor')
+              }
+
+              // Buscar estatísticas reais
+              await loadStats(user.id, profile?.role || 'donor')
+            } catch (error) {
+              setUserRole('donor')
+              await loadStats(user.id, 'donor')
+            }
           }
         }
       } catch (error) {

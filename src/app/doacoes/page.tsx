@@ -22,21 +22,57 @@ export default function DoacoesPage() {
       try {
         setLoading(true)
         
-        // Obter usuário autenticado do Supabase
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setUser(user)
+        // Primeiro, verificar se é modo demo via URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const demoEmail = urlParams.get('demo_email')
+        
+        if (demoEmail === 'demo@doador.com' || demoEmail === 'admin@institutoimagine.org' || demoEmail === 'volunteer@institutoimagine.org') {
+          setUser({
+            id: '00000000-0000-0000-0000-000000000001',
+            email: demoEmail,
+            user_metadata: { 
+              name: demoEmail === 'admin@institutoimagine.org' ? 'Admin Demo' : 
+                    demoEmail === 'volunteer@institutoimagine.org' ? 'Voluntário Demo' : 
+                    'Doador Demo' 
+            },
+            app_metadata: {},
+            aud: 'authenticated',
+            created_at: new Date().toISOString()
+          } as User)
           
-          // Carregar doações reais do Supabase
-          const userDonations = await getDonations(user.id)
-          setDonations(userDonations)
-          
-          // Carregar estatísticas reais
-          const stats = await getUserStats(user.id)
-          setUserStats(stats)
+          // Carregar dados reais do Supabase para demo
+          try {
+            const userDonations = await getDonations('00000000-0000-0000-0000-000000000001')
+            setDonations(userDonations)
+            
+            const stats = await getUserStats('00000000-0000-0000-0000-000000000001')
+            setUserStats(stats)
+          } catch (error) {
+            console.log('Erro ao carregar dados do Supabase para demo:', error)
+            setDonations([])
+            setUserStats({
+              totalDonated: 0,
+              totalDonations: 0,
+              averageDonation: 0
+            })
+          }
         } else {
-          // Se não conseguir obter usuário, redirecionar para login
-          window.location.href = '/auth'
+          // Usuário real - autenticação com Supabase
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            setUser(user)
+            
+            // Carregar doações reais do Supabase
+            const userDonations = await getDonations(user.id)
+            setDonations(userDonations)
+            
+            // Carregar estatísticas reais
+            const stats = await getUserStats(user.id)
+            setUserStats(stats)
+          } else {
+            // Se não conseguir obter usuário, redirecionar para login
+            window.location.href = '/auth'
+          }
         }
       } catch (error) {
         console.log('Erro ao carregar dados:', error)

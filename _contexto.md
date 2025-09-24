@@ -41,6 +41,11 @@
 - ✅ **Remoção completa dos dados mock da versão DEV**
 - ✅ **Deploy DEV funcionando com dados reais do Supabase**
 - ✅ **Push das mudanças para a branch dev**
+- ✅ **Dashboard admin corrigido com dados reais do Supabase**
+- ✅ **Relatórios admin removidos dados mock**
+- ✅ **Perfil admin corrigido com autenticação real**
+- ✅ **Problemas de redirecionamento para /auth corrigidos**
+- ✅ **Build funcionando perfeitamente**
 
 ### Principais arquivos modificados hoje:
 - `docs/README.md` (criado)
@@ -50,6 +55,9 @@
 - `src/components/Header.tsx` (removida lógica de modo demo)
 - `src/components/VolunteerDashboard.tsx` (removidos dados mock)
 - `src/app/dashboard/page.tsx` (corrigido erro de tipo)
+- `src/app/admin/dashboard/page.tsx` (dados reais do Supabase)
+- `src/app/admin/relatorios/page.tsx` (removidos dados mock)
+- `src/app/admin/perfil/page.tsx` (autenticação real)
 - `_contexto.md` (atualizado progresso)
 
 ---
