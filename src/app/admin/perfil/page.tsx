@@ -55,11 +55,8 @@ export default function AdminPerfilPage() {
               bio: user.user_metadata?.bio || '',
               avatar: user.user_metadata?.avatar || ''
             })
-          } else {
-            // Se não conseguir obter usuário, redirecionar para login
-            window.location.href = '/auth'
-            return
           }
+          // Remover redirecionamento - deixar o layout admin lidar com isso
         }
       } catch (error) {
         console.error('Erro ao obter usuário:', error)
