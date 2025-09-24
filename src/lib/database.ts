@@ -139,30 +139,137 @@ export async function uploadAvatar(userId: string, file: File): Promise<string |
 }
 
 // =============================================
+// DADOS MOCK PARA FALLBACK
+// =============================================
+
+const mockProjects: Project[] = [
+  {
+    id: 'mock-1',
+    title: 'Educação Digital',
+    description: 'Levando tecnologia e educação para comunidades carentes através de laboratórios de informática.',
+    long_description: 'Este projeto visa criar laboratórios de informática em escolas públicas de comunidades carentes, fornecendo computadores, internet e capacitação para professores. O objetivo é reduzir a desigualdade digital e preparar os estudantes para o futuro tecnológico.',
+    category: 'educacao',
+    target_amount: 60000.00,
+    current_amount: 45000.00,
+    status: 'active',
+    location: 'São Paulo, SP',
+    image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=400&fit=crop&crop=center',
+    impact: { students: 500, schools: 10, teachers: 50 },
+    timeline: '6 meses',
+    organization: 'Instituto Imagine',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-15T10:30:00Z'
+  },
+  {
+    id: 'mock-2',
+    title: 'Saúde Comunitária',
+    description: 'Clínicas móveis levando saúde básica, exames e vacinação para regiões remotas.',
+    long_description: 'Projeto que leva atendimento médico básico para comunidades rurais e periféricas através de clínicas móveis equipadas. Inclui consultas, exames preventivos, vacinação e orientação sobre saúde preventiva.',
+    category: 'saude',
+    target_amount: 50000.00,
+    current_amount: 32000.00,
+    status: 'active',
+    location: 'Bahia, BA',
+    image_url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=600&h=400&fit=crop&crop=center',
+    impact: { patients: 1000, communities: 15, healthWorkers: 25 },
+    timeline: '8 meses',
+    organization: 'Instituto Imagine',
+    created_at: '2024-01-02T00:00:00Z',
+    updated_at: '2024-01-16T10:30:00Z'
+  },
+  {
+    id: 'mock-3',
+    title: 'Meio Ambiente',
+    description: 'Reflorestamento e conscientização ambiental em escolas públicas.',
+    long_description: 'Projeto de reflorestamento em áreas degradadas com envolvimento de estudantes e comunidade. Inclui plantio de árvores nativas, educação ambiental e criação de viveiros comunitários.',
+    category: 'meio-ambiente',
+    target_amount: 30000.00,
+    current_amount: 18000.00,
+    status: 'active',
+    location: 'Amazonas, AM',
+    image_url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600&h=400&fit=crop&crop=center',
+    impact: { trees: 2000, students: 300, communities: 5 },
+    timeline: '12 meses',
+    organization: 'Instituto Imagine',
+    created_at: '2024-01-03T00:00:00Z',
+    updated_at: '2024-01-17T10:30:00Z'
+  },
+  {
+    id: 'mock-4',
+    title: 'Esporte Social',
+    description: 'Construção de quadras esportivas e formação de atletas em comunidades carentes.',
+    long_description: 'Projeto que constrói quadras esportivas em comunidades carentes e oferece treinamento esportivo para crianças e jovens. Inclui equipamentos esportivos, treinadores qualificados e competições locais.',
+    category: 'esporte',
+    target_amount: 40000.00,
+    current_amount: 40000.00,
+    status: 'completed',
+    location: 'Rio de Janeiro, RJ',
+    image_url: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&h=400&fit=crop&crop=center',
+    impact: { athletes: 200, courts: 3, coaches: 8 },
+    timeline: '10 meses',
+    organization: 'Instituto Imagine',
+    created_at: '2024-01-04T00:00:00Z',
+    updated_at: '2024-01-18T10:30:00Z'
+  },
+  {
+    id: 'mock-5',
+    title: 'Cultura e Arte',
+    description: 'Oficinas de arte e cultura para crianças e jovens em comunidades carentes.',
+    long_description: 'Projeto que oferece oficinas de arte, música, dança e teatro para crianças e jovens em comunidades carentes. Inclui materiais artísticos, instrutores qualificados e apresentações públicas.',
+    category: 'cultura',
+    target_amount: 25000.00,
+    current_amount: 15000.00,
+    status: 'active',
+    location: 'Minas Gerais, MG',
+    image_url: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=600&h=400&fit=crop&crop=center',
+    impact: { students: 200, workshops: 15, instructors: 10 },
+    timeline: '8 meses',
+    organization: 'Instituto Imagine',
+    created_at: '2024-01-05T00:00:00Z',
+    updated_at: '2024-01-19T10:30:00Z'
+  }
+]
+
+// =============================================
 // FUNÇÕES DE PROJETOS
 // =============================================
 
 export async function getProjects(): Promise<Project[]> {
   try {
+    // Tentar carregar do Supabase primeiro
     const { data, error } = await supabase
       .from('projects')
       .select('*')
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Erro ao buscar projetos:', error)
-      return []
+      console.warn('⚠️ Supabase não disponível, usando dados mock:', error.message)
+      console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
+      return mockProjects
     }
 
-    return data || []
+    // Se não há dados no Supabase, usar mock
+    if (!data || data.length === 0) {
+      console.info('ℹ️ Nenhum projeto encontrado no Supabase, usando dados mock')
+      console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
+      return mockProjects
+    }
+
+    console.log(`✅ ${data.length} projetos carregados do Supabase`)
+    console.log('📋 IDs do Supabase:', data.map(p => p.id))
+    return data
   } catch (error) {
-    console.error('Erro ao buscar projetos:', error)
-    return []
+    console.warn('⚠️ Erro ao conectar com Supabase, usando dados mock:', error)
+    console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
+    return mockProjects
   }
 }
 
 export async function getProject(projectId: string): Promise<Project | null> {
   try {
+    console.log(`🔍 Buscando projeto ${projectId} no Supabase...`)
+    
+    // Tentar carregar do Supabase primeiro
     const { data, error } = await supabase
       .from('projects')
       .select('*')
@@ -170,14 +277,41 @@ export async function getProject(projectId: string): Promise<Project | null> {
       .single()
 
     if (error) {
-      console.error('Erro ao buscar projeto:', error)
-      return null
+      console.warn('⚠️ Supabase não disponível, buscando nos dados mock:', error.message)
+      console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
+      console.log('🔍 ID sendo buscado:', projectId)
+      console.log('🔍 Tipo do ID:', typeof projectId)
+      // Fallback para dados mock
+      const mockProject = mockProjects.find(p => p.id === projectId)
+      console.log('🔍 Projeto mock encontrado:', mockProject ? mockProject.title : 'Nenhum')
+      return mockProject || null
     }
 
+    if (!data) {
+      console.info('ℹ️ Projeto não encontrado no Supabase, buscando nos dados mock')
+      console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
+      const mockProject = mockProjects.find(p => p.id === projectId)
+      console.log('🔍 Projeto mock encontrado:', mockProject ? mockProject.title : 'Nenhum')
+      return mockProject || null
+    }
+
+    // Verificar se o projeto tem a estrutura correta
+    if (!data.title || !data.id) {
+      console.warn('⚠️ Projeto do Supabase com estrutura inválida:', data)
+      console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
+      const mockProject = mockProjects.find(p => p.id === projectId)
+      console.log('🔍 Projeto mock encontrado:', mockProject ? mockProject.title : 'Nenhum')
+      return mockProject || null
+    }
+
+    console.log(`✅ Projeto ${projectId} carregado do Supabase:`, data.title)
     return data
   } catch (error) {
-    console.error('Erro ao buscar projeto:', error)
-    return null
+    console.warn('⚠️ Erro ao conectar com Supabase, buscando nos dados mock:', error)
+    console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
+    const mockProject = mockProjects.find(p => p.id === projectId)
+    console.log('🔍 Projeto mock encontrado:', mockProject ? mockProject.title : 'Nenhum')
+    return mockProject || null
   }
 }
 

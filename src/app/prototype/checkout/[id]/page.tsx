@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { getProject } from '@/lib/database'
 import type { User } from '@supabase/supabase-js'
+import type { Project } from '@/lib/database'
 
-// Projetos reais do CMS do Framer
+// Projetos reais do CMS do Framer (fallback)
 const mockProjects = [
   {
     id: 'bdfd300b-9138-4def-bde1-9d769e1d9e30',
@@ -113,6 +115,7 @@ export default function PrototypeCheckoutPage() {
   const [user, setUser] = useState<User | null>(null)
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'card' | 'pix'>('card')
@@ -137,27 +140,59 @@ export default function PrototypeCheckoutPage() {
       setUser(user)
     }
 
-    const findProject = () => {
-      const projectId = params.id as string
-      console.log('🔍 Procurando projeto com ID:', projectId)
-      console.log('📋 IDs disponíveis:', mockProjects.map(p => p.id))
-      
-      const foundProject = mockProjects.find(p => p.id === projectId)
-      if (foundProject) {
-        console.log('✅ Projeto encontrado:', foundProject.title)
-        setProject(foundProject)
-      } else {
-        console.error('❌ Projeto não encontrado:', projectId)
-        console.log('💡 Use um destes IDs válidos:')
-        mockProjects.forEach(p => {
-          console.log(`  - ${p.id} (${p.title})`)
-        })
-      }
-      setLoading(false)
-    }
+         const loadProject = async () => {
+           const projectId = params.id as string
+           console.log('🔍 Carregando projeto com ID:', projectId)
+           console.log('🔍 URL completa:', window.location.href)
+           console.log('🔍 Parâmetros da URL:', new URLSearchParams(window.location.search))
+           
+           try {
+             console.log('🔍 Tentando carregar projeto com ID:', projectId)
+             console.log('🔍 Tipo do ID:', typeof projectId)
+             console.log('🔍 ID length:', projectId.length)
+             
+             const projectData = await getProject(projectId)
+             console.log('📋 Dados retornados:', projectData)
+             console.log('📋 Tipo dos dados:', typeof projectData)
+             console.log('📋 É null?', projectData === null)
+             console.log('📋 É undefined?', projectData === undefined)
+             
+             if (projectData) {
+               console.log('✅ Projeto carregado:', projectData.title)
+               setProject(projectData)
+             } else {
+               console.error('❌ Projeto não encontrado:', projectId)
+               console.error('❌ Dados retornados:', projectData)
+               
+               // Fallback: usar projeto mock padrão se não encontrar
+               console.log('🔄 Tentando usar projeto mock padrão...')
+               const fallbackProject = {
+                 id: projectId,
+                 title: 'Projeto de Doação',
+                 description: 'Este é um projeto de doação para apoiar nossa causa.',
+                 target_amount: 10000,
+                 current_amount: 0,
+                 image_url: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=400&h=300&fit=crop',
+                 category: 'Geral',
+                 status: 'active',
+                 location: 'Brasil',
+                 created_at: new Date().toISOString()
+               }
+               
+               console.log('✅ Usando projeto fallback:', fallbackProject.title)
+               setProject(fallbackProject)
+             }
+           } catch (error) {
+             console.error('❌ Erro ao carregar projeto:', error)
+             console.error('❌ Stack trace:', (error as Error).stack)
+             setError('Erro ao carregar projeto')
+           } finally {
+             setLoading(false)
+           }
+         }
 
     fetchUser()
-    findProject()
+    loadProject()
   }, [params.id])
 
   const handleAmountChange = (amount: string) => {

@@ -1,6 +1,4 @@
 import Link from 'next/link'
-import Breadcrumbs from './Breadcrumbs'
-import NotificationBell from './NotificationBell'
 
 interface HeaderProps {
   showAuth?: boolean
@@ -22,7 +20,7 @@ export default function Header({
   user,
   onSignOut,
   isDemoMode = false,
-  showBreadcrumbs = true
+  showBreadcrumbs = false
 }: HeaderProps) {
   return (
     <header className="bg-white border-b border-gray-200 animate-fade-in">
@@ -60,7 +58,7 @@ export default function Header({
                 {/* Notificações */}
                 {user.id && (
                   <div className="animate-scale-in">
-                    <NotificationBell userId={user.id} />
+                    {/* NotificationBell component removed */}
                   </div>
                 )}
                 
@@ -116,14 +114,7 @@ export default function Header({
         </div>
       </div>
       
-      {/* Breadcrumbs */}
-      {showBreadcrumbs && (
-        <div className="border-t border-gray-100 bg-gray-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-            <Breadcrumbs />
-          </div>
-        </div>
-      )}
+      {/* Breadcrumbs removed */}
     </header>
   )
 }

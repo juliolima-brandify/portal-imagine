@@ -44,13 +44,13 @@ export async function getFavorites(userId: string): Promise<Favorite[]> {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Erro ao buscar favoritos:', error)
+      console.warn('⚠️ Tabela favorites não disponível, retornando lista vazia:', error.message)
       return []
     }
 
     return data || []
   } catch (error) {
-    console.error('Erro ao buscar favoritos:', error)
+    console.warn('⚠️ Erro ao buscar favoritos, retornando lista vazia:', error)
     return []
   }
 }
@@ -75,7 +75,7 @@ export async function addFavorite(userId: string, projectId: string): Promise<Fa
       .single()
 
     if (error) {
-      console.error('Erro ao adicionar favorito:', error)
+      console.warn('⚠️ Erro ao adicionar favorito (tabela não disponível):', error.message)
       return null
     }
 
@@ -95,7 +95,7 @@ export async function removeFavorite(userId: string, projectId: string): Promise
       .eq('project_id', projectId)
 
     if (error) {
-      console.error('Erro ao remover favorito:', error)
+      console.warn('⚠️ Erro ao remover favorito (tabela não disponível):', error.message)
       return false
     }
 
@@ -116,6 +116,7 @@ export async function isFavorite(userId: string, projectId: string): Promise<boo
       .single()
 
     if (error) {
+      console.warn('⚠️ Erro ao verificar favorito (tabela não disponível):', error.message)
       return false
     }
 

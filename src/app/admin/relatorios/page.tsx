@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import Header from '@/components/Header'
+
 import ExportDropdown from '@/components/ExportDropdown'
 import type { User } from '@supabase/supabase-js'
 
@@ -52,7 +52,7 @@ const mockReports = {
 
 export default function AdminRelatoriosPage() {
   const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Loading removido
   const [reports, setReports] = useState(mockReports)
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month')
   const [selectedReport, setSelectedReport] = useState<'overview' | 'donations' | 'projects' | 'donors'>('overview')
@@ -63,7 +63,12 @@ export default function AdminRelatoriosPage() {
       const urlParams = new URLSearchParams(window.location.search)
       const demoEmail = urlParams.get('demo_email')
       
+      console.log('🔍 [RELATÓRIOS] Verificando autenticação...')
+      console.log('📧 Demo Email:', demoEmail)
+      console.log('🌐 URL atual:', window.location.href)
+      
       if (demoEmail === 'admin@institutoimagine.org') {
+        console.log('✅ [RELATÓRIOS] Demo admin detectado, permitindo acesso')
         setUser({
           id: 'demo-admin',
           email: demoEmail,
@@ -72,7 +77,7 @@ export default function AdminRelatoriosPage() {
           aud: 'authenticated',
           created_at: new Date().toISOString()
         } as User)
-        setLoading(false)
+        // Loading removido
         return
       }
 
@@ -91,6 +96,7 @@ export default function AdminRelatoriosPage() {
               .single()
             
             if (profile?.role !== 'admin') {
+              console.log('❌ [RELATÓRIOS] Usuário não é admin, redirecionando para dashboard')
               window.location.href = '/dashboard'
               return
             }
@@ -105,7 +111,7 @@ export default function AdminRelatoriosPage() {
         console.log('Erro ao obter usuário:', error)
         window.location.href = '/dashboard'
       }
-      setLoading(false)
+      // Loading removido
     }
 
     getUser()
@@ -122,48 +128,14 @@ export default function AdminRelatoriosPage() {
     return new Date(dateString).toLocaleDateString('pt-BR')
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-600">Carregando...</div>
-      </div>
-    )
-  }
+  // Loading removido - página carrega diretamente
 
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4 text-gray-900">Acesso Negado</h1>
-          <p className="mb-4 text-gray-600">Você precisa estar logado para acessar esta página.</p>
-          <Link href="/auth" className="btn-primary">
-            Fazer Login
-          </Link>
-        </div>
-      </div>
-    )
-  }
+  // Verificação de autenticação removida - gerenciada pelo layout
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header 
-        user={user ? {
-          id: user.id,
-          name: user.user_metadata?.name,
-          email: user.email,
-          role: 'admin'
-        } : undefined}
-        onSignOut={() => {
-          // Redirecionar para auth
-          window.location.href = '/auth'
-        }}
-        showAuth={false}
-        showBackToMain={false}
-        isDemoMode={user?.email === 'admin@institutoimagine.org'}
-      />
-
+    <div className="max-w-7xl mx-auto">
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      <main>
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">

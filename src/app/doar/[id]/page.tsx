@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import StripePaymentForm from '@/components/StripePaymentForm'
-import TestStripe from '@/components/TestStripe'
 
 // Mock data para demonstração
 const mockProjects = [
@@ -636,7 +635,6 @@ export default function DoarPage() {
                   {/* Teste de configuração (apenas em desenvolvimento) */}
                   {process.env.NODE_ENV === 'development' && (
                     <div className="mb-6">
-                      <TestStripe />
                   </div>
                   )}
 

@@ -52,7 +52,18 @@ export default function AuthPage() {
           setLoading(false)
           clearTimeout(timeoutId)
           setTimeout(() => {
-            window.location.href = `/dashboard?demo_email=${encodeURIComponent(email)}`
+            window.location.href = `/admin/dashboard?demo_email=${encodeURIComponent(email)}`
+          }, 1500)
+          return
+        }
+
+
+        if (email === 'volunteer@institutoimagine.org' && password === 'volunteer123456') {
+          setMessage('Login voluntário realizado com sucesso! (Modo de demonstração)')
+          setLoading(false)
+          clearTimeout(timeoutId)
+          setTimeout(() => {
+            window.location.href = `/dashboard?demo_email=${encodeURIComponent(email)}&role=volunteer`
           }, 1500)
           return
         }
@@ -134,19 +145,31 @@ export default function AuthPage() {
     }
   }
 
-  const handleDemoLogin = (role: 'donor' | 'admin') => {
+  const handleDemoLogin = (role: 'donor' | 'admin' | 'volunteer') => {
+    console.log('Demo login clicked:', role) // Debug log
+    let email = ''
     if (role === 'donor') {
-      setEmail('demo@doador.com')
+      email = 'demo@doador.com'
+      setEmail(email)
       setPassword('demo123456')
-    } else {
-      setEmail('admin@institutoimagine.org')
+    } else if (role === 'admin') {
+      email = 'admin@institutoimagine.org'
+      setEmail(email)
       setPassword('admin123456')
+    } else {
+      email = 'volunteer@institutoimagine.org'
+      setEmail(email)
+      setPassword('volunteer123456')
     }
     setIsLogin(true)
+    
+    // Salvar dados de demo no localStorage
+    localStorage.setItem('demo-user', JSON.stringify({ email, role }))
+    console.log('Demo login set:', { role, email }) // Debug log
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div>
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -198,18 +221,24 @@ export default function AuthPage() {
           {/* Demo Buttons */}
           <div className="card p-6">
             <p className="text-sm text-gray-600 mb-4 text-center font-medium">Teste com contas demo:</p>
-            <div className="flex space-x-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
                 onClick={() => handleDemoLogin('donor')}
-                className="flex-1 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
               >
                 Demo Doador
               </button>
               <button
                 onClick={() => handleDemoLogin('admin')}
-                className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+                className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
               >
                 Demo Admin
+              </button>
+              <button
+                onClick={() => handleDemoLogin('volunteer')}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+              >
+                Demo Voluntário
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-3 text-center">

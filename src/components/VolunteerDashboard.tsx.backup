@@ -1,0 +1,215 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+
+interface VolunteerStats {
+  activeProjects: number
+  hoursThisWeek: number
+  totalHours: number
+  upcomingEvents: number
+}
+
+export default function VolunteerDashboard() {
+  const [stats, setStats] = useState<VolunteerStats>({
+    activeProjects: 5,
+    hoursThisWeek: 12,
+    totalHours: 45,
+    upcomingEvents: 3
+  })
+
+  const [projects] = useState([
+    {
+      id: 1,
+      title: 'Educação Digital',
+      description: 'Ajudar com aulas de informática',
+      location: 'São Paulo, SP',
+      date: '2024-01-15',
+      time: '14:00 - 17:00',
+      volunteersNeeded: 3,
+      volunteersRegistered: 2
+    },
+    {
+      id: 2,
+      title: 'Saúde Comunitária',
+      description: 'Apoio em clínicas móveis',
+      location: 'Bahia, BA',
+      date: '2024-01-20',
+      time: '09:00 - 12:00',
+      volunteersNeeded: 5,
+      volunteersRegistered: 3
+    },
+    {
+      id: 3,
+      title: 'Meio Ambiente',
+      description: 'Plantio de árvores',
+      location: 'Amazonas, AM',
+      date: '2024-01-25',
+      time: '08:00 - 11:00',
+      volunteersNeeded: 10,
+      volunteersRegistered: 7
+    }
+  ])
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Dashboard do Voluntário
+          </h1>
+          <p className="text-gray-600">
+            Gerencie suas atividades de voluntariado e contribua para a comunidade
+          </p>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-500">
+            <div className="flex items-center">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-800">Projetos Ativos</h3>
+                <p className="text-2xl font-bold text-blue-600">{stats.activeProjects}</p>
+                <p className="text-sm text-gray-500">precisando de ajuda</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500">
+            <div className="flex items-center">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-800">Esta Semana</h3>
+                <p className="text-2xl font-bold text-green-600">{stats.hoursThisWeek}h</p>
+                <p className="text-sm text-gray-500">horas disponíveis</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-purple-500">
+            <div className="flex items-center">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-800">Total Contribuído</h3>
+                <p className="text-2xl font-bold text-purple-600">{stats.totalHours}h</p>
+                <p className="text-sm text-gray-500">ao longo do tempo</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-orange-500">
+            <div className="flex items-center">
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div className="ml-4">
+                <h3 className="text-lg font-semibold text-gray-800">Próximos Eventos</h3>
+                <p className="text-2xl font-bold text-orange-600">{stats.upcomingEvents}</p>
+                <p className="text-sm text-gray-500">esta semana</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Projetos Disponíveis */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Projetos Disponíveis</h2>
+            <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+              Ver Todos
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {projects.map((project) => (
+              <div key={project.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-start mb-3">
+                  <h3 className="text-lg font-semibold text-gray-900">{project.title}</h3>
+                  <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                    Ativo
+                  </span>
+                </div>
+                
+                <p className="text-gray-600 text-sm mb-3">{project.description}</p>
+                
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center text-sm text-gray-500">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {project.location}
+                  </div>
+                  <div className="flex items-center text-sm text-gray-500">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {project.date} - {project.time}
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center mb-4">
+                  <div className="text-sm text-gray-500">
+                    <span className="font-medium">{project.volunteersRegistered}</span> de {project.volunteersNeeded} voluntários
+                  </div>
+                  <div className="w-16 bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full" 
+                      style={{ width: `${(project.volunteersRegistered / project.volunteersNeeded) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+                  Participar
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Ações Rápidas */}
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">📅 Configurar Disponibilidade</h3>
+            <p className="text-gray-600 text-sm mb-4">Defina seus horários disponíveis para voluntariado</p>
+            <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
+              Configurar
+            </button>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">📊 Meu Histórico</h3>
+            <p className="text-gray-600 text-sm mb-4">Veja todas as suas contribuições</p>
+            <button className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+              Ver Histórico
+            </button>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">🔔 Notificações</h3>
+            <p className="text-gray-600 text-sm mb-4">Configure suas preferências</p>
+            <button className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors">
+              Configurar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

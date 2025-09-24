@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getDonations, getUserStats } from '@/lib/database'
 import { exportDonations } from '@/lib/export'
-import Header from '@/components/Header'
+
 import type { User } from '@supabase/supabase-js'
 import type { Donation } from '@/lib/database'
 
@@ -243,21 +243,7 @@ export default function HistoricoPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header 
-        user={user ? {
-          id: user.id,
-          name: user.user_metadata?.name,
-          email: user.email,
-          role: 'donor'
-        } : undefined}
-        onSignOut={() => {
-          // Redirecionar para auth
-          window.location.href = '/auth'
-        }}
-        showAuth={false}
-        showBackToMain={true}
-      />
-
+      
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         {/* Page Header */}

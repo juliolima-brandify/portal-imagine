@@ -1,78 +1,75 @@
-# 📚 Documentação Portal Instituto Imagine
+# 📚 Documentação - Portal Instituto Imagine
 
-Documentação completa do sistema Portal Instituto Imagine.
+## 🎯 Bem-vindo à Documentação Organizada!
 
-## 📋 Índice da Documentação
+Esta pasta contém toda a documentação do Portal Instituto Imagine, organizada de forma lógica e fácil de navegar.
 
-### **🌍 Ambientes**
-- [Configuração de Ambientes](ambientes/AMBIENTES.md) - Visão geral dos 3 ambientes
-- [Configurar Ambiente Dev](ambientes/CONFIGURAR_DEV.md) - Setup do ambiente de desenvolvimento
+## 📁 **Estrutura da Documentação**
 
-### **⚙️ Configuração**
-- [Stripe Produção](configuracao/STRIPE_PRODUCAO.md) - Configurar Stripe para produção
-- [Configuração Completa do Stripe](configuracao/CONFIGURACAO_STRIPE_COMPLETA.md) - Setup completo do Stripe
-- [Configuração do Supabase](configuracao/CONFIGURACAO_SUPABASE.md) - Setup do Supabase
+### 📖 **[Guias e Tutoriais](guias/)**
+Tutoriais passo a passo para configuração, deploy e manutenção:
+- ⚙️ **Configuração**: Supabase, Stripe, Resend, ambientes
+- 🧪 **Testes**: Checklists, testes específicos, troubleshooting
+- 🚀 **Deploy**: Instruções de deploy e produção
 
-### **🚀 Deploy**
-- [Instruções de Deploy](deploy/DEPLOY.md) - Guia de deploy
+### 🏗️ **[Arquitetura e Design](arquitetura/)**
+Documentação técnica e de design:
+- 🎨 **Design System**: Componentes, cores, tipografia
+- 👤 **Jornada do Usuário**: Fluxos e experiências
+- ⚙️ **Admin Panel**: Documentação completa do painel administrativo
+- 🔗 **Integrações**: Site principal, Framer, checkout
 
-### **📜 Scripts**
-- [Documentação de Scripts](scripts/README.md) - Scripts disponíveis
+### 📊 **Relatórios e Status** (raiz)
+Relatórios de implementações, correções e melhorias:
+- 🐛 **Correções**: Relatórios de bugs e fixes
+- ✅ **Implementações**: Status de funcionalidades
+- 🌍 **Ambientes**: Configuração de ambientes
 
-## 🎯 Guia Rápido
+### 🎨 **[Assets](assets/)**
+Recursos visuais e mídias:
+- 🖼️ **Imagens**: Logo e recursos visuais
 
-### **Para Desenvolvedores**
-1. **Configurar ambiente local**: `npm run dev`
-2. **Configurar ambiente dev**: `npm run setup:dev`
-3. **Deploy para produção**: `npm run deploy:prod`
+## 🚀 **Como Navegar**
 
-### **Para Clientes**
-1. **Configurar chaves de produção** (Stripe, Supabase)
-2. **Configurar no Vercel Dashboard**
-3. **Testar ambiente de produção**
+### **Para Desenvolvedores:**
+1. **Primeira vez?** → Comece com [Configuração Rápida](guias/CONFIGURACAO_RAPIDA.md)
+2. **Entender o sistema** → Consulte [Design System](arquitetura/DESIGN_SYSTEM.md)
+3. **Problemas?** → Verifique os relatórios de correções
 
-## 🔧 Scripts Principais
+### **Para Administradores:**
+1. **Setup inicial** → [Guias de Configuração](guias/)
+2. **Deploy** → [Instruções de Deploy](guias/DEPLOY.md)
+3. **Testes** → [Checklist de Testes](guias/TESTE_CHECKLIST.md)
 
-### **Desenvolvimento**
-```bash
-npm run dev              # Servidor local
-npm run build            # Build de produção
-npm run lint             # Linter
-```
+### **Para Designers:**
+1. **Sistema de Design** → [Design System](arquitetura/DESIGN_SYSTEM.md)
+2. **Jornada do Usuário** → [Jornada do Usuário](arquitetura/JORNADA_USUARIO.md)
+3. **Integrações** → [Integração Site Principal](arquitetura/INTEGRACAO_SITE_PRINCIPAL.md)
 
-### **Deploy**
-```bash
-npm run deploy:local     # Deploy local
-npm run deploy:dev       # Deploy dev
-npm run deploy:prod      # Deploy produção
-```
+## 📋 **Índice Completo**
 
-### **Configuração**
-```bash
-npm run setup:dev        # Setup ambiente dev
-npm run generate:secrets # Gerar secrets
-```
+Para uma visão completa de todos os documentos, consulte:
+**[📚 Sumário Completo](SUMARIO.md)**
 
-## 🌐 URLs dos Ambientes
+## 🔧 **Status da Documentação**
 
-| Ambiente | URL | Status |
-|----------|-----|--------|
-| **Local** | `http://localhost:3000` | ✅ Funcionando |
-| **Dev** | `https://portal-dev.vercel.app` | ✅ Funcionando |
-| **Prod** | `https://portal.imagineinstituto.com` | ✅ Funcionando |
+- ✅ **44 arquivos** organizados e categorizados
+- ✅ **Links funcionais** após reorganização
+- ✅ **Estrutura lógica** por tipo de conteúdo
+- ✅ **Navegação intuitiva** com sumário completo
+- ✅ **Assets organizados** em pasta dedicada
 
-## 📞 Suporte
+## 📞 **Suporte**
 
-### **Documentação**
-- Toda a documentação está organizada nesta pasta
-- Scripts automatizados disponíveis
-- Estrutura profissional implementada
-
-### **Contato**
-- **Desenvolvedor**: [Seu contato]
-- **Documentação**: Disponível no repositório
-- **Suporte**: Conforme acordado
+- **Documentação**: Este README e o [Sumário](SUMARIO.md)
+- **Issues**: Consulte os relatórios de correções
+- **Deploy**: Use os guias de deploy
+- **Configuração**: Siga os tutoriais passo a passo
 
 ---
 
-**🎯 Sistema Portal Instituto Imagine - 100% Funcional e Documentado**
+**🎯 Documentação 100% organizada e funcional!**
+
+**Última atualização**: 24/09/2025  
+**Versão**: 1.0  
+**Status**: ✅ Organizado e Funcional

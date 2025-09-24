@@ -5,43 +5,22 @@ import Link from 'next/link'
 import { getProjects } from '@/lib/database'
 import { getFavorites } from '@/lib/favorites'
 import { getDonations } from '@/lib/database'
+import { supabase } from '@/lib/supabase'
 import type { Project } from '@/lib/database'
 import type { Favorite } from '@/lib/favorites'
 import type { Donation } from '@/lib/database'
 import FavoriteButton from '@/components/FavoriteButton'
-import Header from '@/components/Header'
 
-const categoryLabels = {
-  'educacao': 'Educação',
-  'saude': 'Saúde',
-  'meio-ambiente': 'Meio Ambiente',
-  'esporte': 'Esporte',
-  'social': 'Social'
-}
-
-const statusLabels = {
-  'active': 'Ativo',
-  'completed': 'Concluído',
-  'paused': 'Pausado',
-  'cancelled': 'Cancelado'
-}
-
-const statusColors = {
-  'active': 'bg-green-100 text-green-800',
-  'completed': 'bg-blue-100 text-blue-800',
-  'paused': 'bg-yellow-100 text-yellow-800',
-  'cancelled': 'bg-red-100 text-red-800'
-}
-
-export default function ProjectsPage() {
+export default function ProjetosPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [favorites, setFavorites] = useState<Favorite[]>([])
   const [donations, setDonations] = useState<Donation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [activeTab, setActiveTab] = useState<'all' | 'supported' | 'favorites'>('all')
+  const [activeTab, setActiveTab] = useState<'all' | 'my-projects'>('all')
   const [user, setUser] = useState<any>(null)
+  const [demoEmail, setDemoEmail] = useState<string | null>(null)
 
   useEffect(() => {
     const loadData = async () => {
@@ -50,108 +29,51 @@ export default function ProjectsPage() {
         
         // Verificar se é modo demo via URL
         const urlParams = new URLSearchParams(window.location.search)
-        const demoEmail = urlParams.get('demo_email')
+        const currentDemoEmail = urlParams.get('demo_email')
+        setDemoEmail(currentDemoEmail)
         
-        if (demoEmail === 'demo@doador.com') {
+        
+        if (currentDemoEmail === 'demo@doador.com' || currentDemoEmail === 'volunteer@institutoimagine.org') {
           setUser({
-            id: 'demo-user',
-            email: demoEmail,
-            user_metadata: { name: 'Doador Demo' }
+            id: '00000000-0000-0000-0000-000000000001', // UUID válido para demo
+            email: currentDemoEmail,
+            user_metadata: { 
+              name: currentDemoEmail === 'volunteer@institutoimagine.org' ? 'Voluntário Demo' : 'Doador Demo' 
+            }
           })
           
-          // Carregar favoritos mock para demo
-          setFavorites([
-            {
-              id: '1',
-              user_id: 'demo-user',
-              project_id: '1',
-              created_at: '2024-01-15T10:00:00Z',
-              project: {
-                id: '1',
-                title: 'Educação Digital',
-                description: 'Levando tecnologia e educação para comunidades carentes através de laboratórios de informática.',
-                image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&h=300&fit=crop&crop=center',
-                current_amount: 45000,
-                target_amount: 60000,
-                status: 'active'
-              }
-            },
-            {
-              id: '2',
-              user_id: 'demo-user',
-              project_id: '2',
-              created_at: '2024-01-10T10:00:00Z',
-              project: {
-                id: '2',
-                title: 'Saúde Comunitária',
-                description: 'Clínicas móveis levando saúde básica, exames e vacinação para regiões remotas.',
-                image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&h=300&fit=crop&crop=center',
-                current_amount: 32000,
-                target_amount: 50000,
-                status: 'active'
-              }
-            }
-          ] as Favorite[])
-
-          // Carregar doações mock para demo
-          setDonations([
-            {
-              id: '1',
-              user_id: 'demo-user',
-              project_id: '1',
-              amount: 150.00,
-              currency: 'BRL',
-              status: 'completed',
-              payment_method: 'Cartão de Crédito',
-              is_recurring: false,
-              anonymous: false,
-              created_at: '2024-01-15T10:00:00Z',
-              updated_at: '2024-01-15T10:00:00Z',
-              stripe_payment_intent_id: 'pi_demo_001',
-              message: 'Doação de teste para educação.'
-            },
-            {
-              id: '2',
-              user_id: 'demo-user',
-              project_id: '2',
-              amount: 75.50,
-              currency: 'BRL',
-              status: 'completed',
-              payment_method: 'PIX',
-              is_recurring: false,
-              anonymous: false,
-              created_at: '2024-01-10T10:00:00Z',
-              updated_at: '2024-01-10T10:00:00Z',
-              stripe_payment_intent_id: 'pi_demo_002',
-              message: 'Doação para saúde comunitária.'
-            },
-            {
-              id: '3',
-              user_id: 'demo-user',
-              project_id: '3',
-              amount: 200.00,
-              currency: 'BRL',
-              status: 'completed',
-              payment_method: 'Boleto',
-              is_recurring: false,
-              anonymous: false,
-              created_at: '2024-01-20T10:00:00Z',
-              updated_at: '2024-01-20T10:00:00Z',
-              stripe_payment_intent_id: 'pi_demo_003',
-              message: 'Doação para meio ambiente.'
-            }
-          ] as Donation[])
-        } else if (user) {
-          // Carregar favoritos e doações reais se não for demo
+          // Carregar dados reais do Supabase para demo
+          try {
+            const userFavorites = await getFavorites('00000000-0000-0000-0000-000000000001')
+            setFavorites(userFavorites)
+            
+            const userDonations = await getDonations('00000000-0000-0000-0000-000000000001')
+            setDonations(userDonations)
+          } catch (error) {
+            console.log('Erro ao carregar dados do Supabase para demo:', error)
+            // Fallback para dados vazios se Supabase não estiver disponível
+            setFavorites([])
+            setDonations([])
+          }
+        } else {
+          // Tentar obter usuário do Supabase
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            setUser(user)
+            
+            // Carregar favoritos e doações reais do Supabase
           const userFavorites = await getFavorites(user.id)
           setFavorites(userFavorites)
           
           const userDonations = await getDonations(user.id)
           setDonations(userDonations)
+          }
         }
         
-        const data = await getProjects()
-        setProjects(data)
+        // Carregar projetos reais do Supabase
+        const projectsData = await getProjects()
+        console.log('🔍 Projetos carregados:', projectsData.map(p => ({ id: p.id, title: p.title })))
+        setProjects(projectsData)
       } catch (err) {
         setError('Erro ao carregar projetos')
         console.error('Erro ao carregar projetos:', err)
@@ -166,15 +88,18 @@ export default function ProjectsPage() {
   // Determinar quais projetos mostrar baseado na aba ativa
   const currentProjects = (() => {
     switch (activeTab) {
-      case 'favorites':
-        return favorites.map(fav => fav.project).filter(Boolean) as Project[]
-      case 'supported':
-        // Projetos únicos que o usuário apoiou (doações concluídas)
+      case 'my-projects':
+        // Projetos que o usuário apoiou (doações concluídas) + projetos onde é voluntário
         const supportedProjectIds = donations
           .filter(donation => donation.status === 'completed')
           .map(donation => donation.project_id)
         const uniqueSupportedIds = Array.from(new Set(supportedProjectIds))
-        return projects.filter(project => uniqueSupportedIds.includes(project.id))
+        
+        // Adicionar projetos onde é voluntário (simulado para demo)
+        const volunteerProjectIds = ['2', '3'] // IDs dos projetos onde é voluntário
+        
+        const allMyProjectIds = Array.from(new Set([...uniqueSupportedIds, ...volunteerProjectIds]))
+        return projects.filter(project => allMyProjectIds.includes(project.id))
       default:
         return projects
     }
@@ -184,33 +109,78 @@ export default function ProjectsPage() {
     ? currentProjects 
     : currentProjects.filter(project => project.category === selectedCategory)
 
-  const handleFavoriteToggle = (isFavorited: boolean) => {
-    // Esta função será chamada pelo FavoriteButton, mas precisamos do projectId
-    // Vamos usar uma abordagem diferente - o FavoriteButton já gerencia isso
-    console.log('Favorite toggled:', isFavorited)
+  const handleFavoriteToggle = async (projectId: string, isFavorited: boolean) => {
+    if (!user) return
+
+    try {
+      if (isFavorited) {
+        // Remover dos favoritos
+        const favoriteToRemove = favorites.find(fav => fav.project_id === projectId)
+        if (favoriteToRemove) {
+          const { error } = await supabase
+            .from('favorites')
+            .delete()
+            .eq('id', favoriteToRemove.id)
+          
+          if (!error) {
+            setFavorites(prev => prev.filter(fav => fav.id !== favoriteToRemove.id))
+          }
+        }
+      } else {
+        // Adicionar aos favoritos
+        const { data, error } = await supabase
+          .from('favorites')
+          .insert({
+            user_id: user.id,
+            project_id: projectId
+          })
+          .select()
+          .single()
+        
+        if (!error && data) {
+          setFavorites(prev => [...prev, data])
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar favorito:', error)
+    }
+  }
+
+  const categoryLabels = {
+    educacao: 'Educação',
+    social: 'Social',
+    meio_ambiente: 'Meio Ambiente',
+    saude: 'Saúde',
+    tecnologia: 'Tecnologia'
+  }
+
+  const statusLabels = {
+    active: 'Ativo',
+    completed: 'Concluído',
+    paused: 'Pausado',
+    cancelled: 'Cancelado'
+  }
+
+  const statusColors = {
+    active: 'bg-green-100 text-green-800',
+    completed: 'bg-blue-100 text-blue-800',
+    paused: 'bg-yellow-100 text-yellow-800',
+    cancelled: 'bg-red-100 text-red-800'
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando projetos...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-lg text-gray-600">Carregando projetos...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Erro ao carregar projetos</h2>
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Erro</h1>
           <p className="text-gray-600 mb-4">{error}</p>
           <button 
             onClick={() => window.location.reload()} 
@@ -225,174 +195,111 @@ export default function ProjectsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header 
-        user={user ? {
-          id: user.id,
-          name: user.user_metadata?.name,
-          email: user.email,
-          role: 'donor'
-        } : undefined}
-        onSignOut={user ? () => {
-          // Redirecionar para auth
-          window.location.href = '/auth'
-        } : undefined}
-        showAuth={!user}
-        showBackToMain={false}
-      />
-
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Escolha um Projeto para Apoiar
+      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        {/* Page Header - Seguindo padrão Admin */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Projetos
           </h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              <p className="mt-1 text-sm text-gray-500">
             Transforme vidas com sua doação. Escolha um projeto e faça a diferença hoje mesmo!
           </p>
+            </div>
+          </div>
         </div>
 
-        {/* Tabs */}
-        {user && (
-          <div className="flex justify-center mb-8">
-            <div className="bg-gray-100 p-1 rounded-lg">
+        {/* Tabs - Seguindo padrão Admin */}
+        <div className="mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
               <button
                 onClick={() => setActiveTab('all')}
-                className={`px-4 py-3 rounded-md font-medium transition-colors ${
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
                   activeTab === 'all'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 Todos os Projetos ({projects.length})
               </button>
               <button
-                onClick={() => setActiveTab('supported')}
-                className={`px-4 py-3 rounded-md font-medium transition-colors ${
-                  activeTab === 'supported'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                onClick={() => setActiveTab('my-projects')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'my-projects'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Meus Projetos ({donations.filter(d => d.status === 'completed').length > 0 ? Array.from(new Set(donations.filter(d => d.status === 'completed').map(d => d.project_id))).length : 0})
+                Meus Projetos ({(() => {
+                  if (!user) return 0
+                  const supportedProjectIds = donations
+                    .filter(d => d.status === 'completed')
+                    .map(d => d.project_id)
+                  const uniqueSupportedIds = Array.from(new Set(supportedProjectIds))
+                  const volunteerProjectIds = ['2', '3'] // Projetos onde é voluntário
+                  const allMyProjectIds = Array.from(new Set([...uniqueSupportedIds, ...volunteerProjectIds]))
+                  return allMyProjectIds.length
+                })()})
               </button>
-              <button
-                onClick={() => setActiveTab('favorites')}
-                className={`px-4 py-3 rounded-md font-medium transition-colors ${
-                  activeTab === 'favorites'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Meus Favoritos ({favorites.length})
-              </button>
-            </div>
+            </nav>
           </div>
-        )}
+        </div>
 
-        {/* Filters */}
-        <div className="mb-8">
-          <div className="flex flex-wrap gap-4 justify-center">
+        {/* Filters - Seguindo padrão Admin */}
+        <div className="mb-6">
+          <div className="flex flex-wrap gap-2">
             <button 
-              className={selectedCategory === 'all' ? 'btn-primary' : 'btn-secondary'}
               onClick={() => setSelectedCategory('all')}
+              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                selectedCategory === 'all' 
+                  ? 'bg-blue-100 text-blue-800' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             >
-              Todos
+              Todas as Categorias
             </button>
+            {Object.entries(categoryLabels).map(([key, label]) => (
             <button 
-              className={selectedCategory === 'educacao' ? 'btn-primary' : 'btn-secondary'}
-              onClick={() => setSelectedCategory('educacao')}
-            >
-              Educação
+                key={key}
+                onClick={() => setSelectedCategory(key)}
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                  selectedCategory === key 
+                    ? 'bg-blue-100 text-blue-800' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {label}
             </button>
-            <button 
-              className={selectedCategory === 'saude' ? 'btn-primary' : 'btn-secondary'}
-              onClick={() => setSelectedCategory('saude')}
-            >
-              Saúde
-            </button>
-            <button 
-              className={selectedCategory === 'meio-ambiente' ? 'btn-primary' : 'btn-secondary'}
-              onClick={() => setSelectedCategory('meio-ambiente')}
-            >
-              Meio Ambiente
-            </button>
-            <button 
-              className={selectedCategory === 'esporte' ? 'btn-primary' : 'btn-secondary'}
-              onClick={() => setSelectedCategory('esporte')}
-            >
-              Esporte
-            </button>
-            <button 
-              className={selectedCategory === 'social' ? 'btn-primary' : 'btn-secondary'}
-              onClick={() => setSelectedCategory('social')}
-            >
-              Social
-            </button>
+            ))}
           </div>
         </div>
 
         {/* Projects Grid */}
         {filteredProjects.length === 0 ? (
           <div className="text-center py-12">
-            {activeTab === 'favorites' ? (
-              <div>
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Nenhum favorito ainda
+              {activeTab === 'my-projects' ? 'Nenhum projeto ainda' : 'Nenhum projeto encontrado'}
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  Explore os projetos disponíveis e marque seus favoritos para acompanhar de perto.
+              {activeTab === 'my-projects' 
+                ? 'Faça sua primeira doação ou se inscreva como voluntário para ver seus projetos aqui.'
+                : 'Tente ajustar os filtros de categoria ou explore outros projetos.'
+              }
                 </p>
                 <button
                   onClick={() => setActiveTab('all')}
                   className="btn-primary"
                 >
-                  Ver Todos os Projetos
+              {activeTab === 'my-projects' ? 'Ver Projetos Disponíveis' : 'Ver Todos os Projetos'}
                 </button>
-              </div>
-            ) : activeTab === 'supported' ? (
-              <div>
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Nenhum projeto apoiado ainda
-                </h3>
-                <p className="text-gray-600 mb-6">
-                  Faça sua primeira doação e veja aqui os projetos que você está apoiando.
-                </p>
-                <button
-                  onClick={() => setActiveTab('all')}
-                  className="btn-primary"
-                >
-                  Ver Projetos Disponíveis
-                </button>
-              </div>
-            ) : (
-              <div>
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Nenhum projeto encontrado
-                </h3>
-                <p className="text-gray-600">
-                  {selectedCategory === 'all' 
-                    ? 'Não há projetos disponíveis no momento.' 
-                    : `Não há projetos na categoria "${categoryLabels[selectedCategory as keyof typeof categoryLabels] || selectedCategory}".`
-                  }
-                </p>
-              </div>
-            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -418,7 +325,21 @@ export default function ProjectsPage() {
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[project.status as keyof typeof statusColors]}`}>
                         {statusLabels[project.status as keyof typeof statusLabels]}
                       </span>
+                      {activeTab === 'my-projects' && (
+                        <>
                       {userDonatedToProject && (
+                            <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                              💰 Você doou
+                            </span>
+                          )}
+                          {['2', '3'].includes(project.id) && (
+                            <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                              🤝 Você é voluntário
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {activeTab === 'all' && userDonatedToProject && (
                         <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
                           Você apoiou
                         </span>
@@ -434,7 +355,7 @@ export default function ProjectsPage() {
                           projectId={project.id}
                           projectTitle={project.title}
                           size="sm"
-                          onToggle={handleFavoriteToggle}
+                          onToggle={(isFavorite) => handleFavoriteToggle(project.id, isFavorite)}
                         />
                       )}
                     </div>
@@ -445,70 +366,134 @@ export default function ProjectsPage() {
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">
                       {project.title}
                     </h3>
-                    <p className="text-gray-600 mb-4 line-clamp-3">
+                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">
                       {project.description}
                     </p>
 
-                    {/* User's contribution info */}
-                    {userDonatedToProject && (
-                      <div className="mb-4 p-3 bg-green-50 rounded-lg">
-                        <div className="flex items-center space-x-2">
-                          <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                          </svg>
-                          <span className="text-sm font-medium text-green-800">
-                            Você doou: R$ {totalDonatedToProject.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Location */}
-                    {project.location && (
-                      <div className="flex items-center text-gray-500 text-sm mb-4">
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        {project.location}
-                      </div>
-                    )}
-
-                    {/* Progress */}
+                    {/* Progress Bar */}
                     <div className="mb-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm text-gray-600">
-                          R$ {project.current_amount.toLocaleString('pt-BR')} / R$ {project.target_amount.toLocaleString('pt-BR')}
-                        </span>
-                        <span className="text-sm font-semibold text-gray-600">
-                          {Math.round(progress)}%
-                        </span>
+                      <div className="flex justify-between text-sm text-gray-600 mb-1">
+                        <span>Progresso</span>
+                        <span>{progress.toFixed(1)}%</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div 
-                          className="bg-gray-600 h-2 rounded-full transition-all duration-300" 
-                          style={{width: `${Math.min(progress, 100)}%`}}
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(progress, 100)}%` }}
                         ></div>
+                      </div>
+                      <div className="flex justify-between text-sm text-gray-500 mt-1">
+                        <span>R$ {project.current_amount.toLocaleString('pt-BR')}</span>
+                        <span>R$ {project.target_amount.toLocaleString('pt-BR')}</span>
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex space-x-3">
+                    {/* User Status Info */}
+                    {(() => {
+                      const isVolunteerForProject = user && ['2', '3'].includes(project.id) // Projetos onde é voluntário
+                      const userDonatedToProject = donations.some(d => d.project_id === project.id && d.status === 'completed')
+                      const totalDonatedToProject = donations
+                        .filter(d => d.project_id === project.id && d.status === 'completed')
+                        .reduce((sum, d) => sum + d.amount, 0)
+
+                      return (
+                        <div className="mb-4 space-y-2">
+                          {userDonatedToProject && (
+                            <div className="p-3 bg-green-50 rounded-lg">
+                              <div className="flex items-center text-green-800 text-sm">
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                💰 Você doou R$ {totalDonatedToProject.toLocaleString('pt-BR')}
+                              </div>
+                            </div>
+                          )}
+                          {isVolunteerForProject && (
+                            <div className="p-3 bg-blue-50 rounded-lg">
+                              <div className="flex items-center text-blue-800 text-sm">
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                                🤝 Você é voluntário
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+
+                    {/* Project Details */}
+                    <div className="space-y-2 text-sm text-gray-600 mb-6">
+                      {project.location && (
+                        <div className="flex items-center">
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          {project.location}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions - Botões organizados por tipo de usuário */}
+                    {(() => {
+                      const isVolunteerForProject = user && ['2', '3'].includes(project.id) // Projetos onde é voluntário
+                      
+                      return (
+                        <div className="space-y-3">
+                          {/* Ver Detalhes - Sempre presente */}
                       <Link
-                        href={`https://imagineinstituto.com/projetos/${project.id}`}
-                        className="flex-1 btn-secondary text-center"
+                            href={`https://imagineinstituto.com/projetos/${project.id}`}
+                            className="w-full btn-secondary text-center block"
                         target="_blank"
                         rel="noopener noreferrer"
                       >
                         Ver Detalhes
                       </Link>
+
+                          {/* Ver Relatórios - Sempre presente */}
+                          <Link
+                            href={`/projetos/${project.id}/relatorios`}
+                            className="w-full btn-secondary text-center block"
+                          >
+                            Ver Relatórios
+                          </Link>
+
+                          {/* Seja Voluntário - Apenas para doadores (não voluntários) */}
+                          {!isVolunteerForProject && (
+                            <Link
+                              href={`https://imagineinstituto.com/projetos/${project.id}/voluntario`}
+                              className="w-full btn-secondary text-center block"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Seja Voluntário
+                            </Link>
+                          )}
+
+                          {/* Grupo do Projeto - Sempre presente */}
+                          <Link
+                            href={`https://wa.me/5511999999999?text=Olá! Gostaria de saber mais sobre o projeto ${project.title}`}
+                            className="w-full btn-secondary text-center block flex items-center justify-center"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
+                            </svg>
+                            Grupo do Projeto
+                          </Link>
+
+                          {/* Doar Agora - Sempre presente */}
                       <Link
-                        href={`/doar/${project.id}?demo_email=demo@doador.com`}
-                        className="flex-1 btn-primary text-center"
+                            href={`https://portal.imagineinstituto.com/prototype/checkout/${project.id}?source=portal&utm_campaign=${project.title.toLowerCase().replace(/\s+/g, '-')}${demoEmail ? `&demo_email=${demoEmail}` : ''}`}
+                            className="w-full btn-primary text-center block"
                       >
                         Doar Agora
                       </Link>
                     </div>
+                      )
+                    })()}
                   </div>
                 </div>
               )
@@ -516,45 +501,21 @@ export default function ProjectsPage() {
           </div>
         )}
 
-        {/* CTA Section */}
-        <div className="mt-16 bg-gray-900 rounded-lg p-8 text-center text-white">
-          <h2 className="text-3xl font-bold mb-4">
-            Quer Apoiar Todos os Projetos?
-          </h2>
-          <p className="text-xl mb-6 opacity-90">
-            Faça uma doação geral e ajude todos os nossos projetos de uma vez.
-          </p>
-          <Link
-            href="/doar/geral?demo_email=demo@doador.com"
-            className="bg-white text-gray-900 px-8 py-3 rounded-lg text-lg font-semibold hover:bg-gray-100 transition-colors inline-block"
-          >
-            Doar para Todos os Projetos
-          </Link>
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-8 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h3 className="text-xl font-semibold mb-2">Instituto Imagine</h3>
-            <p className="text-gray-400 mb-4">
-              Transformando vidas através da educação e solidariedade
+        {/* Call to Action */}
+        <div className="mt-12 text-center">
+          <div className="card p-8">
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Não encontrou o projeto ideal?
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Entre em contato conosco e ajude-nos a criar novos projetos que façam a diferença.
             </p>
-            <div className="flex justify-center space-x-6">
-              <Link href="/sobre" className="text-gray-400 hover:text-white">
-                Sobre
+            <Link href="/contato" className="btn-primary">
+              Entrar em Contato
               </Link>
-              <Link href="/contato" className="text-gray-400 hover:text-white">
-                Contato
-              </Link>
-              <Link href="/transparencia" className="text-gray-400 hover:text-white">
-                Transparência
-              </Link>
-            </div>
           </div>
         </div>
-      </footer>
+      </main>
     </div>
   )
 }

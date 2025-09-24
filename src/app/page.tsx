@@ -37,7 +37,7 @@ export default function Home() {
         if (email === 'admin@institutoimagine.org' && password === 'admin123456') {
           setMessage('Login admin realizado com sucesso! (Modo de demonstração)')
           setTimeout(() => {
-            window.location.href = `/dashboard?demo_email=${encodeURIComponent(email)}`
+            window.location.href = `/admin/dashboard?demo_email=${encodeURIComponent(email)}`
           }, 1500)
           return
         }
