@@ -90,10 +90,17 @@ export default function Home() {
           <div className="flex justify-between items-center py-4">
             <Link href="/" className="flex items-center">
               <img 
-                src="/images/logo.png" 
+                src="/images/logo.svg" 
                 alt="Instituto Imagine" 
                 className="h-10 w-auto"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none'
+                  e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                }}
               />
+              <div className="hidden h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-base">I</span>
+              </div>
             </Link>
             <Link
               href="https://imagineinstituto.com"

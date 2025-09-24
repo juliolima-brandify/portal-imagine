@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import mobile optimizations */
+@import './mobile-optimizations.css';
+
 :root {
   /* Minimalist Monochromatic Palette - Apple/Notion Style */
   --primary: #000000;

@@ -25,29 +25,36 @@ export default function Header({
   return (
     <header className="bg-white border-b border-gray-200 animate-fade-in">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-4">
+        <div className="flex justify-between items-center py-3 md:py-4">
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
               <img 
-                src="/images/logo.png" 
+                src="/images/logo.svg" 
                 alt="Instituto Imagine" 
-                className="h-10 w-auto"
+                className="h-8 md:h-10 w-auto"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none'
+                  e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                }}
               />
+              <div className="hidden h-8 md:h-10 w-8 md:w-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm md:text-base">I</span>
+              </div>
             </Link>
           </div>
           
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 md:space-x-4">
             {user ? (
               <>
-                <span className="text-gray-700 font-medium">
+                <span className="text-gray-700 font-medium text-sm md:text-base hidden sm:block">
                   Olá, {user.name || user.email}
                 </span>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                <span className={`px-2 md:px-3 py-1 rounded-full text-xs font-medium ${
                   user.role === 'admin' 
                     ? 'bg-gray-600 text-white' 
                     : 'bg-gray-100 text-gray-700'
                 }`}>
-                  {user.role === 'admin' ? 'Administrador' : 'Doador'}
+                  {user.role === 'admin' ? 'Admin' : 'Doador'}
                 </span>
                 {isDemoMode && (
                   <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">

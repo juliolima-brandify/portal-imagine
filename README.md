@@ -108,6 +108,9 @@ npm run deploy:prod
 
 ## 📚 Documentação
 
+### **📋 Jornada do Usuário**
+- [Jornada do Usuário Global](JORNADA_USUARIO_GLOBAL.md) - Documento consolidado com todas as jornadas
+
 ### **🌍 Ambientes**
 - [Configuração de Ambientes](docs/ambientes/AMBIENTES.md)
 - [Configurar Ambiente Dev](docs/ambientes/CONFIGURAR_DEV.md)

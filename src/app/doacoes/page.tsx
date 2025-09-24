@@ -232,28 +232,28 @@ export default function DoacoesPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="card p-6">
-            <div className="text-2xl font-bold text-gray-900 mb-1">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 mb-8">
+          <div className="card p-4 md:p-6">
+            <div className="text-xl md:text-2xl font-bold text-gray-900 mb-1">
               {formatCurrency(totalDonated)}
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-xs md:text-sm text-gray-600">
               Total Doado
             </div>
           </div>
-          <div className="card p-6">
-            <div className="text-2xl font-bold text-green-600 mb-1">
+          <div className="card p-4 md:p-6">
+            <div className="text-xl md:text-2xl font-bold text-green-600 mb-1">
               {userStats?.totalDonations || 0}
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-xs md:text-sm text-gray-600">
               Doações Concluídas
             </div>
           </div>
-          <div className="card p-6">
-            <div className="text-2xl font-bold text-yellow-600 mb-1">
+          <div className="card p-4 md:p-6">
+            <div className="text-xl md:text-2xl font-bold text-yellow-600 mb-1">
               {donations.filter(d => d.status === 'pending').length}
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-xs md:text-sm text-gray-600">
               Doações Pendentes
             </div>
           </div>

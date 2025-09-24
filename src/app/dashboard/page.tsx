@@ -148,61 +148,61 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="card p-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            <div className="text-2xl font-bold text-gray-900 mb-1">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+          <div className="card p-4 md:p-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            <div className="text-xl md:text-2xl font-bold text-gray-900 mb-1">
               {userRole === 'admin' ? 'R$ 2.5M' : 'R$ 1.2K'}
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-xs md:text-sm text-gray-600">
               {userRole === 'admin' ? 'Total Arrecadado' : 'Total Doado'}
             </div>
           </div>
-          <div className="card p-6 animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            <div className="text-2xl font-bold text-blue-600 mb-1">
+          <div className="card p-4 md:p-6 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <div className="text-xl md:text-2xl font-bold text-blue-600 mb-1">
               {userRole === 'admin' ? '1,247' : '12'}
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-xs md:text-sm text-gray-600">
               {userRole === 'admin' ? 'Doadores Ativos' : 'Doações Realizadas'}
             </div>
           </div>
-          <div className="card p-6 animate-slide-up" style={{ animationDelay: '0.3s' }}>
-            <div className="text-2xl font-bold text-green-600 mb-1">
+          <div className="card p-4 md:p-6 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+            <div className="text-xl md:text-2xl font-bold text-green-600 mb-1">
               {userRole === 'admin' ? '23' : '5'}
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-xs md:text-sm text-gray-600">
               {userRole === 'admin' ? 'Projetos Ativos' : 'Projetos Apoiados'}
             </div>
           </div>
-          <div className="card p-6 animate-slide-up" style={{ animationDelay: '0.4s' }}>
-            <div className="text-2xl font-bold text-purple-600 mb-1">
+          <div className="card p-4 md:p-6 animate-slide-up" style={{ animationDelay: '0.4s' }}>
+            <div className="text-xl md:text-2xl font-bold text-purple-600 mb-1">
               {userRole === 'admin' ? '89%' : '3'}
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-xs md:text-sm text-gray-600">
               {userRole === 'admin' ? 'Taxa de Sucesso' : 'Meses de Apoio'}
             </div>
           </div>
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <Link href={isDemoMode ? "/projetos?demo_email=" + encodeURIComponent(user.email || '') : "/projetos"} className="card card-hover p-6">
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
+          <Link href={isDemoMode ? "/projetos?demo_email=" + encodeURIComponent(user.email || '') : "/projetos"} className="card card-hover p-4 md:p-6">
+            <div className="flex items-center mb-3 md:mb-4">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 md:w-6 md:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
               </div>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-2">
               {userRole === 'admin' ? 'Gerenciar Projetos' : 'Explorar Projetos'}
             </h3>
-            <p className="text-gray-600 text-sm mb-4">
+            <p className="text-gray-600 text-xs md:text-sm mb-3 md:mb-4">
               {userRole === 'admin' 
                 ? 'Crie, edite e gerencie todos os projetos da plataforma.'
                 : 'Descubra novos projetos e veja o impacto das suas doações.'
               }
             </p>
-            <span className="text-blue-600 text-sm font-medium">
+            <span className="text-blue-600 text-xs md:text-sm font-medium">
               {userRole === 'admin' ? 'Gerenciar →' : 'Explorar →'}
             </span>
           </Link>

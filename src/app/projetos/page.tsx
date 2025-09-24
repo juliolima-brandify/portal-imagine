@@ -250,10 +250,10 @@ export default function ProjetosPage() {
 
         {/* Filters - Seguindo padrão Admin */}
         <div className="mb-6">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 overflow-x-auto pb-2">
             <button 
               onClick={() => setSelectedCategory('all')}
-              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                 selectedCategory === 'all' 
                   ? 'bg-blue-100 text-blue-800' 
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -265,7 +265,7 @@ export default function ProjetosPage() {
             <button 
                 key={key}
                 onClick={() => setSelectedCategory(key)}
-                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                   selectedCategory === key 
                     ? 'bg-blue-100 text-blue-800' 
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'

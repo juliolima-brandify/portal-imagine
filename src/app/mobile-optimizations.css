@@ -1,0 +1,313 @@
+/* Mobile Optimizations - Portal Imagine */
+
+/* Mobile-first responsive improvements */
+@media (max-width: 640px) {
+  /* Dashboard optimizations */
+  .dashboard-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+  
+  .dashboard-stats .card {
+    padding: 1rem;
+  }
+  
+  .dashboard-stats .card h3 {
+    font-size: 1.125rem;
+    line-height: 1.25rem;
+  }
+  
+  .dashboard-stats .card p {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  /* Quick actions mobile layout */
+  .quick-actions {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  
+  .quick-actions .card {
+    padding: 1rem;
+  }
+  
+  .quick-actions .card h3 {
+    font-size: 1rem;
+    line-height: 1.25rem;
+  }
+  
+  .quick-actions .card p {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  /* Projects page mobile optimizations */
+  .projects-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .project-card {
+    padding: 1rem;
+  }
+  
+  .project-card h3 {
+    font-size: 1.125rem;
+    line-height: 1.25rem;
+  }
+  
+  .project-card p {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  /* Filter buttons mobile scroll */
+  .filter-buttons {
+    display: flex;
+    overflow-x: auto;
+    gap: 0.5rem;
+    padding-bottom: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .filter-buttons::-webkit-scrollbar {
+    height: 4px;
+  }
+  
+  .filter-buttons::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 2px;
+  }
+  
+  .filter-buttons::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 2px;
+  }
+
+  /* Donations page mobile optimizations */
+  .donations-stats {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  
+  .donations-stats .card {
+    padding: 1rem;
+  }
+  
+  .donations-stats .card h3 {
+    font-size: 1.125rem;
+    line-height: 1.25rem;
+  }
+  
+  .donations-stats .card p {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  /* Table mobile optimizations */
+  .donations-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .donations-table table {
+    min-width: 600px;
+  }
+  
+  .donations-table th,
+  .donations-table td {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  /* Form mobile optimizations */
+  .form-container {
+    padding: 1rem;
+  }
+  
+  .form-container .input-modern {
+    font-size: 1rem;
+    padding: 0.75rem;
+  }
+  
+  .form-container .btn-primary {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  /* Modal mobile optimizations */
+  .modal-content {
+    margin: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+  
+  .modal-content h2 {
+    font-size: 1.25rem;
+    line-height: 1.5rem;
+  }
+  
+  .modal-content p {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  /* Button groups mobile */
+  .button-group {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .button-group .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Navigation mobile */
+  .nav-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.5rem;
+  }
+  
+  .nav-tabs button {
+    white-space: nowrap;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  /* Cards mobile spacing */
+  .card {
+    margin-bottom: 1rem;
+  }
+  
+  .card:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Text mobile optimizations */
+  h1 {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+  
+  h3 {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+  
+  p {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  /* Icon sizes mobile */
+  .icon-sm {
+    width: 1rem;
+    height: 1rem;
+  }
+  
+  .icon-md {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  
+  .icon-lg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
+
+/* Tablet optimizations */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .dashboard-stats {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  
+  .quick-actions {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  
+  .projects-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+  
+  .donations-stats {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+}
+
+/* Touch-friendly improvements */
+@media (hover: none) and (pointer: coarse) {
+  /* Larger touch targets */
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  .filter-buttons button {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+  }
+  
+  .nav-tabs button {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+  }
+  
+  /* Remove hover effects on touch devices */
+  .card-hover:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  
+  .btn:hover {
+    transform: none;
+  }
+}
+
+/* High DPI display optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .icon-sm,
+  .icon-md,
+  .icon-lg {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+}
+
+/* Dark mode mobile optimizations */
+@media (prefers-color-scheme: dark) {
+  .filter-buttons::-webkit-scrollbar-track {
+    background: #374151;
+  }
+  
+  .filter-buttons::-webkit-scrollbar-thumb {
+    background: #6b7280;
+  }
+}
+
+/* Reduced motion optimizations */
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up {
+    animation: none;
+  }
+  
+  .card-hover {
+    transition: none;
+  }
+  
+  .btn {
+    transition: none;
+  }
+}
