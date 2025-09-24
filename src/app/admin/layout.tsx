@@ -35,13 +35,20 @@ const AdminLayout = memo(function AdminLayout({
           if (user) {
             setUser(user)
           } else {
+            // Só redirecionar se não for modo demo
+            console.log('Usuário não encontrado, redirecionando para /auth')
             window.location.href = '/auth'
             return
           }
         }
       } catch (error) {
         console.error('Erro ao obter usuário:', error)
-        window.location.href = '/auth'
+        // Só redirecionar se não for modo demo
+        const urlParams = new URLSearchParams(window.location.search)
+        const demoEmail = urlParams.get('demo_email')
+        if (demoEmail !== 'admin@institutoimagine.org') {
+          window.location.href = '/auth'
+        }
       } finally {
         setLoading(false)
       }
