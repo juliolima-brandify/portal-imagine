@@ -25,24 +25,7 @@ export default function Home() {
         // Validar dados de login
         const validatedData = loginSchema.parse({ email, password })
         
-        // Verificar se é uma conta demo
-        if (email === 'demo@doador.com' && password === 'demo123456') {
-          setMessage('Login demo realizado com sucesso! (Modo de demonstração)')
-          setTimeout(() => {
-            window.location.href = `/dashboard?demo_email=${encodeURIComponent(email)}`
-          }, 1500)
-          return
-        }
-        
-        if (email === 'admin@institutoimagine.org' && password === 'admin123456') {
-          setMessage('Login admin realizado com sucesso! (Modo de demonstração)')
-          setTimeout(() => {
-            window.location.href = `/admin/dashboard?demo_email=${encodeURIComponent(email)}`
-          }, 1500)
-          return
-        }
-
-        // Para outras contas, tentar com Supabase
+        // Autenticação real com Supabase
         const { error } = await supabase.auth.signInWithPassword({
           email: validatedData.email,
           password: validatedData.password,

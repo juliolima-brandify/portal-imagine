@@ -18,38 +18,7 @@ export default function VolunteerDashboard() {
     upcomingEvents: 3
   })
 
-  const [projects] = useState([
-    {
-      id: 1,
-      title: 'Educação Digital',
-      description: 'Ajudar com aulas de informática',
-      location: 'São Paulo, SP',
-      date: '2024-01-15',
-      time: '14:00 - 17:00',
-      volunteersNeeded: 3,
-      volunteersRegistered: 2
-    },
-    {
-      id: 2,
-      title: 'Saúde Comunitária',
-      description: 'Apoio em clínicas móveis',
-      location: 'Bahia, BA',
-      date: '2024-01-20',
-      time: '09:00 - 12:00',
-      volunteersNeeded: 5,
-      volunteersRegistered: 3
-    },
-    {
-      id: 3,
-      title: 'Meio Ambiente',
-      description: 'Plantio de árvores',
-      location: 'Amazonas, AM',
-      date: '2024-01-25',
-      time: '08:00 - 11:00',
-      volunteersNeeded: 10,
-      volunteersRegistered: 7
-    }
-  ])
+  const [projects] = useState([])
 
   return (
     <div className="max-w-7xl mx-auto">

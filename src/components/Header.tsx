@@ -56,11 +56,6 @@ export default function Header({
                 }`}>
                   {user.role === 'admin' ? 'Admin' : 'Doador'}
                 </span>
-                {isDemoMode && (
-                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                    Demo
-                  </span>
-                )}
                 
                 {/* Notificações */}
                 {user.id && (
@@ -72,7 +67,7 @@ export default function Header({
                 {/* Meu Perfil */}
                 {user.id && (
                   <Link
-                    href={isDemoMode ? "/perfil?demo_email=" + encodeURIComponent(user.email || '') : "/perfil"}
+                    href="/perfil"
                     className="p-2 text-gray-600 hover:text-gray-900 transition-all duration-300 ease-out hover:bg-gray-100 rounded-lg animate-scale-in"
                     title="Meu Perfil"
                   >

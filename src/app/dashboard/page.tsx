@@ -9,7 +9,7 @@ import VolunteerDashboard from '@/components/VolunteerDashboard'
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const [userRole, setUserRole] = useState<'donor' | 'admin' | 'volunteer'>('donor')
+  const [userRole, setUserRole] = useState<string>('donor')
   const [stats, setStats] = useState({
     totalDonated: 0,
     totalDonations: 0,
@@ -288,7 +288,10 @@ export default function DashboardPage() {
                 Logado como: <span className="font-medium text-gray-900">{user.email}</span>
               </p>
               <p className="text-xs text-gray-500">
-                Tipo: <span className="font-medium">{userRole === 'admin' ? 'Administrador' : userRole === 'volunteer' ? 'Voluntário' : 'Doador'}</span>
+                Tipo: <span className="font-medium">
+                  {userRole === 'admin' ? 'Administrador' : 
+                   userRole === 'volunteer' ? 'Voluntário' : 'Doador'}
+                </span>
               </p>
             </div>
             <button
