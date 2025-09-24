@@ -20,53 +20,27 @@ export default function ProjetosPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [activeTab, setActiveTab] = useState<'all' | 'my-projects'>('all')
   const [user, setUser] = useState<any>(null)
-  const [demoEmail, setDemoEmail] = useState<string | null>(null)
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true)
         
-        // Verificar se é modo demo via URL
-        const urlParams = new URLSearchParams(window.location.search)
-        const currentDemoEmail = urlParams.get('demo_email')
-        setDemoEmail(currentDemoEmail)
-        
-        
-        if (currentDemoEmail === 'demo@doador.com' || currentDemoEmail === 'volunteer@institutoimagine.org') {
-          setUser({
-            id: '00000000-0000-0000-0000-000000000001', // UUID válido para demo
-            email: currentDemoEmail,
-            user_metadata: { 
-              name: currentDemoEmail === 'volunteer@institutoimagine.org' ? 'Voluntário Demo' : 'Doador Demo' 
-            }
-          })
+        // Buscar usuário autenticado
+        const { data: { user: currentUser } } = await supabase.auth.getUser()
+        if (currentUser) {
+          setUser(currentUser)
           
-          // Carregar dados reais do Supabase para demo
           try {
-            const userFavorites = await getFavorites('00000000-0000-0000-0000-000000000001')
+            const userFavorites = await getFavorites(currentUser.id)
             setFavorites(userFavorites)
             
-            const userDonations = await getDonations('00000000-0000-0000-0000-000000000001')
+            const userDonations = await getDonations(currentUser.id)
             setDonations(userDonations)
           } catch (error) {
-            console.log('Erro ao carregar dados do Supabase para demo:', error)
-            // Fallback para dados vazios se Supabase não estiver disponível
+            console.log('Erro ao carregar dados do usuário:', error)
             setFavorites([])
             setDonations([])
-          }
-        } else {
-          // Tentar obter usuário do Supabase
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            setUser(user)
-            
-            // Carregar favoritos e doações reais do Supabase
-          const userFavorites = await getFavorites(user.id)
-          setFavorites(userFavorites)
-          
-          const userDonations = await getDonations(user.id)
-          setDonations(userDonations)
           }
         }
         
@@ -95,10 +69,7 @@ export default function ProjetosPage() {
           .map(donation => donation.project_id)
         const uniqueSupportedIds = Array.from(new Set(supportedProjectIds))
         
-        // Adicionar projetos onde é voluntário (simulado para demo)
-        const volunteerProjectIds = ['2', '3'] // IDs dos projetos onde é voluntário
-        
-        const allMyProjectIds = Array.from(new Set([...uniqueSupportedIds, ...volunteerProjectIds]))
+        const allMyProjectIds = Array.from(new Set([...uniqueSupportedIds]))
         return projects.filter(project => allMyProjectIds.includes(project.id))
       default:
         return projects
@@ -486,7 +457,7 @@ export default function ProjetosPage() {
 
                           {/* Doar Agora - Sempre presente */}
                       <Link
-                            href={`https://portal.imagineinstituto.com/prototype/checkout/${project.id}?source=portal&utm_campaign=${project.title.toLowerCase().replace(/\s+/g, '-')}${demoEmail ? `&demo_email=${demoEmail}` : ''}`}
+                            href={`https://portal.imagineinstituto.com/prototype/checkout/${project.id}?source=portal&utm_campaign=${project.title.toLowerCase().replace(/\s+/g, '-')}`}
                             className="w-full btn-primary text-center block"
                       >
                         Doar Agora
