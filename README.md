@@ -32,7 +32,7 @@ Sistema moderno e profissional para ONGs, focado em conectar doadores com projet
 | Ambiente | Propósito | URL | Status |
 |----------|-----------|-----|--------|
 | **Local** | Prototipação | `http://localhost:3000` | ✅ Funcionando |
-| **Dev** | Testes de integração | `https://portal-dev.vercel.app` | ✅ Funcionando |
+| **Dev** | Testes de integração | `https://portal-imagine-of.vercel.app` | ✅ Funcionando |
 | **Prod** | Ambiente final | `https://portal.imagineinstituto.com` | ✅ Funcionando |
 
 ## 🔧 Melhorias Implementadas
