@@ -7,81 +7,33 @@ import { supabase } from '@/lib/supabase'
 import ExportDropdown from '@/components/ExportDropdown'
 import type { User } from '@supabase/supabase-js'
 
-// Mock data para demonstração
-const mockReports = {
+// Estrutura para dados reais
+const initialReports = {
   overview: {
-    totalDonations: 125000,
-    totalDonors: 450,
-    activeProjects: 12,
-    completedProjects: 8,
-    monthlyGrowth: 15.5,
-    averageDonation: 278
+    totalDonations: 0,
+    totalDonors: 0,
+    activeProjects: 0,
+    completedProjects: 0,
+    monthlyGrowth: 0,
+    averageDonation: 0
   },
-  monthlyData: [
-    { month: 'Jan', donations: 15000, donors: 45, amount: 15000 },
-    { month: 'Fev', donations: 18000, donors: 52, amount: 18000 },
-    { month: 'Mar', donations: 22000, donors: 68, amount: 22000 },
-    { month: 'Abr', donations: 19000, donors: 58, amount: 19000 },
-    { month: 'Mai', donations: 25000, donors: 72, amount: 25000 },
-    { month: 'Jun', donations: 28000, donors: 85, amount: 28000 }
-  ],
-  topProjects: [
-    { id: '1', name: 'Educação Digital', amount: 45000, donors: 120, progress: 75 },
-    { id: '2', name: 'Saúde Comunitária', amount: 32000, donors: 95, progress: 64 },
-    { id: '3', name: 'Meio Ambiente', amount: 28000, donors: 78, progress: 56 },
-    { id: '4', name: 'Esporte Social', amount: 20000, donors: 65, progress: 40 }
-  ],
-  donorSegments: [
-    { segment: 'Novos Doadores', count: 120, percentage: 26.7 },
-    { segment: 'Doadores Recorrentes', count: 180, percentage: 40.0 },
-    { segment: 'Doadores VIP', count: 85, percentage: 18.9 },
-    { segment: 'Doadores Inativos', count: 65, percentage: 14.4 }
-  ],
-  paymentMethods: [
-    { method: 'PIX', count: 180, percentage: 40.0, amount: 50000 },
-    { method: 'Cartão de Crédito', count: 150, percentage: 33.3, amount: 42000 },
-    { method: 'Boleto', count: 120, percentage: 26.7, amount: 33000 }
-  ],
-  recentDonations: [
-    { id: '1', donor: 'João Silva', amount: 150.00, project: 'Educação Digital', date: '2024-01-15' },
-    { id: '2', donor: 'Maria Santos', amount: 75.50, project: 'Saúde Comunitária', date: '2024-01-14' },
-    { id: '3', donor: 'Pedro Costa', amount: 200.00, project: 'Educação Digital', date: '2024-01-13' },
-    { id: '4', donor: 'Ana Oliveira', amount: 100.00, project: 'Meio Ambiente', date: '2024-01-12' }
-  ]
+  monthlyData: [] as any[],
+  topProjects: [] as any[],
+  donorSegments: [] as any[],
+  paymentMethods: [] as any[],
+  recentDonations: [] as any[]
 }
 
 export default function AdminRelatoriosPage() {
   const [user, setUser] = useState<User | null>(null)
   // Loading removido
-  const [reports, setReports] = useState(mockReports)
+  const [reports, setReports] = useState(initialReports)
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month')
   const [selectedReport, setSelectedReport] = useState<'overview' | 'donations' | 'projects' | 'donors'>('overview')
 
   useEffect(() => {
     const getUser = async () => {
-      // Primeiro, verificar se é modo demo via URL
-      const urlParams = new URLSearchParams(window.location.search)
-      const demoEmail = urlParams.get('demo_email')
-      
-      console.log('🔍 [RELATÓRIOS] Verificando autenticação...')
-      console.log('📧 Demo Email:', demoEmail)
-      console.log('🌐 URL atual:', window.location.href)
-      
-      if (demoEmail === 'admin@institutoimagine.org') {
-        console.log('✅ [RELATÓRIOS] Demo admin detectado, permitindo acesso')
-        setUser({
-          id: 'demo-admin',
-          email: demoEmail,
-          user_metadata: { name: 'Admin Demo' },
-          app_metadata: {},
-          aud: 'authenticated',
-          created_at: new Date().toISOString()
-        } as User)
-        // Loading removido
-        return
-      }
-
-      // Se não for demo, tentar com Supabase
+      // Autenticação real com Supabase
       try {
         const { data: { user } } = await supabase.auth.getUser()
         setUser(user)

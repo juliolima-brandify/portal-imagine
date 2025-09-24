@@ -1,28 +1,95 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import { ToastContainer, useToast } from '@/components/Toast'
+import type { User } from '@supabase/supabase-js'
 
 export default function AdminPerfilPage() {
+  const [user, setUser] = useState<User | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState({
-    name: 'Admin Demo',
-    email: 'admin@institutoimagine.org',
-    phone: '(11) 99999-9999',
-    bio: 'Administrador do Instituto Imagine',
+    name: '',
+    email: '',
+    phone: '',
+    bio: '',
     avatar: ''
   })
+  const [loading, setLoading] = useState(true)
   
   const { toasts, removeToast, success, error } = useToast()
 
-  const handleSave = () => {
-    // Simular salvamento
-    success('Perfil Atualizado', 'Suas informações foram salvas com sucesso!')
-    setIsEditing(false)
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setUser(user)
+          setFormData({
+            name: user.user_metadata?.name || '',
+            email: user.email || '',
+            phone: user.user_metadata?.phone || '',
+            bio: user.user_metadata?.bio || '',
+            avatar: user.user_metadata?.avatar || ''
+          })
+        } else {
+          window.location.href = '/auth'
+        }
+      } catch (error) {
+        console.error('Erro ao obter usuário:', error)
+        window.location.href = '/auth'
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    getUser()
+  }, [])
+
+  const handleSave = async () => {
+    try {
+      if (!user) return
+
+      // Atualizar dados do usuário no Supabase
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          name: formData.name,
+          phone: formData.phone,
+          bio: formData.bio,
+          avatar: formData.avatar
+        }
+      })
+
+      if (error) throw error
+
+      success('Perfil Atualizado', 'Suas informações foram salvas com sucesso!')
+      setIsEditing(false)
+    } catch (err) {
+      error('Erro', 'Não foi possível salvar as alterações')
+    }
   }
 
   const handleCancel = () => {
     setIsEditing(false)
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Acesso Negado</h1>
+          <p className="text-gray-600 mb-6">Você precisa estar logado para acessar esta página.</p>
+        </div>
+      </div>
+    )
   }
 
   return (

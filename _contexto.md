@@ -38,10 +38,18 @@
 - ✅ Criação da branch `dev` no Git
 - ✅ Teste de conexão Supabase - funcionando perfeitamente
 - ✅ Build de produção testado - funcionando
+- ✅ **Remoção completa dos dados mock da versão DEV**
+- ✅ **Deploy DEV funcionando com dados reais do Supabase**
+- ✅ **Push das mudanças para a branch dev**
 
 ### Principais arquivos modificados hoje:
 - `docs/README.md` (criado)
 - `docs/guias/LOGO-SETUP.md` (atualizado referências do logo)
+- `src/app/page.tsx` (removida lógica de modo demo)
+- `src/app/doacoes/page.tsx` (removida lógica de modo demo)
+- `src/components/Header.tsx` (removida lógica de modo demo)
+- `src/components/VolunteerDashboard.tsx` (removidos dados mock)
+- `src/app/dashboard/page.tsx` (corrigido erro de tipo)
 - `_contexto.md` (atualizado progresso)
 
 ---
