@@ -81,6 +81,51 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email, nome e senha são obrigatórios' }, { status: 400 })
     }
 
+    // Verificar se o usuário já existe no Supabase Auth
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers()
+    const existingUser = existingUsers?.users?.find(user => user.email === userData.email)
+    
+    if (existingUser) {
+      console.log('⚠️ [API] Usuário já existe no Auth, verificando perfil...')
+      
+      // Verificar se já tem perfil
+      const { data: existingProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('id', existingUser.id)
+        .single()
+      
+      if (existingProfile) {
+        return NextResponse.json({ error: 'Usuário já existe no sistema' }, { status: 400 })
+      }
+      
+      // Usuário existe no Auth mas não tem perfil, criar apenas o perfil
+      const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .insert({
+          id: existingUser.id,
+          email: userData.email,
+          name: userData.name,
+          role: userData.role || 'donor'
+        })
+
+      if (profileError) {
+        console.error('❌ [API] Erro ao criar perfil para usuário existente:', profileError)
+        return NextResponse.json({ error: profileError.message }, { status: 500 })
+      }
+
+      console.log('✅ [API] Perfil criado para usuário existente')
+      return NextResponse.json({ 
+        message: 'Perfil criado para usuário existente',
+        user: {
+          id: existingUser.id,
+          email: userData.email,
+          name: userData.name,
+          role: userData.role || 'donor'
+        }
+      }, { status: 201 })
+    }
+
     // Criar usuário no Supabase Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: userData.email,
