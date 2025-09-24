@@ -33,59 +33,35 @@ export default function AdminRelatoriosPage() {
 
   useEffect(() => {
     const getUser = async () => {
-      // Primeiro, verificar se é modo demo via URL
-      const urlParams = new URLSearchParams(window.location.search)
-      const demoEmail = urlParams.get('demo_email')
-      
-      if (demoEmail === 'admin@institutoimagine.org') {
-        setUser({
-          id: 'demo-admin',
-          email: demoEmail,
-          user_metadata: { name: 'Admin Demo' },
-          app_metadata: {},
-          aud: 'authenticated',
-          created_at: new Date().toISOString()
-        } as User)
+      try {
+        // Verificar se é modo demo via URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const demoEmail = urlParams.get('demo_email')
         
-        // Carregar dados reais dos relatórios para demo
-        // (dados já carregados via initialReports)
-      } else {
-        // Usuário real - autenticação com Supabase
-        try {
+        if (demoEmail === 'admin@institutoimagine.org') {
+          setUser({
+            id: 'demo-admin',
+            email: demoEmail,
+            user_metadata: { name: 'Admin Demo' },
+            app_metadata: {},
+            aud: 'authenticated',
+            created_at: new Date().toISOString()
+          } as User)
+        } else {
+          // Usuário real - autenticação com Supabase
           const { data: { user } } = await supabase.auth.getUser()
-          setUser(user)
-          
-          // Verificar se é admin
           if (user) {
-            try {
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', user.id)
-                .single()
-              
-              if (profile?.role !== 'admin') {
-                window.location.href = '/dashboard'
-                return
-              }
-              
-              // Carregar dados reais dos relatórios
-              // (dados já carregados via initialReports)
-            } catch (profileError) {
-              console.log('Erro ao buscar perfil:', profileError)
-              window.location.href = '/dashboard'
-              return
-            }
+            setUser(user)
           } else {
+            // Se não conseguir obter usuário, redirecionar para login
             window.location.href = '/auth'
             return
           }
-        } catch (error) {
-          console.log('Erro ao obter usuário:', error)
-          window.location.href = '/auth'
         }
+      } catch (error) {
+        console.log('Erro ao obter usuário:', error)
+        // Não redirecionar automaticamente, deixar o layout admin lidar com isso
       }
-      // Loading removido
     }
 
     getUser()

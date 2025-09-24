@@ -22,7 +22,7 @@ export default function AdminPerfilPage() {
   useEffect(() => {
     const getUser = async () => {
       try {
-        // Primeiro, verificar se é modo demo via URL
+        // Verificar se é modo demo via URL
         const urlParams = new URLSearchParams(window.location.search)
         const demoEmail = urlParams.get('demo_email')
         
@@ -56,12 +56,14 @@ export default function AdminPerfilPage() {
               avatar: user.user_metadata?.avatar || ''
             })
           } else {
+            // Se não conseguir obter usuário, redirecionar para login
             window.location.href = '/auth'
+            return
           }
         }
       } catch (error) {
         console.error('Erro ao obter usuário:', error)
-        window.location.href = '/auth'
+        // Não redirecionar automaticamente, deixar o layout admin lidar com isso
       } finally {
         setLoading(false)
       }
