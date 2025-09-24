@@ -76,6 +76,15 @@ const AdminLayout = memo(function AdminLayout({
     )
   }
 
+  // Obter demoEmail da URL
+  const getDemoEmail = () => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      return urlParams.get('demo_email')
+    }
+    return null
+  }
+
   return (
     <UnifiedLayout
       variant="admin"
@@ -84,6 +93,7 @@ const AdminLayout = memo(function AdminLayout({
         email: user.email || '',
         role: 'admin'
       }}
+      demoEmail={getDemoEmail()}
     >
       {children}
     </UnifiedLayout>
