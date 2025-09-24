@@ -46,6 +46,12 @@
 - ✅ **Perfil admin corrigido com autenticação real**
 - ✅ **Problemas de redirecionamento para /auth corrigidos**
 - ✅ **Build funcionando perfeitamente**
+- ✅ **Lógica de modo demo restaurada para usuários demo**
+- ✅ **Dashboard doador demo funcionando**
+- ✅ **Minhas doações doador demo funcionando**
+- ✅ **Perfil admin demo funcionando**
+- ✅ **Dashboard admin demo funcionando**
+- ✅ **Relatórios admin demo funcionando**
 
 ### Principais arquivos modificados hoje:
 - `docs/README.md` (criado)
@@ -58,6 +64,10 @@
 - `src/app/admin/dashboard/page.tsx` (dados reais do Supabase)
 - `src/app/admin/relatorios/page.tsx` (removidos dados mock)
 - `src/app/admin/perfil/page.tsx` (autenticação real)
+- `src/app/dashboard/page.tsx` (lógica demo restaurada)
+- `src/app/doacoes/page.tsx` (lógica demo restaurada)
+- `src/app/admin/dashboard/page.tsx` (lógica demo restaurada)
+- `src/app/admin/relatorios/page.tsx` (lógica demo restaurada)
 - `_contexto.md` (atualizado progresso)
 
 ---
