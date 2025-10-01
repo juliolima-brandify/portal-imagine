@@ -45,7 +45,7 @@ RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 #### **Para usar domínio do Resend:**
 - Use `noreply@resend.dev` (funciona imediatamente)
 
-## 📧 **Emails Automáticos**
+## 📧 **Emails Automáticos Implementados**
 
 ### **Email de Boas-vindas:**
 - **Quando**: Após doação bem-sucedida
@@ -64,7 +64,46 @@ RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   - Detalhes (valor, projeto, ID)
   - Informações sobre próximos passos
 
+### **Email de Atualização de Projeto:**
+- **Quando**: Marco atingido, projeto concluído, nova informação
+- **Para**: Doadores do projeto
+- **Conteúdo**:
+  - Tipo de atualização (marco, conclusão, progresso)
+  - Mensagem personalizada
+  - Links para ver o projeto completo
+
+### **Email de Notificação Admin:**
+- **Quando**: Nova doação, meta atingida, alertas do sistema
+- **Para**: Administradores
+- **Conteúdo**:
+  - Detalhes da notificação
+  - Dados técnicos relevantes
+  - Link para dashboard admin
+
+### **Email de Lembrete Recorrente:**
+- **Quando**: Antes da próxima cobrança recorrente
+- **Para**: Doadores com doações recorrentes
+- **Conteúdo**:
+  - Detalhes da doação recorrente
+  - Data do próximo pagamento
+  - Links para gerenciar doações
+
 ## 🎨 **Personalização**
+
+### **🏛️ Logo do Instituto Imagine**
+Todos os emails incluem o logo oficial do Instituto Imagine:
+
+- **URL**: `https://portal.imagineinstituto.com/images/logo.png`
+- **Altura**: 60-80px (otimizada para emails)
+- **Implementação**: Automática em todos os templates
+- **Fallback**: Texto alternativo configurado
+
+```typescript
+// src/lib/email-config.ts
+export const getLogoUrl = (): string => {
+  return 'https://portal.imagineinstituto.com/images/logo.png'
+}
+```
 
 ### **Alterar remetente:**
 No arquivo `src/lib/resend.ts`, linha 25:
@@ -84,21 +123,62 @@ from: 'Instituto Imagine <noreply@imagineinstituto.com>',
 
 ## 🧪 **Testando**
 
-### **1. Teste local:**
+### **1. Teste com script automatizado:**
+```bash
+# Testar todos os tipos de email
+node scripts/test-email-system.js all
+
+# Testar tipos específicos
+node scripts/test-email-system.js welcome
+node scripts/test-email-system.js confirmation
+node scripts/test-email-system.js update
+node scripts/test-email-system.js reminder
+node scripts/test-email-system.js admin
+```
+
+### **2. Teste de Logo:**
+```bash
+# Testar diferentes URLs de logo
+node scripts/test-logo-urls.js
+
+# Testar template específico com logo
+node scripts/test-welcome-with-logo.js
+
+# Teste final com logo de produção
+node scripts/test-final-logo.js
+```
+
+### **2. Teste local:**
 ```bash
 npm run dev
 # Faça uma doação de teste
 # Verifique os logs do console
 ```
 
-### **2. Teste em produção:**
+### **3. Teste em produção:**
 1. Faça uma doação real
 2. Verifique se o email chegou
 3. Teste os links do email
 
-### **3. Verificar logs:**
+### **4. Verificar logs:**
 - **Vercel**: Dashboard > Functions > Logs
 - **Resend**: Dashboard > Logs
+- **Console**: Logs detalhados do sistema
+
+### **5. Teste de funcionalidades:**
+```bash
+# Testar envio de email de boas-vindas
+node -e "
+const { welcomeNewDonor } = require('./src/lib/email-service');
+welcomeNewDonor('João Silva', 'teste@email.com', 'temp123', 100, 'Educação Digital');
+"
+
+# Testar notificação admin
+node -e "
+const { notifyAdminNewDonation } = require('./src/lib/email-service');
+notifyAdminNewDonation('Maria Santos', 'maria@email.com', 150, 'Alimentação Escolar', 'don_123');
+"
+```
 
 ## 📊 **Monitoramento**
 
@@ -146,19 +226,71 @@ npm run dev
 2. Verifique se não expirou
 3. Regenerar API key se necessário
 
-## 📝 **Exemplo de uso:**
+## 📝 **Exemplos de uso:**
 
+### **Usando o EmailService (Recomendado):**
 ```typescript
-import { sendWelcomeEmail } from '@/lib/resend'
+import { EmailService } from '@/lib/email-service'
 
 // Enviar email de boas-vindas
-await sendWelcomeEmail({
+await EmailService.sendWelcome({
   name: 'João Silva',
   email: 'joao@email.com',
   tempPassword: 'abc123',
   donationAmount: 100,
   projectTitle: 'Educação Digital'
 })
+
+// Enviar confirmação de doação
+await EmailService.sendDonationConfirmation({
+  name: 'Maria Santos',
+  email: 'maria@email.com',
+  amount: 150,
+  projectTitle: 'Alimentação Escolar',
+  donationId: 'don_123456789',
+  paymentMethod: 'PIX'
+})
+
+// Enviar atualização de projeto
+await EmailService.sendProjectUpdate({
+  name: 'Pedro Costa',
+  email: 'pedro@email.com',
+  projectTitle: 'Construção da Biblioteca',
+  projectId: 'proj_123',
+  updateType: 'milestone',
+  updateMessage: 'Acabamos de atingir 50% da meta!',
+  projectUrl: 'https://portal.imagineinstituto.com/projetos/proj_123'
+})
+```
+
+### **Usando funções de conveniência:**
+```typescript
+import { 
+  welcomeNewDonor, 
+  confirmDonation, 
+  notifyProjectUpdate,
+  notifyAdminNewDonation 
+} from '@/lib/email-service'
+
+// Funções simplificadas
+await welcomeNewDonor('João Silva', 'joao@email.com', 'temp123', 100, 'Educação Digital')
+await confirmDonation('Maria Santos', 'maria@email.com', 150, 'don_123', 'Alimentação Escolar')
+await notifyProjectUpdate('Pedro', 'pedro@email.com', 'Biblioteca', 'proj_123', 'milestone', '50% atingido!')
+await notifyAdminNewDonation('João', 'joao@email.com', 200, 'Educação Digital', 'don_456')
+```
+
+### **Envio em lote:**
+```typescript
+import { EmailService } from '@/lib/email-service'
+
+const emails = [
+  { type: 'welcome', data: { name: 'João', email: 'joao@email.com', ... } },
+  { type: 'confirmation', data: { name: 'Maria', email: 'maria@email.com', ... } },
+  { type: 'update', data: { name: 'Pedro', email: 'pedro@email.com', ... } }
+]
+
+const result = await EmailService.sendBatch(emails)
+console.log(`Enviados: ${result.success}, Falharam: ${result.failed}`)
 ```
 
 ## 🎉 **Pronto!**
