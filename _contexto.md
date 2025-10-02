@@ -76,6 +76,9 @@
 - ✅ **Máscaras automáticas implementadas para CPF e telefone**
 - ✅ **Desativados todos os outros checkouts**
 - ✅ **Centralizado no One Page Checkout como modelo único**
+- ✅ **Código embed do checkout implementado no formulário de projetos**
+- ✅ **Fallback melhorado para projetos não encontrados**
+- ✅ **Deploy dev atualizado e funcionando perfeitamente**
 
 ### Principais arquivos modificados hoje:
 - `docs/README.md` (criado)
@@ -110,6 +113,8 @@
 - `src/app/prototype/checkout/[id]/page.tsx` (adicionados campos CPF e Celular + máscaras)
 - `checkouts-desativados/` (pasta criada com todos os checkouts desativados)
 - `checkouts-desativados/README.md` (documentação dos checkouts desativados)
+- `src/components/ProjectForm.tsx` (adicionado campo código embed do checkout)
+- `src/lib/database.ts` (melhorado fallback da função getProject)
 - `_contexto.md` (atualizado progresso)
 
 ---
@@ -140,4 +145,4 @@
 - ✅ Deploy ativo no Vercel
 - ✅ Documentação agora 100% organizada
 
-**Status**: Sistema 100% funcional em produção com documentação reorganizada, dados reais, sistema completo de emails transacionais e logo do Instituto Imagine integrado em todos os emails.
+**Status**: Sistema 100% funcional em produção com documentação reorganizada, dados reais, sistema completo de emails transacionais, logo do Instituto Imagine integrado em todos os emails, One Page Checkout como modelo único com campos CPF e Celular, código embed implementado, e deploy dev atualizado.
