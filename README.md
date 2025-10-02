@@ -16,6 +16,10 @@ Sistema moderno e profissional para ONGs, focado em conectar doadores com projet
 - ✅ Sistema de fallback robusto
 - ✅ Design system consistente
 - ✅ Integração Supabase otimizada
+- ✅ **Dados reais do Supabase (sem mock)**
+- ✅ **Sistema demo funcional**
+- ✅ **Gestão de usuários corrigida**
+- ✅ **Documentação 100% organizada**
 
 ## 🛠️ Stack Tecnológica
 
@@ -193,16 +197,16 @@ http://localhost:3001/volunteer/availability?demo_email=volunteer@institutoimagi
 ### **Teste Completo - Admin:**
 ```bash
 # 1. Dashboard admin
-http://localhost:3001/admin/dashboard
+http://localhost:3001/admin/dashboard?demo_email=admin@institutoimagine.org
 
 # 2. Gerenciar projetos
-http://localhost:3001/admin/projetos
+http://localhost:3001/admin/projetos?demo_email=admin@institutoimagine.org
 
 # 3. Gerenciar doações
-http://localhost:3001/admin/doacoes
+http://localhost:3001/admin/doacoes?demo_email=admin@institutoimagine.org
 
 # 4. Gerenciar usuários
-http://localhost:3001/admin/usuarios
+http://localhost:3001/admin/usuarios?demo_email=admin@institutoimagine.org
 ```
 
 ## 🔧 Scripts Disponíveis

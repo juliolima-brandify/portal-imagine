@@ -68,6 +68,14 @@
 - ✅ **Sistema de fallback robusto**
 - ✅ **Scripts de teste automatizados**
 - ✅ **Documentação completa do sistema atualizada**
+- ✅ **One Page Checkout funcionando perfeitamente (sem sidebar) - MODELO PRINCIPAL**
+- ✅ **Erro TypeError corrigido no prototype checkout**
+- ✅ **GlobalLayout otimizado para páginas de checkout**
+- ✅ **One Page Checkout definido como modelo principal de checkout**
+- ✅ **Campos CPF e Celular (WhatsApp) adicionados ao One Page Checkout**
+- ✅ **Máscaras automáticas implementadas para CPF e telefone**
+- ✅ **Desativados todos os outros checkouts**
+- ✅ **Centralizado no One Page Checkout como modelo único**
 
 ### Principais arquivos modificados hoje:
 - `docs/README.md` (criado)
@@ -96,6 +104,12 @@
 - `scripts/test-final-logo.js` (criado script de teste final)
 - `docs/guias/CONFIGURACAO_RESEND.md` (atualizado com logo e novos testes)
 - `docs/guias/EMAILS_TRANSACIONAIS_IMPLEMENTADOS.md` (atualizado com seção de logo)
+- `src/components/GlobalLayout.tsx` (otimizado para páginas de checkout)
+- `next.config.js` (configuração otimizada para desenvolvimento)
+- `ONEPAGE_CHECKOUT_STATUS.md` (criado documentação do One Page Checkout)
+- `src/app/prototype/checkout/[id]/page.tsx` (adicionados campos CPF e Celular + máscaras)
+- `checkouts-desativados/` (pasta criada com todos os checkouts desativados)
+- `checkouts-desativados/README.md` (documentação dos checkouts desativados)
 - `_contexto.md` (atualizado progresso)
 
 ---

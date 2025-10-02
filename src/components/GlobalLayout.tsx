@@ -102,8 +102,8 @@ export default function GlobalLayout({ children }: GlobalLayoutProps) {
   // Páginas que NÃO devem ter sidebar
   const noSidebarPaths = ['/auth', '/']
   
-  // Se for página de login, home ou admin, não mostrar sidebar
-  if (pathname === '/auth' || pathname === '/' || pathname.startsWith('/admin')) {
+  // Se for página de login, home, admin ou checkout, não mostrar sidebar
+  if (pathname === '/auth' || pathname === '/' || pathname.startsWith('/admin') || pathname.startsWith('/prototype/checkout') || pathname.startsWith('/embed/checkout') || pathname.startsWith('/doar')) {
     return (
       <div className="min-h-screen bg-gray-50">
         {children}

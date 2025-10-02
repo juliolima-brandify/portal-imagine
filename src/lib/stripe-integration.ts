@@ -1,5 +1,6 @@
 import { stripe } from './stripe'
 import { createDonation, updateDonationStatus, createUserFromDonation } from './database'
+import { sendDonationConfirmation, sendAdminNotification } from './resend'
 
 // =============================================
 // TIPOS
@@ -131,6 +132,52 @@ export async function handleWebhook(payload: string, signature: string): Promise
         if (donationId) {
           await updateDonationStatus(donationId, 'completed', paymentIntent.id)
           
+          // Enviar email de confirmação de doação
+          try {
+            const donationAmount = paymentIntent.amount / 100 // Converter de centavos
+            const projectTitle = paymentIntent.metadata.projectTitle || 'Projeto'
+            const paymentMethod = paymentIntent.charges?.data?.[0]?.payment_method_details?.type || 'N/A'
+            
+            if (userEmail && userName) {
+              await sendDonationConfirmation({
+                name: userName,
+                email: userEmail,
+                amount: donationAmount,
+                projectTitle: projectTitle,
+                donationId: donationId,
+                paymentMethod: paymentMethod
+              })
+              console.log(`Email de confirmação enviado para: ${userEmail}`)
+            }
+          } catch (error) {
+            console.error('Erro ao enviar email de confirmação:', error)
+          }
+          
+          // Enviar notificação para admin
+          try {
+            const donationAmount = paymentIntent.amount / 100
+            const projectTitle = paymentIntent.metadata.projectTitle || 'Projeto'
+            
+            await sendAdminNotification({
+              adminEmail: 'admin@institutoimagine.org', // Configurar email admin
+              type: 'new_donation',
+              title: 'Nova Doação Recebida!',
+              message: `Uma nova doação de R$ ${donationAmount.toFixed(2)} foi recebida para o projeto "${projectTitle}".`,
+              data: {
+                donationId,
+                amount: donationAmount,
+                projectTitle,
+                donorEmail: userEmail,
+                donorName: userName,
+                paymentMethod: paymentIntent.charges?.data?.[0]?.payment_method_details?.type,
+                timestamp: new Date().toISOString()
+              }
+            })
+            console.log('Notificação admin enviada')
+          } catch (error) {
+            console.error('Erro ao enviar notificação admin:', error)
+          }
+          
           // Criar usuário automaticamente se não existir
           if (userEmail && userName) {
             try {
@@ -156,9 +203,36 @@ export async function handleWebhook(payload: string, signature: string): Promise
       case 'payment_intent.payment_failed':
         const failedPayment = event.data.object as any
         const failedDonationId = failedPayment.metadata.donationId
+        const failedUserEmail = failedPayment.metadata.userEmail
+        const failedUserName = failedPayment.metadata.userName
         
         if (failedDonationId) {
           await updateDonationStatus(failedDonationId, 'failed', failedPayment.id)
+          
+          // Enviar notificação para admin sobre falha no pagamento
+          try {
+            const donationAmount = failedPayment.amount / 100
+            const projectTitle = failedPayment.metadata.projectTitle || 'Projeto'
+            
+            await sendAdminNotification({
+              adminEmail: 'admin@institutoimagine.org',
+              type: 'system_alert',
+              title: 'Falha no Pagamento Detectada',
+              message: `Falha no processamento de uma doação de R$ ${donationAmount.toFixed(2)} para o projeto "${projectTitle}".`,
+              data: {
+                donationId: failedDonationId,
+                amount: donationAmount,
+                projectTitle,
+                donorEmail: failedUserEmail,
+                donorName: failedUserName,
+                failureReason: failedPayment.last_payment_error?.message,
+                timestamp: new Date().toISOString()
+              }
+            })
+            console.log('Notificação de falha enviada para admin')
+          } catch (error) {
+            console.error('Erro ao enviar notificação de falha:', error)
+          }
         }
         break
 

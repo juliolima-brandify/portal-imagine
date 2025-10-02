@@ -129,6 +129,8 @@ export default function PrototypeCheckoutPage() {
     message: '',
     name: '',
     email: '',
+    cpf: '',
+    phone: '',
     cardNumber: '',
     expiry: '',
     cvc: ''
@@ -238,6 +240,24 @@ export default function PrototypeCheckoutPage() {
       ...prev,
       [field]: value
     }))
+  }
+
+  const formatCPF = (value: string) => {
+    const v = value.replace(/\D/g, '')
+    const match = v.match(/^(\d{3})(\d{3})(\d{3})(\d{2})$/)
+    if (match) {
+      return `${match[1]}.${match[2]}.${match[3]}-${match[4]}`
+    }
+    return v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  }
+
+  const formatPhone = (value: string) => {
+    const v = value.replace(/\D/g, '')
+    const match = v.match(/^(\d{2})(\d{5})(\d{4})$/)
+    if (match) {
+      return `(${match[1]}) ${match[2]}-${match[3]}`
+    }
+    return v.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
   }
 
   const formatCardNumber = (value: string) => {
@@ -442,19 +462,19 @@ export default function PrototypeCheckoutPage() {
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium text-gray-600">Arrecadado</span>
                   <span className="text-sm font-medium text-gray-900">
-                    R$ {project.currentAmount.toLocaleString('pt-BR')}
+                    R$ {(project.currentAmount || project.current_amount || 0).toLocaleString('pt-BR')}
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div 
                     className="bg-green-600 h-2 rounded-full" 
-                    style={{ width: `${(project.currentAmount / project.targetAmount) * 100}%` }}
+                    style={{ width: `${((project.currentAmount || project.current_amount || 0) / (project.targetAmount || project.target_amount || 10000)) * 100}%` }}
                   ></div>
                 </div>
                 <div className="flex justify-between items-center mt-2">
-                  <span className="text-xs text-gray-500">Meta: R$ {project.targetAmount.toLocaleString('pt-BR')}</span>
+                  <span className="text-xs text-gray-500">Meta: R$ {(project.targetAmount || project.target_amount || 10000).toLocaleString('pt-BR')}</span>
                   <span className="text-xs text-gray-500">
-                    {Math.round((project.currentAmount / project.targetAmount) * 100)}%
+                    {Math.round(((project.currentAmount || project.current_amount || 0) / (project.targetAmount || project.target_amount || 10000)) * 100)}%
                   </span>
                 </div>
               </div>
@@ -642,6 +662,32 @@ export default function PrototypeCheckoutPage() {
                     onChange={(e) => handleInputChange('email', e.target.value)}
                     placeholder="seu@email.com"
                     className="input-modern w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    CPF
+                  </label>
+                  <input
+                    type="text"
+                    value={donationData.cpf}
+                    onChange={(e) => handleInputChange('cpf', formatCPF(e.target.value))}
+                    placeholder="000.000.000-00"
+                    className="input-modern w-full"
+                    maxLength={14}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    Celular (WhatsApp)
+                  </label>
+                  <input
+                    type="tel"
+                    value={donationData.phone}
+                    onChange={(e) => handleInputChange('phone', formatPhone(e.target.value))}
+                    placeholder="(11) 99999-9999"
+                    className="input-modern w-full"
+                    maxLength={15}
                   />
                 </div>
               </div>

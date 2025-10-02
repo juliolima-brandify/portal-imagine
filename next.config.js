@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Configuração para CapRover - standalone output
-  output: 'standalone',
+  // output: 'standalone', // Comentado para desenvolvimento
   
   // Configurações para o subdomínio
   // async redirects() {
