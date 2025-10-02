@@ -341,6 +341,55 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
               </p>
             </div>
 
+            {/* Código Embed do Checkout */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Código Embed do Checkout
+              </label>
+              <div className="space-y-2">
+                <textarea
+                  value={formData.id ? `<iframe src="https://portal.imagineinstituto.com/prototype/checkout/${formData.id}?source=embed&utm_campaign=${formData.title.toLowerCase().replace(/\s+/g, '-')}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : 'Salve o projeto primeiro para gerar o código embed'}
+                  className="input-modern w-full h-24 bg-gray-50 text-sm font-mono resize-none"
+                  readOnly
+                  placeholder="Código embed será gerado automaticamente..."
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const embedCode = formData.id ? `<iframe src="https://portal.imagineinstituto.com/prototype/checkout/${formData.id}?source=embed&utm_campaign=${formData.title.toLowerCase().replace(/\s+/g, '-')}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : ''
+                      if (embedCode) {
+                        navigator.clipboard.writeText(embedCode)
+                        // Aqui você pode adicionar um toast de confirmação
+                      }
+                    }}
+                    className="px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-sm font-medium text-blue-700 transition-colors"
+                    title="Copiar código embed"
+                    disabled={!formData.id}
+                  >
+                    📋 Copiar Código
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (formData.id) {
+                        const previewUrl = `https://portal.imagineinstituto.com/prototype/checkout/${formData.id}?source=embed&utm_campaign=${formData.title.toLowerCase().replace(/\s+/g, '-')}`
+                        window.open(previewUrl, '_blank')
+                      }
+                    }}
+                    className="px-3 py-2 bg-green-100 hover:bg-green-200 rounded-lg text-sm font-medium text-green-700 transition-colors"
+                    title="Visualizar embed"
+                    disabled={!formData.id}
+                  >
+                    👁️ Visualizar
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Código iframe para incorporar o checkout em sites externos
+              </p>
+            </div>
+
           </form>
     </Modal>
   )
