@@ -14,25 +14,54 @@ export default function DoacaoSucessoPage() {
   })
 
   useEffect(() => {
-    const projectId = searchParams.get('project') || ''
-    const amount = searchParams.get('amount') || ''
-    const donationId = searchParams.get('donation') || ''
+    const sessionId = searchParams.get('session_id') || ''
+    const projectId = searchParams.get('project_id') || ''
     
-    // Buscar nome do projeto baseado no ID
-    const mockProjects = [
-      { id: '1', title: 'Educação Digital' },
-      { id: '2', title: 'Saúde Comunitária' },
-      { id: '3', title: 'Meio Ambiente' }
-    ]
-    
-    const project = mockProjects.find(p => p.id === projectId)
-    
-    setDonationData({
-      projectId,
-      amount,
-      projectName: project?.title || 'Projeto',
-      donationId
-    })
+    // Se temos session_id, buscar dados da sessão do Stripe
+    if (sessionId) {
+      fetch(`/api/checkout/session/${sessionId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setDonationData({
+              projectId: data.projectId,
+              amount: data.amount,
+              projectName: data.projectTitle,
+              donationId: sessionId
+            })
+          }
+        })
+        .catch(error => {
+          console.error('Erro ao buscar dados da sessão:', error)
+          // Fallback para dados básicos
+          setDonationData({
+            projectId,
+            amount: '0',
+            projectName: 'Projeto',
+            donationId: sessionId
+          })
+        })
+    } else {
+      // Fallback para método antigo
+      const projectIdOld = searchParams.get('project') || ''
+      const amount = searchParams.get('amount') || ''
+      const donationId = searchParams.get('donation') || ''
+      
+      const mockProjects = [
+        { id: '1', title: 'Educação Digital' },
+        { id: '2', title: 'Saúde Comunitária' },
+        { id: '3', title: 'Meio Ambiente' }
+      ]
+      
+      const project = mockProjects.find(p => p.id === projectIdOld)
+      
+      setDonationData({
+        projectId: projectIdOld,
+        amount,
+        projectName: project?.title || 'Projeto',
+        donationId
+      })
+    }
   }, [searchParams])
 
   return (

@@ -2,6 +2,28 @@
 // CONFIGURAÇÃO DE EMAILS TRANSACIONAIS
 // =============================================
 
+/**
+ * Obtém a URL base do portal baseada no ambiente
+ */
+function getPortalBaseUrl(): string {
+  // Se estivermos no servidor, usar a variável de ambiente
+  if (typeof window === 'undefined') {
+    return process.env.NEXTAUTH_URL || 'https://portal.imagineinstituto.com'
+  }
+  
+  // Se estivermos no cliente, usar a URL atual
+  const { protocol, hostname } = window.location
+  
+  // Detectar ambiente baseado na URL
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `http://localhost:${window.location.port || '3000'}` // Usar a porta atual
+  } else if (hostname.includes('vercel.app')) {
+    return `https://${hostname}`
+  } else {
+    return 'https://portal.imagineinstituto.com'
+  }
+}
+
 export const EMAIL_CONFIG = {
   // Configurações gerais
   from: {
@@ -17,14 +39,17 @@ export const EMAIL_CONFIG = {
     support: 'suporte@institutoimagine.org'
   },
 
-  // URLs do sistema
-  urls: {
-    portal: 'https://portal.imagineinstituto.com',
-    admin: 'https://portal.imagineinstituto.com/admin',
-    projetos: 'https://portal.imagineinstituto.com/projetos',
-    doacoes: 'https://portal.imagineinstituto.com/doacoes',
-    auth: 'https://portal.imagineinstituto.com/auth',
-    perfil: 'https://portal.imagineinstituto.com/perfil'
+  // URLs do sistema (dinâmicas baseadas no ambiente)
+  get urls() {
+    const baseUrl = getPortalBaseUrl()
+    return {
+      portal: baseUrl,
+      admin: `${baseUrl}/admin`,
+      projetos: `${baseUrl}/projetos`,
+      doacoes: `${baseUrl}/doacoes`,
+      auth: `${baseUrl}/auth`,
+      perfil: `${baseUrl}/perfil`
+    }
   },
 
   // Configurações de templates
@@ -131,7 +156,7 @@ export const getEmailConfig = () => {
 
 export const getLogoUrl = (): string => {
   // Sempre usar a URL de produção para garantir que funcione nos emails
-  return 'https://portal.imagineinstituto.com/images/logo.png'
+  return `${getPortalBaseUrl()}/images/logo.png`
 }
 
 export const getFaviconUrl = (): string => {
@@ -141,7 +166,7 @@ export const getFaviconUrl = (): string => {
     return 'http://localhost:3000/images/favicon.png'
   }
   
-  return 'https://portal.imagineinstituto.com/images/favicon.png'
+  return `${getPortalBaseUrl()}/images/favicon.png`
 }
 
 // =============================================

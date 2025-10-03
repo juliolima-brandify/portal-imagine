@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { generateCheckoutUrl, generateEmbedUrl } from '@/lib/urls'
 import { Modal } from './ConfirmDialog'
 
 interface Project {
@@ -88,7 +89,7 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
         id: projectId,
         target_amount: Number(formData.target_amount),
         current_amount: project?.current_amount || 0,
-        checkout_tracking_url: `https://portal.imagineinstituto.com/prototype/checkout/${projectId}?source=portal&utm_campaign=${formData.title.toLowerCase().replace(/\s+/g, '-')}`,
+        checkout_tracking_url: generateCheckoutUrl(projectId, formData.title),
         created_at: project?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
@@ -289,19 +290,38 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
                   placeholder="https://imagineinstituto.com/projetos/ID_DO_PROJETO"
                   required
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (formData.framer_project_url) {
-                      navigator.clipboard.writeText(formData.framer_project_url)
-                      // Aqui você pode adicionar um toast de confirmação
-                    }
-                  }}
-                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors"
-                  title="Copiar link"
-                >
-                  📋
-                </button>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (formData.framer_project_url) {
+                        window.open(formData.framer_project_url, '_blank')
+                      }
+                    }}
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Ir para"
+                    disabled={!formData.framer_project_url}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (formData.framer_project_url) {
+                        navigator.clipboard.writeText(formData.framer_project_url)
+                      }
+                    }}
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Copiar"
+                    disabled={!formData.framer_project_url}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 Link para a página detalhada do projeto no site principal (Framer)
@@ -316,25 +336,44 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
               <div className="flex gap-2">
                 <input
                   type="text"
-                  value={formData.id ? `https://portal.imagineinstituto.com/prototype/checkout/${formData.id}?source=portal&utm_campaign=${formData.title.toLowerCase().replace(/\s+/g, '-')}` : 'Salve o projeto primeiro para gerar a URL'}
+                  value={formData.id ? generateCheckoutUrl(formData.id, formData.title) : 'Salve o projeto primeiro para gerar a URL'}
                   className="input-modern flex-1 bg-gray-50"
                   readOnly
                 />
-                <button
-                  type="button"
-                onClick={() => {
-                  const url = formData.id ? `https://portal.imagineinstituto.com/prototype/checkout/${formData.id}?source=portal&utm_campaign=${formData.title.toLowerCase().replace(/\s+/g, '-')}` : ''
-                  if (url) {
-                    navigator.clipboard.writeText(url)
-                    // Aqui você pode adicionar um toast de confirmação
-                  }
-                }}
-                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors"
-                  title="Copiar link"
-                  disabled={!formData.id}
-                >
-                  📋
-                </button>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = formData.id ? generateCheckoutUrl(formData.id, formData.title) : ''
+                      if (url) {
+                        window.open(url, '_blank')
+                      }
+                    }}
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Ir para"
+                    disabled={!formData.id}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = formData.id ? generateCheckoutUrl(formData.id, formData.title) : ''
+                      if (url) {
+                        navigator.clipboard.writeText(url)
+                      }
+                    }}
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Copiar"
+                    disabled={!formData.id}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 URL gerada automaticamente baseada no ID do projeto
@@ -348,40 +387,44 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
               </label>
               <div className="space-y-2">
                 <textarea
-                  value={formData.id ? `<iframe src="https://portal.imagineinstituto.com/prototype/checkout/${formData.id}?source=embed&utm_campaign=${formData.title.toLowerCase().replace(/\s+/g, '-')}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : 'Salve o projeto primeiro para gerar o código embed'}
+                  value={formData.id ? `<iframe src="${generateEmbedUrl(formData.id, formData.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : 'Salve o projeto primeiro para gerar o código embed'}
                   className="input-modern w-full h-24 bg-gray-50 text-sm font-mono resize-none"
                   readOnly
                   placeholder="Código embed será gerado automaticamente..."
                 />
-                <div className="flex gap-2">
+                <div className="flex gap-1">
                   <button
                     type="button"
                     onClick={() => {
-                      const embedCode = formData.id ? `<iframe src="https://portal.imagineinstituto.com/prototype/checkout/${formData.id}?source=embed&utm_campaign=${formData.title.toLowerCase().replace(/\s+/g, '-')}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : ''
+                      const embedCode = formData.id ? `<iframe src="${generateEmbedUrl(formData.id, formData.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : ''
                       if (embedCode) {
                         navigator.clipboard.writeText(embedCode)
-                        // Aqui você pode adicionar um toast de confirmação
                       }
                     }}
-                    className="px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg text-sm font-medium text-blue-700 transition-colors"
-                    title="Copiar código embed"
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Copiar"
                     disabled={!formData.id}
                   >
-                    📋 Copiar Código
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       if (formData.id) {
-                        const previewUrl = `https://portal.imagineinstituto.com/prototype/checkout/${formData.id}?source=embed&utm_campaign=${formData.title.toLowerCase().replace(/\s+/g, '-')}`
+                        const previewUrl = generateEmbedUrl(formData.id, formData.title)
                         window.open(previewUrl, '_blank')
                       }
                     }}
-                    className="px-3 py-2 bg-green-100 hover:bg-green-200 rounded-lg text-sm font-medium text-green-700 transition-colors"
-                    title="Visualizar embed"
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Visualizar"
                     disabled={!formData.id}
                   >
-                    👁️ Visualizar
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
                   </button>
                 </div>
               </div>

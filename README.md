@@ -132,6 +132,13 @@ npm run deploy:prod
 
 ## 🎯 Funcionalidades
 
+### **🚀 Sistema Híbrido de Checkout**
+- ✅ **Primeira etapa**: Configuração de doação (sua página)
+- ✅ **Segunda etapa**: Stripe Checkout (processamento seguro)
+- ✅ **Opções preservadas**: Recorrência, anônimo, mensagem
+- ✅ **URLs otimizadas**: Fácil embed em sites externos
+- ✅ **Métodos de pagamento**: Cartão (PIX quando habilitado)
+
 ### **Para Doadores**
 - ✅ Doações com múltiplos métodos de pagamento
 - ✅ Doações recorrentes e anônimas
@@ -157,8 +164,7 @@ npm run deploy:prod
 - **Dashboard**: `/dashboard`
 - **Projetos**: `/projetos`
 - **Doações**: `/doacoes`
-- **Embed**: `/embed/checkout/1`
-- **Prototype**: `/prototype/demo`
+- **Checkout Híbrido**: `/embed/checkout/checkout-stripe?project=mock-1`
 - **Design System**: `/design-system`
 
 ### **Teste Completo - Doador:**
@@ -170,7 +176,7 @@ http://localhost:3001/dashboard?demo_email=demo@doador.com
 http://localhost:3001/projetos?demo_email=demo@doador.com
 
 # 3. Fazer doação (clique em "Doar Agora")
-# Sistema com fallback robusto - sempre funciona
+# Sistema híbrido - primeira etapa + Stripe Checkout
 
 # 4. Ver doações
 http://localhost:3001/doacoes?demo_email=demo@doador.com

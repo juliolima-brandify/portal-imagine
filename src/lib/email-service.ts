@@ -10,6 +10,7 @@ import {
   type AdminNotificationData,
   type RecurringReminderData
 } from './resend'
+import { EMAIL_CONFIG } from './email-config'
 
 // =============================================
 // SERVIÇO DE EMAIL CENTRALIZADO
@@ -305,7 +306,7 @@ export async function notifyProjectUpdate(
     projectId,
     updateType,
     updateMessage,
-    projectUrl: `https://portal.imagineinstituto.com/projetos/${projectId}`
+    projectUrl: `${EMAIL_CONFIG.urls.portal}/projetos/${projectId}`
   })
 
   if (!EmailService.validateEmailData('update', data)) {
@@ -336,7 +337,7 @@ export async function remindRecurringDonation(
     amount,
     frequency,
     nextPaymentDate,
-    projectUrl: 'https://portal.imagineinstituto.com/projetos'
+    projectUrl: EMAIL_CONFIG.urls.projetos
   })
 
   if (!EmailService.validateEmailData('reminder', data)) {

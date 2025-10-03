@@ -1,5 +1,5 @@
 import { Resend } from 'resend'
-import { getLogoUrl } from './email-config'
+import { getLogoUrl, EMAIL_CONFIG } from './email-config'
 
 // Inicializar Resend
 export const resend = new Resend(process.env.RESEND_API_KEY || 're_placeholder')
@@ -65,7 +65,7 @@ export async function sendWelcomeEmail(data: WelcomeEmailData): Promise<boolean>
       console.log(`Email de boas-vindas para ${data.email}:`)
       console.log(`Nome: ${data.name}`)
       console.log(`Senha temporária: ${data.tempPassword}`)
-      console.log(`Link: https://portal.imagineinstituto.com/auth?email=${data.email}`)
+      console.log(`Link: ${EMAIL_CONFIG.urls.auth}?email=${data.email}`)
       return true // Retorna true para não falhar o processo
     }
 
@@ -216,8 +216,8 @@ export async function sendWelcomeEmail(data: WelcomeEmailData): Promise<boolean>
               </div>
 
               <div style="text-align: center; margin: 20px 0;">
-                <a href="https://portal.imagineinstituto.com/auth" class="button">Acessar Portal</a>
-                <a href="https://portal.imagineinstituto.com/auth?email=${email}" class="button">Redefinir Senha</a>
+                <a href="${EMAIL_CONFIG.urls.auth}" class="button">Acessar Portal</a>
+                <a href="${EMAIL_CONFIG.urls.auth}?email=${email}" class="button">Redefinir Senha</a>
               </div>
             </div>
 
@@ -510,7 +510,7 @@ export async function sendProjectUpdate(data: ProjectUpdateData): Promise<boolea
 
             <div style="text-align: center; margin: 20px 0;">
               <a href="${projectUrl}" class="button">Ver Projeto Completo</a>
-              <a href="https://portal.imagineinstituto.com/projetos" class="button">Ver Outros Projetos</a>
+              <a href="${EMAIL_CONFIG.urls.projetos}" class="button">Ver Outros Projetos</a>
             </div>
 
             <p>Com gratidão,<br>
@@ -671,7 +671,7 @@ export async function sendAdminNotification(data: AdminNotificationData): Promis
             <p>Esta é uma notificação automática do sistema Portal Imagine.</p>
 
             <div style="text-align: center; margin: 20px 0;">
-              <a href="https://portal.imagineinstituto.com/admin/dashboard" class="button">Acessar Admin</a>
+              <a href="${EMAIL_CONFIG.urls.admin}/dashboard" class="button">Acessar Admin</a>
             </div>
 
             <p>Atenciosamente,<br>
@@ -826,7 +826,7 @@ export async function sendRecurringReminder(data: RecurringReminderData): Promis
 
             <div style="text-align: center; margin: 20px 0;">
               <a href="${projectUrl}" class="button">Ver Projeto</a>
-              <a href="https://portal.imagineinstituto.com/doacoes" class="button secondary">Gerenciar Doações</a>
+              <a href="${EMAIL_CONFIG.urls.doacoes}" class="button secondary">Gerenciar Doações</a>
             </div>
 
             <p>Obrigado por sua generosidade contínua!</p>

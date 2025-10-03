@@ -6,6 +6,7 @@ import { getProjects } from '@/lib/database'
 import { getFavorites } from '@/lib/favorites'
 import { getDonations } from '@/lib/database'
 import { supabase } from '@/lib/supabase'
+import { generateCheckoutUrl } from '@/lib/urls'
 import type { Project } from '@/lib/database'
 import type { Favorite } from '@/lib/favorites'
 import type { Donation } from '@/lib/database'
@@ -457,7 +458,7 @@ export default function ProjetosPage() {
 
                           {/* Doar Agora - Sempre presente */}
                       <Link
-                            href={`https://portal.imagineinstituto.com/prototype/checkout/${project.id}?source=portal&utm_campaign=${project.title.toLowerCase().replace(/\s+/g, '-')}`}
+                            href={generateCheckoutUrl(project.id, project.title)}
                             className="w-full btn-primary text-center block"
                       >
                         Doar Agora
