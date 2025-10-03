@@ -79,6 +79,17 @@
 - ✅ **Código embed do checkout implementado no formulário de projetos**
 - ✅ **Fallback melhorado para projetos não encontrados**
 - ✅ **Deploy dev atualizado e funcionando perfeitamente**
+- ✅ **🚀 SISTEMA HÍBRIDO DE CHECKOUT IMPLEMENTADO COMPLETAMENTE**
+- ✅ **Componente DonationEmbed criado (primeira etapa do checkout)**
+- ✅ **API de criação de sessões Stripe implementada**
+- ✅ **URLs otimizadas (/embed/checkout/checkout-stripe)**
+- ✅ **Campos desnecessários removidos (nome, email, CPF, telefone)**
+- ✅ **Validação simplificada e otimizada**
+- ✅ **Opções da primeira etapa preservadas (recorrência, anônimo, mensagem)**
+- ✅ **Logs detalhados para debugging**
+- ✅ **Página de sucesso atualizada para Stripe**
+- ✅ **README.md atualizado com sistema híbrido**
+- ✅ **Deploy DEV realizado com sucesso**
 
 ### Principais arquivos modificados hoje:
 - `docs/README.md` (criado)
@@ -116,6 +127,14 @@
 - `src/components/ProjectForm.tsx` (adicionado campo código embed do checkout)
 - `src/lib/database.ts` (melhorado fallback da função getProject)
 - `_contexto.md` (atualizado progresso)
+- **🚀 NOVOS ARQUIVOS DO SISTEMA HÍBRIDO:**
+- `src/components/DonationEmbed.tsx` (criado componente da primeira etapa)
+- `src/app/api/checkout/create-session/route.ts` (criado API Stripe)
+- `src/app/api/checkout/session/[sessionId]/route.ts` (criado API de sessão)
+- `src/app/embed/checkout/checkout-stripe/page.tsx` (criado página embed)
+- `src/lib/urls.ts` (atualizado URLs para sistema híbrido)
+- `src/app/doacao-sucesso/page.tsx` (atualizado para Stripe)
+- `README.md` (atualizado com sistema híbrido)
 
 ---
 
@@ -131,6 +150,18 @@
 - [x] Implementar lógica demo robusta
 - [x] Corrigir erro de criação de usuário no admin
 - [x] Sincronizar ambientes local, dev e prod
+- [x] Sistema Híbrido de Checkout implementado completamente
+- [x] Deploy DEV realizado com sucesso
+- [ ] **Sistema de suporte e reporte de bugs**
+  - [ ] Página de suporte integrada
+  - [ ] Formulário de reporte de bugs
+  - [ ] Sistema de tickets/tracking
+  - [ ] Notificações automáticas
+  - [ ] Base de conhecimento (FAQ)
+  - [ ] Chat de suporte ao vivo
+  - [ ] Sistema de feedback dos usuários
+  - [ ] Métricas de satisfação
+  - [ ] Dashboard de suporte para admins
 
 ---
 
@@ -145,4 +176,4 @@
 - ✅ Deploy ativo no Vercel
 - ✅ Documentação agora 100% organizada
 
-**Status**: Sistema 100% funcional em produção com documentação reorganizada, dados reais, sistema completo de emails transacionais, logo do Instituto Imagine integrado em todos os emails, One Page Checkout como modelo único com campos CPF e Celular, código embed implementado, e deploy dev atualizado.
+**Status**: Sistema 100% funcional em produção com documentação reorganizada, dados reais, sistema completo de emails transacionais, logo do Instituto Imagine integrado em todos os emails, **Sistema Híbrido de Checkout** (primeira etapa + Stripe Checkout) como modelo principal, código embed implementado, e deploy dev atualizado.
