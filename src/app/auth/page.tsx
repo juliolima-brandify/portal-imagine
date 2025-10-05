@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import { supabase, isSupabaseConfigured, isLocalEnvironment } from '@/lib/supabase'
 import { loginSchema, createUserSchema } from '@/lib/validations'
 
 export default function AuthPage() {
@@ -12,6 +12,11 @@ export default function AuthPage() {
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetMessage, setResetMessage] = useState('')
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -114,6 +119,78 @@ export default function AuthPage() {
     }
   }
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setResetLoading(true)
+    setResetMessage('')
+
+    try {
+      if (!isSupabaseConfigured()) {
+        setResetMessage('⚠️ Supabase não configurado. Sistema em manutenção.')
+        setResetLoading(false)
+        return
+      }
+
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/auth?reset=true`,
+      })
+
+      if (error) throw error
+      setResetMessage('✅ Email de recuperação enviado! Verifique sua caixa de entrada.')
+      setResetEmail('')
+    } catch (error: any) {
+      console.error('Erro ao enviar email de recuperação:', error)
+      if (error.message?.includes('Invalid email')) {
+        setResetMessage('❌ Email inválido. Verifique o formato do email.')
+      } else {
+        setResetMessage(`❌ Erro: ${error.message || 'Falha ao enviar email de recuperação.'}`)
+      }
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
+  const handleDemoLogin = async (role: 'admin' | 'donor' | 'volunteer') => {
+    setLoading(true)
+    setMessage('')
+    
+    try {
+      // Verificar se Supabase está configurado
+      if (!isSupabaseConfigured()) {
+        setMessage('⚠️ Supabase não configurado. Sistema em manutenção.')
+        setLoading(false)
+        return
+      }
+
+      const demoCredentials = {
+        admin: { email: 'admin@demo.com', password: 'demo123' },
+        donor: { email: 'doador@demo.com', password: 'demo123' },
+        volunteer: { email: 'voluntario@demo.com', password: 'demo123' }
+      }
+      
+      const { email, password } = demoCredentials[role]
+      
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      
+      if (error) throw error
+      setMessage('Login demo realizado com sucesso!')
+      setTimeout(() => {
+        window.location.href = '/dashboard'
+      }, 1000)
+    } catch (error: any) {
+      console.error('Erro no login demo:', error)
+      if (error.message?.includes('Invalid login credentials')) {
+        setMessage('❌ Credenciais demo inválidas. Verifique se as contas demo existem no Supabase.')
+      } else {
+        setMessage(`❌ Erro no login demo: ${error.message || 'Tente novamente.'}`)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div>
@@ -164,6 +241,39 @@ export default function AuthPage() {
               }
             </p>
           </div>
+
+          {/* Botões Demo - Apenas no ambiente local */}
+          {isLocalEnvironment() && isSupabaseConfigured() && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm font-medium text-blue-700 mb-3">🚀 Modo Demo (Local)</p>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDemoLogin('admin')}
+                  disabled={loading}
+                  className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  Admin Demo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDemoLogin('donor')}
+                  disabled={loading}
+                  className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  Doador Demo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDemoLogin('volunteer')}
+                  disabled={loading}
+                  className="px-3 py-2 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors disabled:opacity-50"
+                >
+                  Voluntário Demo
+                </button>
+              </div>
+            </div>
+          )}
 
           <form className="mt-8 space-y-6" onSubmit={handleAuth}>
             <div className="space-y-4">
@@ -218,6 +328,32 @@ export default function AuthPage() {
               </div>
             </div>
 
+            {/* Opções de Login - Apenas no modo login */}
+            {isLogin && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <input
+                    id="remember-me"
+                    name="remember-me"
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                    Lembrar-me
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-sm text-blue-600 hover:text-blue-500 transition-colors"
+                >
+                  Esqueceu a senha?
+                </button>
+              </div>
+            )}
+
             {message && (
               <div className={`text-sm p-3 rounded-lg ${message.includes('sucesso') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                 {message}
@@ -258,6 +394,60 @@ export default function AuthPage() {
               </button>
             </div>
           </form>
+
+          {/* Modal Esqueceu a Senha */}
+          {showForgotPassword && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Recuperar Senha</h3>
+                
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div>
+                    <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700 mb-2">
+                      Email
+                    </label>
+                    <input
+                      id="reset-email"
+                      type="email"
+                      required
+                      className="input-modern"
+                      placeholder="Digite seu email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                    />
+                  </div>
+                  
+                  {resetMessage && (
+                    <div className={`text-sm p-3 rounded-lg ${resetMessage.includes('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                      {resetMessage}
+                    </div>
+                  )}
+                  
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForgotPassword(false)
+                        setResetEmail('')
+                        setResetMessage('')
+                      }}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+                      disabled={resetLoading}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={resetLoading}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
+                      {resetLoading ? 'Enviando...' : 'Enviar'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -15,7 +15,7 @@ interface DonationEmbedProps {
   }
 }
 
-const donationAmounts = [25, 50, 100, 200, 500, 1000]
+const donationAmounts = [50, 100, 200]
 
 export default function DonationEmbed({ project }: DonationEmbedProps) {
   const [donationData, setDonationData] = useState({
@@ -185,7 +185,7 @@ export default function DonationEmbed({ project }: DonationEmbedProps) {
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Escolha o valor da doação</h2>
         
         {/* Amount Selection */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-3 gap-3 mb-4">
           {donationAmounts.map((amount) => (
             <button
               key={amount}
