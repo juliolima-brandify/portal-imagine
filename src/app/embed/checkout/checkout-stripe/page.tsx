@@ -40,7 +40,7 @@ export default function EmbedCheckoutPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-white flex items-center justify-center p-4" style={{ backgroundColor: '#ffffff' }}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Carregando projeto...</p>
@@ -51,7 +51,7 @@ export default function EmbedCheckoutPage() {
 
   if (error || !project) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-white flex items-center justify-center p-4" style={{ backgroundColor: '#ffffff' }}>
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Projeto não encontrado</h1>
           <p className="text-gray-600 mb-6">
@@ -68,7 +68,7 @@ export default function EmbedCheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-white p-4" style={{ backgroundColor: '#ffffff' }}>
 
       {/* Componente de doação */}
       <DonationEmbed project={{
