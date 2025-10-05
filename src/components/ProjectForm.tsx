@@ -81,6 +81,15 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Confirmação antes de salvar
+    if (isEditing) {
+      const confirmed = window.confirm('Tem certeza que deseja salvar as alterações no projeto?')
+      if (!confirmed) {
+        return
+      }
+    }
+    
     setLoading(true)
     setError('')
 
@@ -183,7 +192,7 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
             className="btn-primary"
             disabled={loading}
           >
-            {loading ? 'Salvando...' : (isEditing ? 'Atualizar Projeto' : 'Criar Projeto')}
+            {loading ? 'Salvando...' : (isEditing ? 'Salvar' : 'Criar Projeto')}
           </button>
         </div>
       }

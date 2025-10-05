@@ -61,8 +61,26 @@ export default function Home() {
         setMessage('Login realizado com sucesso!')
         setLoading(false)
         clearTimeout(timeoutId)
-        // Redirecionar para dashboard após login
-        window.location.href = '/dashboard'
+        
+        // Redirecionar baseado no role do usuário
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('email', validatedData.email)
+            .single()
+          
+          if (profile?.role === 'admin') {
+            window.location.href = '/admin/dashboard'
+          } else if (profile?.role === 'volunteer') {
+            window.location.href = '/volunteer/contributions'
+          } else {
+            window.location.href = '/dashboard'
+          }
+        } catch (profileError) {
+          // Se não conseguir determinar o role, vai para dashboard padrão
+          window.location.href = '/dashboard'
+        }
       } else {
         // Validar dados de registro
         const validatedData = createUserSchema.parse({ email, password, name })

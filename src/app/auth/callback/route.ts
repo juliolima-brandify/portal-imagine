@@ -29,5 +29,6 @@ export async function GET(request: NextRequest) {
   }
 
   // URL to redirect to after sign in process completes
+  // O redirecionamento baseado em role será feito no frontend
   return NextResponse.redirect(`${requestUrl.origin}/dashboard`)
 }
