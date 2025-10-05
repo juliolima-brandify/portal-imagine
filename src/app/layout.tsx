@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import GlobalLayout from '@/components/GlobalLayout'
+import ConditionalChat from '@/components/ConditionalChat'
 
 export const metadata: Metadata = {
   title: 'Instituto Imagine - Transformando vidas através da educação e solidariedade',
@@ -41,23 +42,8 @@ export default function RootLayout({
       >
         <GlobalLayout>{children}</GlobalLayout>
         
-        {/* Tawk.to Chat Widget */}
-        <script
-          type="text/javascript"
-          dangerouslySetInnerHTML={{
-            __html: `
-              var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-              (function(){
-                var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
-                s1.async=true;
-                s1.src='https://embed.tawk.to/68e24c4c3d75f81955bf6194/1j6pvk2tb';
-                s1.charset='UTF-8';
-                s1.setAttribute('crossorigin','*');
-                s0.parentNode.insertBefore(s1,s0);
-              })();
-            `
-          }}
-        />
+        {/* Chat Condicional - Não aparece em admin e checkouts */}
+        <ConditionalChat />
       </body>
     </html>
   )
