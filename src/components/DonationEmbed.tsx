@@ -11,6 +11,7 @@ interface DonationEmbedProps {
     targetAmount: number
     currentAmount: number
     imageUrl?: string
+    hasFundingGoal?: boolean
   }
 }
 
@@ -142,26 +143,41 @@ export default function DonationEmbed({ project }: DonationEmbedProps) {
       <div className="p-6 bg-gray-50">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">{project.title}</h1>
         
-        <div className="bg-white rounded-lg p-4">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-gray-600">Arrecadado</span>
-            <span className="text-sm font-medium text-gray-900">
-              R$ {(project.currentAmount || 0).toLocaleString('pt-BR')}
-            </span>
+        {/* Mostrar barra de progresso apenas se tem meta de arrecadação */}
+        {project.hasFundingGoal !== false && (
+          <div className="bg-white rounded-lg p-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-600">Arrecadado</span>
+              <span className="text-sm font-medium text-gray-900">
+                R$ {(project.currentAmount || 0).toLocaleString('pt-BR')}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-green-600 h-2 rounded-full" 
+                style={{ width: `${((project.currentAmount || 0) / (project.targetAmount || 10000)) * 100}%` }}
+              ></div>
+            </div>
+            <div className="flex justify-between items-center mt-2">
+              <span className="text-xs text-gray-500">Meta: R$ {(project.targetAmount || 10000).toLocaleString('pt-BR')}</span>
+              <span className="text-xs text-gray-500">
+                {Math.round(((project.currentAmount || 0) / (project.targetAmount || 10000)) * 100)}%
+              </span>
+            </div>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-green-600 h-2 rounded-full" 
-              style={{ width: `${((project.currentAmount || 0) / (project.targetAmount || 10000)) * 100}%` }}
-            ></div>
+        )}
+
+        {/* Mostrar apenas valor arrecadado se não tem meta */}
+        {project.hasFundingGoal === false && (
+          <div className="bg-white rounded-lg p-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-gray-600">Total Arrecadado</span>
+              <span className="text-lg font-bold text-green-600">
+                R$ {(project.currentAmount || 0).toLocaleString('pt-BR')}
+              </span>
+            </div>
           </div>
-          <div className="flex justify-between items-center mt-2">
-            <span className="text-xs text-gray-500">Meta: R$ {(project.targetAmount || 10000).toLocaleString('pt-BR')}</span>
-            <span className="text-xs text-gray-500">
-              {Math.round(((project.currentAmount || 0) / (project.targetAmount || 10000)) * 100)}%
-            </span>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Donation Form */}

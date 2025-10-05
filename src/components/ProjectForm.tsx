@@ -21,6 +21,7 @@ interface Project {
   updated_at: string
   framer_project_url?: string
   checkout_tracking_url?: string
+  has_funding_goal?: boolean
 }
 
 interface ProjectFormProps {
@@ -44,6 +45,7 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     framer_project_url: '',
+    has_funding_goal: true,
     ...project
   })
 
@@ -65,6 +67,18 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
     { value: 'cancelled', label: 'Cancelado' }
   ]
 
+  const brazilianStates = [
+    'Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal',
+    'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul',
+    'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí',
+    'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia',
+    'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins'
+  ]
+
+  const [locationInput, setLocationInput] = useState(formData.location || '')
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
+  const [filteredStates, setFilteredStates] = useState<string[]>([])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -78,8 +92,8 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
       if (!formData.description.trim()) {
         throw new Error('Descrição é obrigatória')
       }
-      if (formData.target_amount <= 0) {
-        throw new Error('Valor da meta deve ser maior que zero')
+      if (formData.has_funding_goal && formData.target_amount <= 0) {
+        throw new Error('Valor da meta deve ser maior que zero quando meta está habilitada')
       }
 
       // Preparar dados para salvar
@@ -107,6 +121,43 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
     setFormData(prev => ({
       ...prev,
       [name]: value
+    }))
+  }
+
+  const handleLocationChange = (value: string) => {
+    setLocationInput(value)
+    setFormData(prev => ({
+      ...prev,
+      location: value
+    }))
+
+    if (value.length > 0) {
+      const filtered = brazilianStates.filter(state =>
+        state.toLowerCase().includes(value.toLowerCase())
+      )
+      setFilteredStates(filtered)
+      setShowLocationSuggestions(filtered.length > 0)
+    } else {
+      setShowLocationSuggestions(false)
+      setFilteredStates([])
+    }
+  }
+
+  const selectState = (state: string) => {
+    setLocationInput(state)
+    setFormData(prev => ({
+      ...prev,
+      location: state
+    }))
+    setShowLocationSuggestions(false)
+  }
+
+  const handleFundingGoalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const hasGoal = e.target.checked
+    setFormData(prev => ({
+      ...prev,
+      has_funding_goal: hasGoal,
+      target_amount: hasGoal ? prev.target_amount : 0
     }))
   }
 
@@ -224,25 +275,48 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
 
             {/* Meta de Arrecadação */}
             <div>
-              <label htmlFor="target_amount" className="block text-sm font-medium text-gray-700 mb-2">
-                Meta de Arrecadação (R$) *
-              </label>
-              <input
-                type="number"
-                id="target_amount"
-                name="target_amount"
-                value={formData.target_amount}
-                onChange={handleChange}
-                className="input-modern"
-                placeholder="0.00"
-                min="0"
-                step="0.01"
-                required
-              />
+              <div className="flex items-center mb-3">
+                <input
+                  type="checkbox"
+                  id="has_funding_goal"
+                  checked={formData.has_funding_goal}
+                  onChange={handleFundingGoalChange}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="has_funding_goal" className="ml-2 block text-sm font-medium text-gray-700">
+                  Definir meta de arrecadação
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                {formData.has_funding_goal 
+                  ? 'Quando habilitada, a meta será exibida no checkout do projeto'
+                  : 'Quando desabilitada, a meta ficará oculta no checkout do projeto'
+                }
+              </p>
+              
+              {formData.has_funding_goal && (
+                <div>
+                  <label htmlFor="target_amount" className="block text-sm font-medium text-gray-700 mb-2">
+                    Meta de Arrecadação (R$) *
+                  </label>
+                  <input
+                    type="number"
+                    id="target_amount"
+                    name="target_amount"
+                    value={formData.target_amount}
+                    onChange={handleChange}
+                    className="input-modern"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    required
+                  />
+                </div>
+              )}
             </div>
 
             {/* Localização */}
-            <div>
+            <div className="relative">
               <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
                 Localização
               </label>
@@ -250,11 +324,41 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
                 type="text"
                 id="location"
                 name="location"
-                value={formData.location}
-                onChange={handleChange}
+                value={locationInput}
+                onChange={(e) => handleLocationChange(e.target.value)}
+                onFocus={() => {
+                  if (filteredStates.length > 0) {
+                    setShowLocationSuggestions(true)
+                  }
+                }}
+                onBlur={() => {
+                  // Delay para permitir clique nas sugestões
+                  setTimeout(() => setShowLocationSuggestions(false), 200)
+                }}
                 className="input-modern"
-                placeholder="Cidade, Estado"
+                placeholder="Digite o estado (ex: São Paulo)"
+                autoComplete="off"
               />
+              
+              {/* Sugestões de Estados */}
+              {showLocationSuggestions && filteredStates.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {filteredStates.map((state, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => selectState(state)}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+                    >
+                      {state}
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              <p className="text-xs text-gray-500 mt-1">
+                Digite para buscar estados brasileiros automaticamente
+              </p>
             </div>
 
 

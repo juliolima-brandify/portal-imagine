@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS projects (
   impact JSONB DEFAULT '{}',
   timeline TEXT,
   organization TEXT DEFAULT 'Instituto Imagine',
+  has_funding_goal BOOLEAN DEFAULT true,
+  checkout_tracking_url TEXT,
+  framer_project_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

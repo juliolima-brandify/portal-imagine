@@ -33,6 +33,9 @@ export interface Project {
   impact?: any
   timeline?: string
   organization?: string
+  has_funding_goal?: boolean
+  checkout_tracking_url?: string
+  framer_project_url?: string
   created_at: string
   updated_at: string
 }
