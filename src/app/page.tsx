@@ -2,12 +2,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { loginSchema, createUserSchema } from '@/lib/validations'
 
 export default function Home() {
-  const router = useRouter()
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -20,26 +18,51 @@ export default function Home() {
     setLoading(true)
     setMessage('')
 
+    // Timeout de segurança para evitar loading infinito
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        setLoading(false)
+        setMessage('❌ Timeout: A conexão está demorando muito. Tente novamente.')
+      }
+    }, 10000) // 10 segundos
+
     try {
+      // Verificar se Supabase está configurado
+      if (!isSupabaseConfigured()) {
+        setMessage('⚠️ Supabase não configurado. Sistema em manutenção.')
+        setLoading(false)
+        clearTimeout(timeoutId)
+        return
+      }
+
       if (isLogin) {
         // Validar dados de login
         const validatedData = loginSchema.parse({ email, password })
         
-        // Autenticação real com Supabase
-        const { error } = await supabase.auth.signInWithPassword({
+        // Para outras contas, tentar com Supabase com timeout
+        const authPromise = supabase.auth.signInWithPassword({
           email: validatedData.email,
           password: validatedData.password,
         })
 
+        const { error } = await Promise.race([
+          authPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout na autenticação')), 8000)
+          )
+        ]) as any
+
         if (error) throw error
         setMessage('Login realizado com sucesso!')
+        setLoading(false)
+        clearTimeout(timeoutId)
         // Redirecionar para dashboard após login
-        router.push('/dashboard')
+        window.location.href = '/dashboard'
       } else {
         // Validar dados de registro
         const validatedData = createUserSchema.parse({ email, password, name })
         
-        const { error } = await supabase.auth.signUp({
+        const signupPromise = supabase.auth.signUp({
           email: validatedData.email,
           password: validatedData.password,
           options: {
@@ -50,40 +73,59 @@ export default function Home() {
           },
         })
 
+        const { error } = await Promise.race([
+          signupPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout no registro')), 8000)
+          )
+        ]) as any
+
         if (error) throw error
         setMessage('Conta criada com sucesso! Verifique seu email.')
+        setLoading(false)
+        clearTimeout(timeoutId)
       }
     } catch (error: any) {
-      if (error.message?.includes('supabaseUrl is required')) {
-        setMessage('⚠️ Supabase não configurado. Use as contas demo para testar!')
+      console.error('Erro de autenticação:', error)
+      clearTimeout(timeoutId)
+      
+      if (error.message?.includes('Timeout')) {
+        setMessage('❌ Timeout: A conexão está demorando muito. Verifique sua internet.')
+      } else if (error.message?.includes('supabaseUrl is required') || 
+          error.message?.includes('Failed to fetch') ||
+          error.message?.includes('placeholder') ||
+          error.message?.includes('NetworkError')) {
+        setMessage('⚠️ Problema de conexão. Tente novamente mais tarde.')
+      } else if (error.message?.includes('Invalid login credentials')) {
+        setMessage('❌ Email ou senha incorretos. Verifique suas credenciais.')
+      } else if (error.message?.includes('User already registered')) {
+        setMessage('❌ Este email já está cadastrado. Tente fazer login.')
+      } else if (error.message?.includes('Password should be at least')) {
+        setMessage('❌ A senha deve ter pelo menos 6 caracteres.')
+      } else if (error.message?.includes('Invalid email')) {
+        setMessage('❌ Email inválido. Verifique o formato do email.')
       } else {
-        setMessage(error.message || 'Erro ao processar solicitação')
+        setMessage(`❌ Erro: ${error.message || 'Falha na conexão. Verifique sua internet e tente novamente.'}`)
       }
     } finally {
       setLoading(false)
+      clearTimeout(timeoutId)
     }
   }
 
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div>
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <Link href="/" className="flex items-center">
               <img 
-                src="/images/logo.svg" 
+                src="/images/logo.png" 
                 alt="Instituto Imagine" 
                 className="h-10 w-auto"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none'
-                  e.currentTarget.nextElementSibling?.classList.remove('hidden')
-                }}
               />
-              <div className="hidden h-10 w-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-base">I</span>
-              </div>
             </Link>
             <Link
               href="https://imagineinstituto.com"
@@ -106,6 +148,21 @@ export default function Home() {
             </p>
           </div>
 
+          {/* Status da Configuração */}
+          <div className={`card p-4 ${isSupabaseConfigured() ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+            <div className="flex items-center space-x-2">
+              <div className={`w-2 h-2 rounded-full ${isSupabaseConfigured() ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+              <p className={`text-sm font-medium ${isSupabaseConfigured() ? 'text-green-700' : 'text-yellow-700'}`}>
+                {isSupabaseConfigured() ? 'Sistema configurado' : 'Sistema em manutenção'}
+              </p>
+            </div>
+            <p className={`text-xs mt-1 ${isSupabaseConfigured() ? 'text-green-600' : 'text-yellow-600'}`}>
+              {isSupabaseConfigured() 
+                ? 'Conexão com Supabase ativa - Criação de contas disponível' 
+                : 'Sistema temporariamente indisponível - Tente novamente mais tarde'
+              }
+            </p>
+          </div>
 
           <form className="mt-8 space-y-6" onSubmit={handleAuth}>
             <div className="space-y-4">
@@ -163,6 +220,20 @@ export default function Home() {
             {message && (
               <div className={`text-sm p-3 rounded-lg ${message.includes('sucesso') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                 {message}
+                {message.includes('Timeout') && (
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMessage('')
+                        setLoading(false)
+                      }}
+                      className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors"
+                    >
+                      Tentar Novamente
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

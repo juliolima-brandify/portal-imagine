@@ -22,51 +22,20 @@ export default function AuthPage() {
     const timeoutId = setTimeout(() => {
       if (loading) {
         setLoading(false)
-        setMessage('❌ Timeout: A conexão está demorando muito. Tente novamente ou use as contas demo.')
+        setMessage('❌ Timeout: A conexão está demorando muito. Tente novamente.')
       }
     }, 10000) // 10 segundos
 
     try {
       // Verificar se Supabase está configurado
       if (!isSupabaseConfigured()) {
-        setMessage('⚠️ Supabase não configurado. Use as contas demo para testar o sistema!')
+        setMessage('⚠️ Supabase não configurado. Sistema em manutenção.')
         setLoading(false)
         clearTimeout(timeoutId)
         return
       }
 
       if (isLogin) {
-        // Verificar se é uma conta demo PRIMEIRO
-        if (email === 'demo@doador.com' && password === 'demo123456') {
-          setMessage('Login demo realizado com sucesso! (Modo de demonstração)')
-          setLoading(false)
-          clearTimeout(timeoutId)
-          setTimeout(() => {
-            window.location.href = `/dashboard?demo_email=${encodeURIComponent(email)}`
-          }, 1500)
-          return
-        }
-        
-        if (email === 'admin@institutoimagine.org' && password === 'admin123456') {
-          setMessage('Login admin realizado com sucesso! (Modo de demonstração)')
-          setLoading(false)
-          clearTimeout(timeoutId)
-          setTimeout(() => {
-            window.location.href = `/admin/dashboard?demo_email=${encodeURIComponent(email)}`
-          }, 1500)
-          return
-        }
-
-
-        if (email === 'volunteer@institutoimagine.org' && password === 'volunteer123456') {
-          setMessage('Login voluntário realizado com sucesso! (Modo de demonstração)')
-          setLoading(false)
-          clearTimeout(timeoutId)
-          setTimeout(() => {
-            window.location.href = `/dashboard?demo_email=${encodeURIComponent(email)}&role=volunteer`
-          }, 1500)
-          return
-        }
 
         // Validar dados de login
         const validatedData = loginSchema.parse({ email, password })
@@ -122,12 +91,12 @@ export default function AuthPage() {
       clearTimeout(timeoutId)
       
       if (error.message?.includes('Timeout')) {
-        setMessage('❌ Timeout: A conexão está demorando muito. Verifique sua internet ou tente as contas demo.')
+        setMessage('❌ Timeout: A conexão está demorando muito. Verifique sua internet.')
       } else if (error.message?.includes('supabaseUrl is required') || 
           error.message?.includes('Failed to fetch') ||
           error.message?.includes('placeholder') ||
           error.message?.includes('NetworkError')) {
-        setMessage('⚠️ Problema de conexão. Use as contas demo para testar o sistema!')
+        setMessage('⚠️ Problema de conexão. Tente novamente mais tarde.')
       } else if (error.message?.includes('Invalid login credentials')) {
         setMessage('❌ Email ou senha incorretos. Verifique suas credenciais.')
       } else if (error.message?.includes('User already registered')) {
@@ -145,28 +114,6 @@ export default function AuthPage() {
     }
   }
 
-  const handleDemoLogin = (role: 'donor' | 'admin' | 'volunteer') => {
-    console.log('Demo login clicked:', role) // Debug log
-    let email = ''
-    if (role === 'donor') {
-      email = 'demo@doador.com'
-      setEmail(email)
-      setPassword('demo123456')
-    } else if (role === 'admin') {
-      email = 'admin@institutoimagine.org'
-      setEmail(email)
-      setPassword('admin123456')
-    } else {
-      email = 'volunteer@institutoimagine.org'
-      setEmail(email)
-      setPassword('volunteer123456')
-    }
-    setIsLogin(true)
-    
-    // Salvar dados de demo no localStorage
-    localStorage.setItem('demo-user', JSON.stringify({ email, role }))
-    console.log('Demo login set:', { role, email }) // Debug log
-  }
 
   return (
     <div>
@@ -207,42 +154,14 @@ export default function AuthPage() {
             <div className="flex items-center space-x-2">
               <div className={`w-2 h-2 rounded-full ${isSupabaseConfigured() ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
               <p className={`text-sm font-medium ${isSupabaseConfigured() ? 'text-green-700' : 'text-yellow-700'}`}>
-                {isSupabaseConfigured() ? 'Sistema configurado' : 'Modo demonstração'}
+                {isSupabaseConfigured() ? 'Sistema configurado' : 'Sistema em manutenção'}
               </p>
             </div>
             <p className={`text-xs mt-1 ${isSupabaseConfigured() ? 'text-green-600' : 'text-yellow-600'}`}>
               {isSupabaseConfigured() 
                 ? 'Conexão com Supabase ativa - Criação de contas disponível' 
-                : 'Supabase não configurado - Use as contas demo para testar'
+                : 'Sistema temporariamente indisponível - Tente novamente mais tarde'
               }
-            </p>
-          </div>
-
-          {/* Demo Buttons */}
-          <div className="card p-6">
-            <p className="text-sm text-gray-600 mb-4 text-center font-medium">Teste com contas demo:</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <button
-                onClick={() => handleDemoLogin('donor')}
-                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
-              >
-                Demo Doador
-              </button>
-              <button
-                onClick={() => handleDemoLogin('admin')}
-                className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
-              >
-                Demo Admin
-              </button>
-              <button
-                onClick={() => handleDemoLogin('volunteer')}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
-              >
-                Demo Voluntário
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-3 text-center">
-              Clique nos botões acima para preencher automaticamente os dados de login
             </p>
           </div>
 
