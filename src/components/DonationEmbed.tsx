@@ -140,8 +140,7 @@ export default function DonationEmbed({ project }: DonationEmbedProps) {
     <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
       {/* Project Info */}
       <div className="p-6 bg-gray-50">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">{project.title}</h1>
-        <p className="text-gray-600 mb-4">{project.description}</p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">{project.title}</h1>
         
         <div className="bg-white rounded-lg p-4">
           <div className="flex justify-between items-center mb-2">
