@@ -140,7 +140,7 @@ export default function DonationEmbed({ project }: DonationEmbedProps) {
   return (
     <div className="max-w-2xl mx-auto bg-white overflow-hidden">
       {/* Project Info */}
-      <div className="p-6 bg-gray-50">
+      <div className="p-6 bg-white">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">{project.title}</h1>
         
         {/* Mostrar barra de progresso apenas se tem meta de arrecadação */}
