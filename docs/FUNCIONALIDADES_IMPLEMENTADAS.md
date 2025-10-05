@@ -63,6 +63,7 @@ Documentação completa de todas as funcionalidades implementadas no Portal Inst
   - Valor personalizado
   - Layout 3 colunas responsivo
   - Integração com Stripe Checkout
+  - Fundo branco completo (página + containers)
 - **Status:** ✅ Produção
 
 ### **✅ Opções de Doação**
@@ -347,12 +348,12 @@ Documentação completa de todas as funcionalidades implementadas no Portal Inst
 - **Dashboards:** 3/3 funcionalidades ✅
 - **Admin:** 4/4 funcionalidades ✅
 - **APIs:** 4/4 funcionalidades ✅
-- **UX/UI:** 3/3 funcionalidades ✅
+- **UX/UI:** 4/4 funcionalidades ✅ (incluindo melhorias visuais)
 - **Segurança:** 3/3 funcionalidades ✅
 - **Performance:** 2/2 funcionalidades ✅
 
 ### **🎯 Total de Funcionalidades**
-- **Implementadas:** 32/32 (100%)
+- **Implementadas:** 33/33 (100%)
 - **Em desenvolvimento:** 0
 - **Pendentes:** 0
 - **Bugs conhecidos:** 0
@@ -383,8 +384,8 @@ Documentação completa de todas as funcionalidades implementadas no Portal Inst
 
 ---
 
-**📝 Documento gerado em:** 05/10/2025 11:35  
-**🔄 Última atualização:** Funcionalidades v2.1.0  
+**📝 Documento gerado em:** 05/10/2025 12:25  
+**🔄 Última atualização:** Funcionalidades v2.1.1  
 **👨‍💻 Responsável:** Sistema de IA - Portal Imagine  
 
 ---

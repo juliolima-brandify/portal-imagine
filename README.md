@@ -2,13 +2,13 @@
 
 ## 🎯 **Visão Geral**
 
-O Portal Instituto Imagine é uma plataforma completa de doações e gestão de projetos sociais, desenvolvida com Next.js 14, Supabase e Stripe. Sistema 100% funcional com 32 funcionalidades implementadas.
+O Portal Instituto Imagine é uma plataforma completa de doações e gestão de projetos sociais, desenvolvida com Next.js 14, Supabase e Stripe. Sistema 100% funcional com 33 funcionalidades implementadas.
 
 ## 🚀 **Status Atual**
 
 - **✅ Sistema:** 100% funcional e em produção
 - **🌐 URL:** https://portal.imagineinstituto.com
-- **📅 Última atualização:** 05/10/2025 v2.1.0
+- **📅 Última atualização:** 05/10/2025 v2.1.1
 - **🐛 Bugs conhecidos:** 0
 - **⚡ Performance:** < 2 segundos de carregamento
 
@@ -19,6 +19,7 @@ O Portal Instituto Imagine é uma plataforma completa de doações e gestão de 
 - ✅ Valores otimizados (R$ 50, 100, 200)
 - ✅ Doação recorrente e anônima
 - ✅ Meta de arrecadação opcional
+- ✅ Fundo branco completo e consistente
 
 ### **👥 Gestão de Projetos**
 - ✅ CRUD completo com interface admin
@@ -105,7 +106,7 @@ Voluntário: voluntario@demo.com / demo123
 
 ## 📊 **Métricas de Sucesso**
 
-- **Funcionalidades:** 32/32 (100% implementadas)
+- **Funcionalidades:** 33/33 (100% implementadas)
 - **Deploy time:** 45 segundos
 - **Uptime:** > 99.9%
 - **Performance:** < 2 segundos
@@ -120,8 +121,8 @@ Voluntário: voluntario@demo.com / demo123
 
 ---
 
-**📝 README atualizado em:** 05/10/2025 11:55  
-**🔄 Versão:** v2.1.0  
+**📝 README atualizado em:** 05/10/2025 12:35  
+**🔄 Versão:** v2.1.1  
 **👨‍💻 Portal Instituto Imagine**  
 
 *Sistema completo e funcional para maximizar o impacto social através da tecnologia.*

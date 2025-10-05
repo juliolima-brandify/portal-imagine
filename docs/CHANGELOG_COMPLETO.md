@@ -1,8 +1,8 @@
 # 📋 Changelog Completo - Portal Instituto Imagine
 
-## 🎯 **Versão Atual: v2.1.0** - *Outubro 2025*
+## 🎯 **Versão Atual: v2.1.1** - *Outubro 2025*
 
-### 🚀 **Deploy Mais Recente: 05/10/2025 11:24**
+### 🚀 **Deploy Mais Recente: 05/10/2025 12:15*
 
 ---
 
@@ -52,7 +52,12 @@ Este documento registra todas as implementações, melhorias e correções reali
 
 ## 🔧 **Correções e Melhorias Recentes**
 
-### **📅 Deploy: 05/10/2025 11:24**
+### **📅 Deploy: 05/10/2025 12:15** - *Melhorias Visuais do Checkout*
+- ✅ Fundo da página de checkout totalmente branco
+- ✅ Container do título e arrecadação com fundo branco
+- ✅ Consistência visual completa na página de checkout
+
+### **📅 Deploy: 05/10/2025 11:24** - *Correções Importantes*
 
 #### **✅ Correção 1: Redirecionamento Inteligente**
 **Problema:** Usuários sempre redirecionados para `/dashboard` independente do role
@@ -106,6 +111,22 @@ className="max-w-2xl mx-auto bg-white overflow-hidden"
 **Arquivo alterado:**
 - `src/components/DonationEmbed.tsx`
 
+#### **✅ Correção 4: Fundo Branco Completo no Checkout**
+**Problema:** Fundo cinza na página e container do título
+**Solução:** Aplicado fundo branco em toda a página de checkout
+
+```css
+/* Página principal */
+className="min-h-screen bg-white p-4" style={{ backgroundColor: '#ffffff' }}
+
+/* Container do projeto */
+className="p-6 bg-white"
+```
+
+**Arquivos alterados:**
+- `src/app/embed/checkout/checkout-stripe/page.tsx`
+- `src/components/DonationEmbed.tsx`
+
 ---
 
 ## 📅 **Histórico de Deploys**
@@ -122,6 +143,11 @@ className="max-w-2xl mx-auto bg-white overflow-hidden"
 - ✅ Modal edição com confirmação
 - ✅ Checkout sem sombra/borda
 - ✅ Resolução de duplicações
+
+### **Deploy 3: 05/10/2025 12:15** - *Melhorias Visuais*
+- ✅ Fundo branco na página de checkout
+- ✅ Container do título com fundo branco
+- ✅ Consistência visual completa
 
 ---
 
@@ -303,8 +329,8 @@ Voluntário: voluntario@demo.com / demo123
 
 ---
 
-**📝 Documento gerado em:** 05/10/2025 11:30  
-**🔄 Última atualização:** Deploy v2.1.0  
+**📝 Documento gerado em:** 05/10/2025 12:20  
+**🔄 Última atualização:** Deploy v2.1.1  
 **👨‍💻 Responsável:** Sistema de IA - Portal Imagine  
 
 ---

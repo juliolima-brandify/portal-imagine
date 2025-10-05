@@ -7,7 +7,7 @@ O Portal Instituto Imagine oferece uma experiência completa para três tipos de
 - **💝 Doador**: Doação e acompanhamento de projetos  
 - **🤝 Voluntário**: Participação em projetos e contribuições
 
-**✅ Status Atual**: Sistema 100% funcional com dados reais do Supabase, sem dados mock, e sistema demo operacional.
+**✅ Status Atual**: Sistema 100% funcional com dados reais do Supabase, sem dados mock, sistema demo operacional, e melhorias visuais implementadas (v2.1.1).
 
 ---
 
