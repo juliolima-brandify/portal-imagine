@@ -11,6 +11,8 @@
     "clean": "powershell -Command \"Remove-Item -Recurse -Force .next,node_modules\\.cache -ErrorAction SilentlyContinue\""
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^2.4.0",
+    "@supabase/ssr": "^0.1.0",
     "@supabase/supabase-js": "^2.39.0",
     "@stripe/stripe-js": "^2.2.0",
     "chart.js": "^4.4.1",
@@ -24,7 +26,8 @@
     "react-dom": "^18",
     "resend": "^3.0.0",
     "stripe": "^14.9.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20",
