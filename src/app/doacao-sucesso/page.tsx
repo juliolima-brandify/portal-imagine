@@ -161,7 +161,7 @@ export default function DoacaoSucessoPage() {
               Ver Outros Projetos
             </Link>
             <Link href="/dashboard?demo_email=demo@doador.com" className="flex-1 btn-primary">
-              Ir para Dashboard
+              Ir para Início
             </Link>
           </div>
 

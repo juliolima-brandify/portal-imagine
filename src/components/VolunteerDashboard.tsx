@@ -25,7 +25,7 @@ export default function VolunteerDashboard() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Dashboard do Voluntário 👋
+            Início do Voluntário 👋
           </h1>
           <p className="text-gray-600">
             Gerencie suas atividades de voluntariado e contribua para a comunidade.

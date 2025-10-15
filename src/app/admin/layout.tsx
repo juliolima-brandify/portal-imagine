@@ -16,10 +16,17 @@ const AdminLayout = memo(function AdminLayout({
   useEffect(() => {
     const getUser = async () => {
       try {
-        // Primeiro, verificar se é modo demo via URL
+        // 1) Priorizar usuário autenticado real
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setUser(user)
+          setLoading(false)
+          return
+        }
+
+        // 2) Sem sessão real: permitir admin demo via URL
         const urlParams = new URLSearchParams(window.location.search)
         const demoEmail = urlParams.get('demo_email')
-        
         if (demoEmail === 'admin@institutoimagine.org') {
           setUser({
             id: 'demo-admin',
@@ -29,26 +36,16 @@ const AdminLayout = memo(function AdminLayout({
             aud: 'authenticated',
             created_at: new Date().toISOString()
           } as User)
-        } else {
-          // Usuário real - autenticação com Supabase
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            setUser(user)
-          } else {
-            // Só redirecionar se não for modo demo
-            console.log('Usuário não encontrado, redirecionando para /auth')
-            window.location.href = '/auth'
-            return
-          }
+          setLoading(false)
+          return
         }
+
+        // 3) Sem sessão e sem demo
+        console.log('Usuário não encontrado, redirecionando para /auth')
+        window.location.href = '/auth'
       } catch (error) {
         console.error('Erro ao obter usuário:', error)
-        // Só redirecionar se não for modo demo
-        const urlParams = new URLSearchParams(window.location.search)
-        const demoEmail = urlParams.get('demo_email')
-        if (demoEmail !== 'admin@institutoimagine.org') {
-          window.location.href = '/auth'
-        }
+        window.location.href = '/auth'
       } finally {
         setLoading(false)
       }
@@ -76,14 +73,15 @@ const AdminLayout = memo(function AdminLayout({
     )
   }
 
-  // Obter demoEmail da URL
-  const getDemoEmail = () => {
+  // Se houver usuário autenticado real, não propagar demoEmail
+  const demoEmailProp = (() => {
+    if (user) return null
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search)
       return urlParams.get('demo_email')
     }
     return null
-  }
+  })()
 
   return (
     <UnifiedLayout
@@ -93,7 +91,7 @@ const AdminLayout = memo(function AdminLayout({
         email: user.email || '',
         role: 'admin'
       }}
-      demoEmail={getDemoEmail()}
+      demoEmail={demoEmailProp}
     >
       {children}
     </UnifiedLayout>

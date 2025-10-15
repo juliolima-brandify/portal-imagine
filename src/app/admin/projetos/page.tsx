@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import ProjectForm from '@/components/ProjectForm'
-import ConfirmDialog from '@/components/ConfirmDialog'
+import ConfirmDialog, { Modal } from '@/components/ConfirmDialog'
+import { generateCheckoutUrl, generateEmbedUrl } from '@/lib/urls'
 import { ToastContainer, useToast } from '@/components/Toast'
 
 interface Project {
@@ -18,12 +19,14 @@ interface Project {
   image_url: string
   framer_project_url?: string
   checkout_tracking_url?: string
+  has_funding_goal?: boolean
   created_at: string
   updated_at: string
 }
 
 export default function AdminProjetosPage() {
   const [projects, setProjects] = useState<Project[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'active' | 'paused' | 'completed' | 'cancelled'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   
@@ -40,6 +43,7 @@ export default function AdminProjetosPage() {
   // Função para carregar projetos via API
   const loadProjectsForAdmin = async () => {
     console.log('🔄 [PROJETOS] Iniciando carregamento via API...')
+    setIsLoading(true)
     try {
       console.log('📡 [PROJETOS] Fazendo requisição para /api/admin/projects...')
       const response = await fetch('/api/admin/projects')
@@ -65,6 +69,7 @@ export default function AdminProjetosPage() {
       console.error('❌ [PROJETOS] Erro ao conectar com API:', err)
       setProjects([])
     }
+    setIsLoading(false)
   }
 
   // Função para recarregar projetos
@@ -401,6 +406,8 @@ export default function AdminProjetosPage() {
     }).format(amount)
   }
 
+  const [shareProject, setShareProject] = useState<Project | null>(null)
+
   return (
     <div className="max-w-7xl mx-auto">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
@@ -471,6 +478,20 @@ export default function AdminProjetosPage() {
       </div>
 
       {/* Lista de Projetos */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <div key={idx} className="card p-6 animate-pulse">
+              <div className="h-6 bg-gray-200 rounded w-24 mb-4" />
+              <div className="w-full h-48 bg-gray-200 rounded mb-4" />
+              <div className="h-5 bg-gray-200 rounded w-3/4 mb-2" />
+              <div className="h-4 bg-gray-200 rounded w-2/3 mb-6" />
+              <div className="h-2 bg-gray-200 rounded w-full mb-2" />
+              <div className="h-2 bg-gray-200 rounded w-5/6" />
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredProjects.map((project) => (
           <div key={project.id} className="card p-6">
@@ -525,19 +546,21 @@ export default function AdminProjetosPage() {
               </div>
             </div>
 
-            {/* Barra de Progresso */}
-            <div className="mb-4">
-              <div className="flex justify-between text-sm text-gray-600 mb-1">
-                <span>Progresso</span>
-                <span>{Math.round((project.current_amount / project.target_amount) * 100)}%</span>
+            {/* Barra de Progresso - apenas quando há meta */}
+            {project.has_funding_goal !== false && (
+              <div className="mb-4">
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>Progresso</span>
+                  <span>{Math.round((project.current_amount / (project.target_amount || 1)) * 100)}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.min((project.current_amount / (project.target_amount || 1)) * 100, 100)}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min((project.current_amount / project.target_amount) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
+            )}
 
             {/* Ações do Projeto */}
             <div className="space-y-2">
@@ -561,21 +584,21 @@ export default function AdminProjetosPage() {
                   </svg>
                 </button>
                 <button
-                  onClick={() => window.open(project.framer_project_url, '_blank')}
+                  onClick={() => { window.location.href = `/projetos/${project.id}/relatorios` }}
+                  className="flex-1 flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                  title="Relatórios do Projeto"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setShareProject(project)}
                   className="flex-1 flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                   title="Compartilhar"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => {/* TODO: Implementar estatísticas */}}
-                  className="flex-1 flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                  title="Estatísticas"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                 </button>
                 <button
@@ -592,9 +615,10 @@ export default function AdminProjetosPage() {
           </div>
         ))}
       </div>
+      )}
 
-      {/* Estado Vazio */}
-      {filteredProjects.length === 0 && (
+      {/* Estado Vazio - apenas quando não está carregando */}
+      {!isLoading && filteredProjects.length === 0 && (
         <div className="text-center py-12">
           <div className="text-gray-400 text-6xl mb-4">📁</div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">
@@ -618,6 +642,115 @@ export default function AdminProjetosPage() {
       )}
 
       {/* Modais */}
+      {shareProject && (
+        <Modal
+          isOpen={true}
+          onClose={() => setShareProject(null)}
+          title="Compartilhar"
+          size="md"
+        >
+          <div className="space-y-4 p-1">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Projeto URL
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={shareProject.framer_project_url || ''}
+                  className="input-modern flex-1 bg-gray-50"
+                  readOnly
+                />
+                <button
+                  type="button"
+                  onClick={() => shareProject.framer_project_url && window.open(shareProject.framer_project_url, '_blank')}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Abrir no navegador"
+                  disabled={!shareProject.framer_project_url}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => shareProject.framer_project_url && navigator.clipboard.writeText(shareProject.framer_project_url)}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Copiar URL"
+                  disabled={!shareProject.framer_project_url}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Checkout URL
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={generateCheckoutUrl(shareProject.id, shareProject.title)}
+                  className="input-modern flex-1 bg-gray-50"
+                  readOnly
+                />
+                <button
+                  type="button"
+                  onClick={() => window.open(generateCheckoutUrl(shareProject.id, shareProject.title), '_blank')}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Abrir no navegador"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(generateCheckoutUrl(shareProject.id, shareProject.title))}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Copiar URL"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Embed do Checkout
+              </label>
+              <div className="space-y-2">
+                <textarea
+                  className="input-modern w-full h-24 bg-gray-50 text-sm font-mono resize-none"
+                  readOnly
+                  value={`<iframe src="${generateEmbedUrl(shareProject.id, shareProject.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>`}
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(`<iframe src="${generateEmbedUrl(shareProject.id, shareProject.title)}" width=\"100%\" height=\"800\" frameborder=\"0\" style=\"border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);\"></iframe>`)}
+                    className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50"
+                  >
+                    Copiar código
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => window.open(generateEmbedUrl(shareProject.id, shareProject.title), '_blank')}
+                    className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50"
+                  >
+                    Visualizar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
       {showProjectForm && (
         <ProjectForm
           project={editingProject}

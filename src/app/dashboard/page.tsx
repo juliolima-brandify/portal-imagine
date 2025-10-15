@@ -39,7 +39,9 @@ export default function DashboardPage() {
           } as User)
           
           if (demoEmail === 'admin@institutoimagine.org') {
-            setUserRole('admin')
+            // Redirecionar admin para dashboard admin
+            window.location.href = '/admin/dashboard'
+            return
           } else if (demoEmail === 'volunteer@institutoimagine.org') {
             setUserRole('volunteer')
           } else {
@@ -66,8 +68,10 @@ export default function DashboardPage() {
                 .eq('id', user.id)
                 .single()
               
+              // Se for admin, redirecionar para dashboard admin
               if (profile?.role === 'admin') {
-                setUserRole('admin')
+                window.location.href = '/admin/dashboard'
+                return
               } else if (profile?.role === 'volunteer') {
                 setUserRole('volunteer')
               } else {
@@ -187,7 +191,7 @@ export default function DashboardPage() {
             Olá, {user?.user_metadata?.name || user?.email || 'Usuário'}! 👋
           </h1>
           <p className="text-gray-600">
-            Bem-vindo ao seu dashboard. Aqui você pode gerenciar suas atividades e acompanhar o progresso.
+            Bem-vindo à sua página inicial. Aqui você pode gerenciar suas atividades e acompanhar o progresso.
           </p>
         </div>
 

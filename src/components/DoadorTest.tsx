@@ -128,7 +128,7 @@ export default function DoadorTest() {
           <h3 className="font-semibold text-gray-900 mb-2">Status dos Links:</h3>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span>Dashboard</span>
+              <span>Início</span>
               <span className={`px-2 py-1 rounded text-xs ${
                 testResults.userRole === 'donor' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
               }`}>

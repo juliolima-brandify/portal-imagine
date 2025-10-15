@@ -8,7 +8,7 @@ export default function SidebarLinkTest() {
   const pathname = usePathname()
   
   const testLinks = [
-    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/dashboard', label: 'Início' },
     { href: '/projetos', label: 'Projetos' },
     { href: '/doacoes', label: 'Doações' },
     { href: '/perfil', label: 'Perfil' }

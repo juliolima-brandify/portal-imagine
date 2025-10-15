@@ -1,10 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { getProjects, getDonations } from '@/lib/database'
 
 import ExportDropdown from '@/components/ExportDropdown'
+import DonationTrendChart from '@/components/DonationTrendChart'
+import DateRangePickerWithPresets, { PresetId } from '@/components/DateRangePicker'
 import type { User } from '@supabase/supabase-js'
 
 // Estrutura para dados reais
@@ -15,7 +18,8 @@ const initialReports = {
     activeProjects: 0,
     completedProjects: 0,
     monthlyGrowth: 0,
-    averageDonation: 0
+    averageDonation: 0,
+    totalVolunteers: 0
   },
   monthlyData: [] as any[],
   topProjects: [] as any[],
@@ -28,8 +32,14 @@ export default function AdminRelatoriosPage() {
   const [user, setUser] = useState<User | null>(null)
   // Loading removido
   const [reports, setReports] = useState(initialReports)
-  const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month')
+  const [dateStart, setDateStart] = useState<Date | undefined>(undefined)
+  const [dateEnd, setDateEnd] = useState<Date | undefined>(undefined)
+  const [presetId, setPresetId] = useState<string>('custom')
   const [selectedReport, setSelectedReport] = useState<'overview' | 'donations' | 'projects' | 'donors'>('overview')
+  const [projects, setProjects] = useState<any[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all')
+  const [topDonors, setTopDonors] = useState<any[]>([])
+  const chartImageRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     const getUser = async () => {
@@ -78,7 +88,177 @@ export default function AdminRelatoriosPage() {
     return new Date(dateString).toLocaleDateString('pt-BR')
   }
 
-  // Loading removido - página carrega diretamente
+  // Carregar dados dinâmicos do banco
+  useEffect(() => {
+    const loadReports = async () => {
+      try {
+        const [projectsData, donations] = await Promise.all([
+          getProjects(),
+          getDonations()
+        ])
+        // Contar voluntários (profiles.role = 'volunteer')
+        let totalVolunteers = 0
+        try {
+          const { data: vols } = await supabase
+            .from('profiles')
+            .select('id, role')
+            .eq('role', 'volunteer')
+          totalVolunteers = vols?.length || 0
+        } catch (e) {
+          totalVolunteers = 0
+        }
+
+
+        setProjects(projectsData)
+
+        // Determinar intervalo de datas conforme período
+        const startDate = dateStart
+        const endDate = dateEnd || new Date()
+
+        // Filtrar por projeto e data
+        let filteredDonations = selectedProjectId === 'all'
+          ? donations
+          : donations.filter((d: any) => d.project_id === selectedProjectId)
+        if (startDate) {
+          filteredDonations = filteredDonations.filter((d: any) => new Date(d.created_at) >= startDate!)
+        }
+        if (endDate) {
+          filteredDonations = filteredDonations.filter((d: any) => new Date(d.created_at) <= endDate!)
+        }
+
+        const activeProjects = projectsData.filter((p: any) => p.status === 'active')
+        const completedProjects = projectsData.filter((p: any) => p.status === 'completed')
+        const completedDonations = filteredDonations.filter((d: any) => d.status === 'completed')
+
+        const totalDonations = completedDonations.reduce((sum: number, d: any) => sum + d.amount, 0)
+        const totalDonors = new Set(completedDonations.map((d: any) => d.user_id).filter(Boolean)).size
+        const avgDonation = completedDonations.length > 0 ? totalDonations / completedDonations.length : 0
+
+        // Dados do período para o gráfico
+        // Preenchimento de lacunas conforme intervalo
+        const fillHours = () => Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2,'0')}h`)
+        const fillDays = () => {
+          const labels: string[] = []
+          const cur = new Date(startDate || new Date())
+          cur.setHours(0,0,0,0)
+          const last = new Date(endDate)
+          last.setHours(23,59,59,999)
+          while (cur <= last) {
+            labels.push(`${String(cur.getDate()).padStart(2,'0')}/${String(cur.getMonth()+1).padStart(2,'0')}`)
+            cur.setDate(cur.getDate()+1)
+          }
+          return labels
+        }
+        const fillMonths = () => {
+          const s = startDate || new Date()
+          const labels: string[] = []
+          const cur = new Date(s.getFullYear(), s.getMonth(), 1)
+          const last = new Date(endDate.getFullYear(), endDate.getMonth(), 1)
+          while (cur <= last) {
+            labels.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`)
+            cur.setMonth(cur.getMonth()+1)
+          }
+          return labels
+        }
+
+        // Determinar granularidade baseado no intervalo
+        const diffDays = startDate && endDate ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) : 30
+        
+        let labels: string[] = []
+        if (diffDays <= 1) {
+          // 1 dia ou menos: por hora
+          labels = fillHours()
+        } else if (diffDays > 90) {
+          // Mais de 90 dias: por mês
+          labels = fillMonths()
+        } else {
+          // Entre 2 e 90 dias: por dia
+          labels = fillDays()
+        }
+
+        const buckets = new Map<string, number>(labels.map(l => [l, 0]))
+        completedDonations.forEach((d: any) => {
+          const dt = new Date(d.created_at)
+          if (dt < (startDate || new Date()) || dt > endDate) return
+          let key = ''
+          if (diffDays <= 1) {
+            key = `${String(dt.getHours()).padStart(2,'0')}h`
+          } else if (diffDays > 90) {
+            key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`
+          } else {
+            key = `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}`
+          }
+          buckets.set(key, (buckets.get(key) || 0) + d.amount)
+        })
+        const monthlyData = labels.map(label => ({ 
+          month: diffDays > 90 ? label.split('-').reverse().join('/') : label, 
+          donations: buckets.get(label) || 0 
+        }))
+
+        // Top projects
+        const byProject = new Map<string, { amount: number, donors: Set<string> }>()
+        completedDonations.forEach((d: any) => {
+          const key = d.project_id
+          if (!byProject.has(key)) byProject.set(key, { amount: 0, donors: new Set() })
+          const agg = byProject.get(key)!
+          agg.amount += d.amount
+          if (d.user_id) agg.donors.add(d.user_id)
+        })
+        const topProjects = projectsData
+          .map((p: any) => {
+            const agg = byProject.get(p.id)
+            const amount = agg?.amount || 0
+            const donors = agg ? agg.donors.size : 0
+            const progress = p.target_amount ? Math.round(Math.min((p.current_amount / p.target_amount) * 100, 100)) : 0
+            return { name: p.title, amount, donors, progress }
+          })
+          .sort((a: any, b: any) => b.amount - a.amount)
+          .slice(5)
+
+        // Top Doadores (com perfil quando disponível)
+        const byDonor = new Map<string, { amount: number, count: number }>()
+        completedDonations.forEach((d: any) => {
+          const key = d.user_id || `anon-${d.id}`
+          if (!byDonor.has(key)) byDonor.set(key, { amount: 0, count: 0 })
+          const agg = byDonor.get(key)!
+          agg.amount += d.amount
+          agg.count += 1
+        })
+        const donorsArray = Array.from(byDonor.entries())
+          .map(([userId, info]) => ({ userId, ...(info as any) }))
+          .sort((a: any, b: any) => b.amount - a.amount)
+          .slice(0, 5)
+        setTopDonors(donorsArray)
+
+        setReports({
+          overview: {
+            totalDonations,
+            totalDonors,
+            activeProjects: activeProjects.length,
+            completedProjects: completedProjects.length,
+            monthlyGrowth: 0,
+            averageDonation: avgDonation,
+            totalVolunteers
+          },
+          monthlyData,
+          topProjects,
+          donorSegments: [],
+          paymentMethods: [],
+          recentDonations: completedDonations.slice(0, 10).map(d => ({
+            id: d.id,
+            donor: d.anonymous ? 'Anônimo' : (d.user_id || 'Usuário'),
+            project: d.project_id,
+            amount: d.amount,
+            date: d.created_at
+          }))
+        })
+      } catch (e) {
+        // Mantém estado inicial silenciosamente
+      }
+    }
+
+    loadReports()
+  }, [selectedProjectId, dateStart, dateEnd, presetId])
 
   // Verificação de autenticação removida - gerenciada pelo layout
 
@@ -99,7 +279,7 @@ export default function AdminRelatoriosPage() {
             </div>
             <div className="mt-4 sm:mt-0">
               <ExportDropdown 
-                data={reports} 
+                data={{ ...reports, __chartImage: chartImageRef.current, __chartCaption: (dateStart && dateEnd) ? `Período: ${new Date(dateStart).toLocaleDateString('pt-BR')} – ${new Date(dateEnd).toLocaleDateString('pt-BR')}` : undefined }} 
                 filename="relatorio_completo"
               />
             </div>
@@ -110,19 +290,16 @@ export default function AdminRelatoriosPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
           <div className="flex flex-col lg:flex-row gap-6">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Período de Análise
-              </label>
-              <select
-                className="input-modern w-full"
-                value={selectedPeriod}
-                onChange={(e) => setSelectedPeriod(e.target.value as any)}
-              >
-                <option value="week">Última semana</option>
-                <option value="month">Último mês</option>
-                <option value="quarter">Último trimestre</option>
-                <option value="year">Último ano</option>
-              </select>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Período de Análise</label>
+              <DateRangePickerWithPresets
+                start={dateStart ?? undefined}
+                end={dateEnd ?? undefined}
+                onChange={({ start, end, presetId }) => {
+                  setDateStart(start)
+                  setDateEnd(end)
+                  setPresetId(presetId)
+                }}
+              />
             </div>
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -137,6 +314,21 @@ export default function AdminRelatoriosPage() {
                 <option value="donations">Análise de Doações</option>
                 <option value="projects">Performance de Projetos</option>
                 <option value="donors">Comportamento de Doadores</option>
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filtrar por Projeto
+              </label>
+              <select
+                className="input-modern w-full"
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+              >
+                <option value="all">Todos os Projetos</option>
+                {projects.map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -200,6 +392,22 @@ export default function AdminRelatoriosPage() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between">
                 <div>
+                  <p className="text-sm font-medium text-gray-600 mb-1">Voluntários</p>
+                  <p className="text-2xl font-bold text-purple-600">
+                    {reports.overview.totalVolunteers}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A7 7 0 0112 15a7 7 0 016.879 2.804M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center justify-between">
+                <div>
                   <p className="text-sm font-medium text-gray-600 mb-1">Projetos Concluídos</p>
                   <p className="text-2xl font-bold text-purple-600">
                     {reports.overview.completedProjects}
@@ -239,7 +447,7 @@ export default function AdminRelatoriosPage() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  Arrecadação Mensal
+                  Evolução de Arrecadação
                 </h3>
                 <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
                   <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -247,26 +455,12 @@ export default function AdminRelatoriosPage() {
                   </svg>
                 </div>
               </div>
-              <div className="space-y-4">
-                {reports.monthlyData.map((data, index) => (
-                  <div key={data.month} className="flex items-center">
-                    <div className="w-12 text-sm text-gray-600">{data.month}</div>
-                    <div className="flex-1 mx-4">
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                          style={{ 
-                            width: `${(data.donations / Math.max(...reports.monthlyData.map(d => d.donations))) * 100}%` 
-                          }}
-                        ></div>
-                      </div>
-                    </div>
-                    <div className="w-20 text-sm text-gray-900 text-right">
-                      {formatCurrency(data.donations)}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <DonationTrendChart
+                labels={reports.monthlyData.map(d => d.month)}
+                values={reports.monthlyData.map(d => d.donations)}
+                title="Evolução de Arrecadação"
+                onChartReady={(getter) => { chartImageRef.current = getter?.() }}
+              />
             </div>
 
             {/* Top Projects */}
@@ -377,6 +571,31 @@ export default function AdminRelatoriosPage() {
             </div>
           </div>
         )}
+
+        {/* Top Doadores */}
+        <div className="card p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Top Doadores</h3>
+          </div>
+          {topDonors.length === 0 ? (
+            <p className="text-sm text-gray-500">Nenhum doador encontrado</p>
+          ) : (
+            <div className="space-y-3">
+              {topDonors.map((d, idx) => (
+                <div key={d.userId} className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(d.userId)}`} alt="Avatar" className="w-8 h-8 rounded-full" />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{d.userId.startsWith('anon-') ? 'Anônimo' : d.userId}</div>
+                      <div className="text-xs text-gray-500">{d.count} doações</div>
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-gray-900">R$ {d.amount.toLocaleString('pt-BR')}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Recent Donations */}
         <div className="card p-6">

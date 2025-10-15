@@ -19,7 +19,6 @@ export default function ProjetosPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [activeTab, setActiveTab] = useState<'all' | 'my-projects'>('all')
   const [user, setUser] = useState<any>(null)
 
   useEffect(() => {
@@ -60,21 +59,14 @@ export default function ProjetosPage() {
     loadData()
   }, [])
 
-  // Determinar quais projetos mostrar baseado na aba ativa
+  // Determinar "Meus Projetos": doações concluídas e favoritos
   const currentProjects = (() => {
-    switch (activeTab) {
-      case 'my-projects':
-        // Projetos que o usuário apoiou (doações concluídas) + projetos onde é voluntário
-        const supportedProjectIds = donations
-          .filter(donation => donation.status === 'completed')
-          .map(donation => donation.project_id)
-        const uniqueSupportedIds = Array.from(new Set(supportedProjectIds))
-        
-        const allMyProjectIds = Array.from(new Set([...uniqueSupportedIds]))
-        return projects.filter(project => allMyProjectIds.includes(project.id))
-      default:
-        return projects
-    }
+    const supportedProjectIds = donations
+      .filter(donation => donation.status === 'completed')
+      .map(donation => donation.project_id)
+    const favoriteProjectIds = favorites.map(fav => fav.project_id)
+    const allMyProjectIds = Array.from(new Set([...supportedProjectIds, ...favoriteProjectIds]))
+    return projects.filter(project => allMyProjectIds.includes(project.id))
   })()
 
   const filteredProjects = selectedCategory === 'all' 
@@ -169,56 +161,21 @@ export default function ProjetosPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        {/* Page Header - Seguindo padrão Admin */}
+        {/* Page Header - Seguindo padrão Admin */
+        }
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                Projetos
+                Meus Projetos
           </h1>
               <p className="mt-1 text-sm text-gray-500">
-            Transforme vidas com sua doação. Escolha um projeto e faça a diferença hoje mesmo!
+            Aqui você vê apenas os projetos dos quais você faz parte.
           </p>
             </div>
           </div>
         </div>
 
-        {/* Tabs - Seguindo padrão Admin */}
-        <div className="mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setActiveTab('all')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'all'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Todos os Projetos ({projects.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('my-projects')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'my-projects'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Meus Projetos ({(() => {
-                  if (!user) return 0
-                  const supportedProjectIds = donations
-                    .filter(d => d.status === 'completed')
-                    .map(d => d.project_id)
-                  const uniqueSupportedIds = Array.from(new Set(supportedProjectIds))
-                  const volunteerProjectIds = ['2', '3'] // Projetos onde é voluntário
-                  const allMyProjectIds = Array.from(new Set([...uniqueSupportedIds, ...volunteerProjectIds]))
-                  return allMyProjectIds.length
-                })()})
-              </button>
-            </nav>
-          </div>
-        </div>
 
         {/* Filters - Seguindo padrão Admin */}
         <div className="mb-6">
@@ -258,20 +215,14 @@ export default function ProjetosPage() {
                   </svg>
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {activeTab === 'my-projects' ? 'Nenhum projeto ainda' : 'Nenhum projeto encontrado'}
+              Nenhum projeto ainda
                 </h3>
                 <p className="text-gray-600 mb-6">
-              {activeTab === 'my-projects' 
-                ? 'Faça sua primeira doação ou se inscreva como voluntário para ver seus projetos aqui.'
-                : 'Tente ajustar os filtros de categoria ou explore outros projetos.'
-              }
+              Faça sua primeira doação ou favorite um projeto para vê-lo aqui.
                 </p>
-                <button
-                  onClick={() => setActiveTab('all')}
-                  className="btn-primary"
-                >
-              {activeTab === 'my-projects' ? 'Ver Projetos Disponíveis' : 'Ver Todos os Projetos'}
-                </button>
+                <a href="https://imagineinstituto.com/projetos" target="_blank" rel="noopener noreferrer" className="btn-primary">
+                  Explorar projetos no site principal
+                </a>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -297,7 +248,7 @@ export default function ProjetosPage() {
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[project.status as keyof typeof statusColors]}`}>
                         {statusLabels[project.status as keyof typeof statusLabels]}
                       </span>
-                      {activeTab === 'my-projects' && (
+                      {true && (
                         <>
                       {userDonatedToProject && (
                             <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
@@ -310,11 +261,6 @@ export default function ProjetosPage() {
                             </span>
                           )}
                         </>
-                      )}
-                      {activeTab === 'all' && userDonatedToProject && (
-                        <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                          Você apoiou
-                        </span>
                       )}
                     </div>
                     <div className="absolute top-4 right-4 flex items-center space-x-2">
@@ -423,13 +369,13 @@ export default function ProjetosPage() {
                         Ver Detalhes
                       </Link>
 
-                          {/* Ver Relatórios - Sempre presente */}
-                          <Link
-                            href={`/projetos/${project.id}/relatorios`}
-                            className="w-full btn-secondary text-center block"
-                          >
-                            Ver Relatórios
-                          </Link>
+                      {/* Ver Relatórios - Sempre presente */}
+                      <Link
+                        href={`/projetos/${project.id}/relatorios`}
+                        className="w-full btn-secondary text-center block"
+                      >
+                        Ver Relatórios
+                      </Link>
 
                           {/* Seja Voluntário - Apenas para doadores (não voluntários) */}
                           {!isVolunteerForProject && (

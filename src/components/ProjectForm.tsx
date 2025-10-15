@@ -78,6 +78,7 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
   const [locationInput, setLocationInput] = useState(formData.location || '')
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
   const [filteredStates, setFilteredStates] = useState<string[]>([])
+  const [activeLinksTab, setActiveLinksTab] = useState<'framer' | 'checkout' | 'embed'>('framer')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -387,163 +388,184 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
               />
             </div>
 
-            {/* URL do Projeto Framer */}
+            {/* Links e incorporações - abas */}
             <div>
-              <label htmlFor="framer_project_url" className="block text-sm font-medium text-gray-700 mb-2">
-                URL do Projeto Framer *
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  id="framer_project_url"
-                  name="framer_project_url"
-                  value={formData.framer_project_url}
-                  onChange={handleChange}
-                  className="input-modern flex-1"
-                  placeholder="https://imagineinstituto.com/projetos/ID_DO_PROJETO"
-                  required
-                />
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (formData.framer_project_url) {
-                        window.open(formData.framer_project_url, '_blank')
-                      }
-                    }}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Ir para"
-                    disabled={!formData.framer_project_url}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (formData.framer_project_url) {
-                        navigator.clipboard.writeText(formData.framer_project_url)
-                      }
-                    }}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Copiar"
-                    disabled={!formData.framer_project_url}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
-                </div>
+              <div className="flex items-center gap-2 border-b border-gray-200 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setActiveLinksTab('framer')}
+                  className={`px-3 py-2 text-sm font-medium rounded-t ${activeLinksTab === 'framer' ? 'bg-white border border-gray-200 border-b-white text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Projeto URL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveLinksTab('checkout')}
+                  className={`px-3 py-2 text-sm font-medium rounded-t ${activeLinksTab === 'checkout' ? 'bg-white border border-gray-200 border-b-white text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Checkout URL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveLinksTab('embed')}
+                  className={`px-3 py-2 text-sm font-medium rounded-t ${activeLinksTab === 'embed' ? 'bg-white border border-gray-200 border-b-white text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Embed do Checkout
+                </button>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Link para a página detalhada do projeto no site principal (Framer)
-              </p>
-            </div>
 
-            {/* URL do Checkout com Tracking (Automática) */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                URL do Checkout com Tracking
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={formData.id ? generateCheckoutUrl(formData.id, formData.title) : 'Salve o projeto primeiro para gerar a URL'}
-                  className="input-modern flex-1 bg-gray-50"
-                  readOnly
-                />
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const url = formData.id ? generateCheckoutUrl(formData.id, formData.title) : ''
-                      if (url) {
-                        window.open(url, '_blank')
-                      }
-                    }}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Ir para"
-                    disabled={!formData.id}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const url = formData.id ? generateCheckoutUrl(formData.id, formData.title) : ''
-                      if (url) {
-                        navigator.clipboard.writeText(url)
-                      }
-                    }}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Copiar"
-                    disabled={!formData.id}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
+              {activeLinksTab === 'framer' && (
+                <div>
+                  <label htmlFor="framer_project_url" className="block text-sm font-medium text-gray-700 mb-2">
+                    URL do Projeto
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      id="framer_project_url"
+                      name="framer_project_url"
+                      value={formData.framer_project_url}
+                      onChange={handleChange}
+                      className="input-modern flex-1"
+                      placeholder="https://imagineinstituto.com/projetos/SEU-PROJETO"
+                      required
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (formData.framer_project_url) {
+                            window.open(formData.framer_project_url, '_blank')
+                          }
+                        }}
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Abrir no navegador"
+                        disabled={!formData.framer_project_url}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (formData.framer_project_url) {
+                            navigator.clipboard.writeText(formData.framer_project_url)
+                          }
+                        }}
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Copiar URL"
+                        disabled={!formData.framer_project_url}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                URL gerada automaticamente baseada no ID do projeto
-              </p>
-            </div>
+              )}
 
-            {/* Código Embed do Checkout */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Código Embed do Checkout
-              </label>
-              <div className="space-y-2">
-                <textarea
-                  value={formData.id ? `<iframe src="${generateEmbedUrl(formData.id, formData.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : 'Salve o projeto primeiro para gerar o código embed'}
-                  className="input-modern w-full h-24 bg-gray-50 text-sm font-mono resize-none"
-                  readOnly
-                  placeholder="Código embed será gerado automaticamente..."
-                />
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const embedCode = formData.id ? `<iframe src="${generateEmbedUrl(formData.id, formData.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : ''
-                      if (embedCode) {
-                        navigator.clipboard.writeText(embedCode)
-                      }
-                    }}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Copiar"
-                    disabled={!formData.id}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (formData.id) {
-                        const previewUrl = generateEmbedUrl(formData.id, formData.title)
-                        window.open(previewUrl, '_blank')
-                      }
-                    }}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Visualizar"
-                    disabled={!formData.id}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  </button>
+              {activeLinksTab === 'checkout' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    URL do Checkout com Tracking
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.id ? generateCheckoutUrl(formData.id, formData.title) : 'Salve o projeto primeiro para gerar a URL'}
+                      className="input-modern flex-1 bg-gray-50"
+                      readOnly
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = formData.id ? generateCheckoutUrl(formData.id, formData.title) : ''
+                          if (url) {
+                            window.open(url, '_blank')
+                          }
+                        }}
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Abrir no navegador"
+                        disabled={!formData.id}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = formData.id ? generateCheckoutUrl(formData.id, formData.title) : ''
+                          if (url) {
+                            navigator.clipboard.writeText(url)
+                          }
+                        }}
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Copiar URL"
+                        disabled={!formData.id}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Código iframe para incorporar o checkout em sites externos
-              </p>
+              )}
+
+              {activeLinksTab === 'embed' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Código Embed do Checkout
+                  </label>
+                  <div className="space-y-2">
+                    <textarea
+                      value={formData.id ? `<iframe src="${generateEmbedUrl(formData.id, formData.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : 'Salve o projeto primeiro para gerar o código embed'}
+                      className="input-modern w-full h-24 bg-gray-50 text-sm font-mono resize-none"
+                      readOnly
+                      placeholder="Código embed será gerado automaticamente..."
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const embedCode = formData.id ? `<iframe src="${generateEmbedUrl(formData.id, formData.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : ''
+                          if (embedCode) {
+                            navigator.clipboard.writeText(embedCode)
+                          }
+                        }}
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Copiar código"
+                        disabled={!formData.id}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (formData.id) {
+                            const previewUrl = generateEmbedUrl(formData.id, formData.title)
+                            window.open(previewUrl, '_blank')
+                          }
+                        }}
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Visualizar"
+                        disabled={!formData.id}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
           </form>

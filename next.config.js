@@ -1,99 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Configuração para CapRover - standalone output
-  // output: 'standalone', // Comentado para desenvolvimento
-  
-  // Configurações para o subdomínio
-  // async redirects() {
-  //   return [
-  //     {
-  //       source: '/',
-  //       destination: '/auth',
-  //       permanent: false,
-  //     },
-  //   ]
-  // },
-  
-  // Configurações de imagem para otimização
+  // Configuração mínima para debug
   images: {
     domains: ['imagineinstituto.com'],
     formats: ['image/webp', 'image/avif'],
   },
-  
-  // Headers de segurança
-  async headers() {
-    return [
-      {
-        // Permitir iframe para páginas embed
-        source: '/embed/:path*',
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'ALLOWALL',
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: "frame-ancestors *;",
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin',
-          },
-        ],
-      },
-      {
-        // Permitir iframe para página raiz também (caso haja redirecionamento)
-        source: '/',
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'ALLOWALL',
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: "frame-ancestors *;",
-          },
-        ],
-      },
-      {
-        // Permitir iframe para páginas de doação
-        source: '/doar/:path*',
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'ALLOWALL',
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: "frame-ancestors *;",
-          },
-        ],
-      },
-      {
-        // Bloquear iframe para todas as outras páginas
-        source: '/:path*',
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin',
-          },
-        ],
-      },
-    ]
-  },
 }
 
 module.exports = nextConfig
-

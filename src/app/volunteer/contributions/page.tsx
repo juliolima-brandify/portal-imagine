@@ -11,66 +11,48 @@ export default function VolunteerContributionsPage() {
 
   useEffect(() => {
     const getUser = async () => {
-      // Verificar se é modo demo via URL
-      const urlParams = new URLSearchParams(window.location.search)
-      const demoEmail = urlParams.get('demo_email')
-      const roleParam = urlParams.get('role')
-      
-      if (demoEmail === 'volunteer@institutoimagine.org' || roleParam === 'volunteer') {
-        setUser({
-          id: 'demo-volunteer',
-          email: demoEmail || 'volunteer@institutoimagine.org',
-          user_metadata: { name: 'Voluntário Demo' },
-          app_metadata: {},
-          aud: 'authenticated',
-          created_at: new Date().toISOString()
-        } as User)
-        
-        // Mock data para demonstração
-        setContributions([
-          {
-            id: '1',
-            project: 'Educação Digital',
-            hours: 24,
-            date: '2024-01-15',
-            status: 'completed',
-            description: 'Ajuda na configuração de laboratório de informática'
-          },
-          {
-            id: '2',
-            project: 'Saúde Comunitária',
-            hours: 16,
-            date: '2024-01-20',
-            status: 'completed',
-            description: 'Apoio em campanha de vacinação'
-          },
-          {
-            id: '3',
-            project: 'Alimentação Escolar',
-            hours: 12,
-            date: '2024-01-25',
-            status: 'in_progress',
-            description: 'Organização de distribuição de alimentos'
-          }
-        ])
-        setLoading(false)
-        return
-      }
-
-      // Se não for demo, tentar com Supabase
       try {
+        // 1) Priorizar usuário autenticado real
         const { data: { user } } = await supabase.auth.getUser()
-        setUser(user)
-        
         if (user) {
-          // Carregar contribuições do Supabase
-          // TODO: Implementar carregamento real
+          setUser(user)
+          // TODO: Carregar contribuições reais do Supabase
+          setContributions([])
+          setLoading(false)
+          return
         }
+
+        // 2) Sem sessão: checar modo demo via URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const demoEmail = urlParams.get('demo_email')
+        const roleParam = urlParams.get('role')
+        
+        if (demoEmail === 'volunteer@institutoimagine.org' || roleParam === 'volunteer') {
+          setUser({
+            id: 'demo-volunteer',
+            email: demoEmail || 'volunteer@institutoimagine.org',
+            user_metadata: { name: 'Voluntário Demo' },
+            app_metadata: {},
+            aud: 'authenticated',
+            created_at: new Date().toISOString()
+          } as User)
+          
+          // Mock data para demonstração
+          setContributions([
+            { id: '1', project: 'Educação Digital', hours: 24, date: '2024-01-15', status: 'completed', description: 'Ajuda na configuração de laboratório de informática' },
+            { id: '2', project: 'Saúde Comunitária', hours: 16, date: '2024-01-20', status: 'completed', description: 'Apoio em campanha de vacinação' },
+            { id: '3', project: 'Alimentação Escolar', hours: 12, date: '2024-01-25', status: 'in_progress', description: 'Organização de distribuição de alimentos' }
+          ])
+          setLoading(false)
+          return
+        }
+
+        // 3) Sem sessão e sem demo: redirecionar
+        window.location.href = '/auth'
       } catch (error) {
         console.log('Erro ao obter usuário:', error)
-        window.location.href = '/dashboard'
+        window.location.href = '/auth'
       }
-      setLoading(false)
     }
 
     getUser()

@@ -1,22 +1,132 @@
 # Diário de Bordo / Contexto para a IA
 
-## Sessão Atual (05/10/2025)
+## Sessão Atual (15/10/2025)
 
 ### O que foi feito:
-- ✅ Correções importantes no sistema implementadas e deployadas
-- ✅ Redirecionamento inteligente por role (admin/donor/volunteer)
-- ✅ Modal de edição com botão "Salvar" e confirmação
-- ✅ Checkout embedado sem sombra e borda
-- ✅ Fundo branco completo na página de checkout
-- ✅ Container do título e arrecadação com fundo branco
-- ✅ Documentação completa atualizada (5 documentos principais)
-- ✅ Sistema 100% funcional com 33 funcionalidades implementadas
+- ✅ **Perfis Simplificados por Role**
+  - ✅ **Perfil Admin**: Nome, Email, Telefone, Foto, Alterar Senha
+  - ✅ **Perfil Doador/Voluntário**: Detecção dinâmica de role
+  - ✅ **Stats específicos**: Doador (doações) | Voluntário (horas)
+  - ✅ **Redução de 60%**: Campos não essenciais removidos
+  - ✅ **Upload de foto**: Integração Supabase Storage
+  - ✅ **Modal Alterar Senha**: Funcional para admin
+  - ✅ **Removidos do Admin**: Bio, 2FA, Estatísticas extensas, CPF, Endereço
+  - ✅ **Foco**: Apenas funcionalidades essenciais
+- ✅ **Date Range Picker Premium Implementado**
+  - ✅ Design elegante com cores Portal Imagine (#2EB87E)
+  - ✅ Formato "DD MMM YY – DD MMM YY" (ex: "28 Dez 22 – 10 Jan 23")
+  - ✅ Dropdown com 2 colunas (presets + calendário)
+  - ✅ Presets simplificados: Hoje, Ontem, Última semana, Último mês, Último trimestre
+  - ✅ **Feedback visual completo:** hover com fundo cinza, scale 1.05, transições suaves
+  - ✅ **Botão "Aplicar"** para confirmar seleção personalizada
+  - ✅ **Botão "Cancelar"** para descartar mudanças
+  - ✅ **Botão "Limpar"** que desseleciona as datas
+  - ✅ Popover permanece aberto durante interação (não fecha ao clicar dentro)
+  - ✅ **Responsivo:** Posicionamento inteligente (esquerda/direita), colunas empilham em mobile
+  - ✅ **Adaptativo:** 1 mês em mobile, 2 meses em desktop
+  - ✅ Removidas todas as cores azul/roxo padrão
+  - ✅ Hoje destacado com borda verde
+  - ✅ Intervalo com fundo verde claro
+  - ✅ Integrado em Dashboard e Relatórios Admin
+- ✅ **Solução Definitiva para Problemas de Cache do Next.js**
+  - ✅ Script `start-clean.ps1` criado para inicialização limpa
+  - ✅ Comando `npm run dev:clean` adicionado ao package.json
+  - ✅ Configuração webpack otimizada no `next.config.js`
+  - ✅ Cache em memória (type: 'memory') ao invés de filesystem
+  - ✅ Runtime único (runtimeChunk: 'single') para consistência
+  - ✅ Split chunks simplificado para reduzir erros
+  - ✅ IDs de módulos e chunks nomeados para melhor debug
+  - ✅ `.gitignore` atualizado para ignorar caches
+  - ✅ Documentação completa em `README_DEV.md`
+  - ✅ Guia de troubleshooting em `TROUBLESHOOTING_CACHE.md`
+- ✅ **Documentação Atualizada**
+  - ✅ `docs/CHANGELOG_COMPLETO.md` - v2.1.6 com todas as mudanças
+  - ✅ `docs/RESUMO_EXECUTIVO.md` - Data e métricas atualizadas
+  - ✅ `docs/FUNCIONALIDADES_IMPLEMENTADAS.md` - Novas funcionalidades adicionadas
+  - ✅ `README.md` - Versão v2.1.6
+  - ✅ `_contexto.md` - Sessão completa documentada
+
+## Sessão Anterior (14/10/2025)
+
+### O que foi feito:
+- ✅ **Sistema de Exportação de Relatórios 100% Funcional**
+- ✅ Instaladas bibliotecas: jspdf, jspdf-autotable, xlsx
+- ✅ Implementação real de exportação PDF com tabelas formatadas
+- ✅ Implementação real de exportação Excel com ajuste automático
+- ✅ Exportação CSV já funcional, mantida e otimizada
+- ✅ Função especial para processar dados complexos de relatórios
+- ✅ Formatação automática de moedas (R$ X.XXX,XX)
+- ✅ Formatação automática de datas (DD/MM/YYYY)
+- ✅ Separação por seções: Métricas Gerais, Arrecadação Mensal, Top Projetos, Doações Recentes
+- ✅ Documentação completa de testes criada
+- ✅ **Correção do redirecionamento de admin após login**
+- ✅ **Proteção no dashboard genérico para redirecionar admins**
+- ✅ **Simplificação dos Perfis por Role**
+  - ✅ Perfil Admin simplificado: Nome, Email, Telefone, Foto, Alterar Senha
+  - ✅ Perfil Doador/Voluntário com detecção dinâmica de role
+  - ✅ Stats específicos por role (doador: doações | voluntário: horas)
+  - ✅ Removidos campos não essenciais (CPF, endereço, preferências extensas)
+  - ✅ Interface mais limpa e focada em funcionalidades essenciais
 
 ### Principais correções:
-- **Redirecionamento:** Admin → `/admin/dashboard`, Volunteer → `/volunteer/contributions`, Donor → `/dashboard`
-- **Modal edição:** Botão alterado para "Salvar" com confirmação antes de salvar
-- **Checkout visual:** Removido sombra e bordas, fundo totalmente branco
-- **UX/UI:** Consistência visual completa em toda aplicação
+- **Exportação PDF:** Implementação real substituindo simulação
+- **Exportação Excel:** Implementação real substituindo simulação
+- **Processamento de dados:** Função inteligente para estrutura complexa de relatórios
+- **Build:** Compilação 100% sem erros
+- **Tipos TypeScript:** Todos corretos e validados
+- **Redirecionamento Admin:** Função `handleDemoLogin` agora redireciona corretamente por role
+- **Dashboard Admin:** Proteção automática redireciona admins de `/dashboard` para `/admin/dashboard`
+- **Perfil Admin:** Simplificado com apenas funcionalidades essenciais (Bio, 2FA e Estatísticas removidas)
+- **Perfil Doador/Voluntário:** Detecção dinâmica de role com stats específicos por tipo de usuário
+- **Upload de Foto:** Funcional em ambos os perfis com integração ao Supabase Storage
+- **Alterar Senha:** Modal funcional implementado para admin
+
+### Documentação atualizada:
+- `docs/guias/TESTE_EXPORTACAO_RELATORIOS.md` - Guia completo de testes
+- `docs/CHANGELOG_COMPLETO.md` - Nova versão 2.1.5
+- `README.md` - Atualizado com funcionalidades de exportação
+- `_contexto.md` - Sessão atual documentada
+
+### Status atual:
+- **Sistema:** 100% funcional em produção
+- **URL:** https://portal.imagineinstituto.com
+- **Versão:** v2.1.6
+- **Funcionalidades:** 35/35 (100% implementadas)
+- **Bugs conhecidos:** 0
+- **Nova funcionalidade:** Sistema de exportação de relatórios (CSV, PDF, Excel)
+- **Melhoria implementada:** Perfis simplificados por role (Admin, Doador, Voluntário)
+- **Bug corrigido:** Admin agora sempre vê dashboard correto no primeiro acesso
+
+## Sessão Anterior (06/10/2025)
+
+### O que foi feito:
+- ✅ Skeleton loading na listagem de projetos (Admin) e melhoria UX
+- ✅ Botão duplicado removido (mantido "Relatórios do Projeto")
+- ✅ Modal de compartilhamento (Projeto URL, Checkout URL, Embed)
+- ✅ Padronização de abas no formulário de projeto (Projeto URL, Checkout URL, Embed)
+- ✅ Renomeação de "Framer URL" para "Projeto URL"
+- ✅ Barra de progresso oculta quando "Sem meta"
+- ✅ Dashboard/Layouts: prioridade para sessão real sobre demo (admin/doador/voluntário)
+- ✅ Relatórios Admin: filtro por projeto, Top Doadores com avatar, Voluntários totais
+- ✅ **GlobalLayout: busca role da tabela profiles (fix sidebar admin em /perfil)**
+- ✅ **Área do Doador: Página "Projetos" transformada em "Meus Projetos"**
+- ✅ **Filtro inteligente: mostra apenas projetos do usuário (doações + favoritos)**
+- ✅ **CTA para site principal: "Explorar projetos no site principal"**
+- ✅ **Remoção de abas: interface simplificada focada no usuário**
+- ✅ **UX otimizada: foco na experiência personalizada do doador**
+- ✅ **Design System: Botões do modal "Esqueceu a senha" padronizados (btn-primary e btn-outline)**
+
+### Principais correções:
+- **Sessão/Role:** Sessão real tem prioridade e `demo_email` é ignorado quando autenticado
+- **Admin Projetos:** Skeleton de carregamento, estado vazio só sem loading
+- **Cards de Projeto:** Removidas "Estatísticas" duplicadas; ícone "Relatórios" funcional
+- **Compartilhar:** Modal com ações para Projeto/Checkout/Embed
+- **Metas:** Esconder progresso quando sem meta
+- **Doador UX:** Página "Projetos" agora mostra apenas "Meus Projetos" (doações + favoritos)
+- **Navegação:** CTA para explorar novos projetos no site principal
+- **Interface:** Removidas abas desnecessárias, foco na experiência do usuário
+- **Personalização:** Filtro inteligente que mostra apenas projetos relevantes ao doador
+- **Sidebar Admin:** Corrigido bug onde admin via /perfil mostrava sidebar de doador
 
 ### Documentação atualizada:
 - `docs/CHANGELOG_COMPLETO.md` - Histórico completo de implementações
@@ -24,14 +134,18 @@
 - `docs/RESUMO_EXECUTIVO.md` - Visão geral e status atual
 - `docs/GUIA_DEPLOY_PRODUCAO.md` - Processo de deploy
 - `docs/README_PRINCIPAL.md` - Ponto de entrada da documentação
-- `README.md` - Atualizado com status v2.1.1
+- `README.md` - Atualizado com status v2.1.2 (novas funcionalidades de relatórios e UX)
 
 ### Status atual:
 - **Sistema:** 100% funcional em produção
 - **URL:** https://portal.imagineinstituto.com
-- **Versão:** v2.1.1
-- **Funcionalidades:** 33/33 (100% implementadas)
+- **Versão:** v2.1.6
+- **Funcionalidades:** 35/35 (100% implementadas)
 - **Bugs conhecidos:** 0
+- **Novas funcionalidades:** 
+  - Perfis simplificados por role (Admin, Doador, Voluntário)
+  - Date Range Picker Premium (Dashboard e Relatórios Admin)
+  - Solução definitiva para cache do Next.js
 
 ## Sessão Anterior (24/09/2025)
 

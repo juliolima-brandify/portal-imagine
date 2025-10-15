@@ -2,6 +2,10 @@
 // FUNÇÕES DE EXPORTAÇÃO DE DADOS
 // =============================================
 
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import * as XLSX from 'xlsx'
+
 export interface ExportOptions {
   format: 'csv' | 'pdf' | 'excel'
   dateRange?: {
@@ -13,6 +17,8 @@ export interface ExportOptions {
     projectId?: string[]
     userId?: string[]
   }
+  // Opcional: imagem do gráfico para incluir no PDF (data URL base64)
+  chartImage?: string
 }
 
 // =============================================
@@ -58,50 +64,93 @@ export function exportToCSV(data: any[], filename: string): void {
 }
 
 // =============================================
-// EXPORTAÇÃO PDF (Simulada)
+// EXPORTAÇÃO PDF
 // =============================================
 
-export function exportToPDF(data: any[], filename: string, title: string): void {
+export function exportToPDF(data: any[], filename: string, title: string, opts?: { chartImage?: string, chartCaption?: string }): void {
   if (!data || data.length === 0) {
     alert('Nenhum dado para exportar')
     return
   }
 
-  // Simular geração de PDF
-  const reportContent = generatePDFContent(data, title)
-  
-  // Em um cenário real, você usaria uma biblioteca como jsPDF ou Puppeteer
-  // Por enquanto, vamos simular com um alert
-  alert(`PDF "${filename}.pdf" seria gerado com ${data.length} registros.\n\nConteúdo:\n${reportContent.substring(0, 200)}...`)
-  
-  // Simular download
-  console.log('PDF gerado:', {
-    filename: `${filename}.pdf`,
-    records: data.length,
-    content: reportContent
-  })
-}
+  try {
+    const doc = new jsPDF()
+    
+    // Título do relatório
+    doc.setFontSize(16)
+    doc.text(title, 14, 15)
+    
+    // Informações do cabeçalho
+    doc.setFontSize(10)
+    doc.text(`Data de geração: ${new Date().toLocaleDateString('pt-BR')}`, 14, 25)
+    doc.text(`Total de registros: ${data.length}`, 14, 30)
+    
+    let tableStartY = 35
 
-function generatePDFContent(data: any[], title: string): string {
-  const headers = Object.keys(data[0])
-  const content = [
-    `RELATÓRIO: ${title}`,
-    `Data de geração: ${new Date().toLocaleDateString('pt-BR')}`,
-    `Total de registros: ${data.length}`,
-    '',
-    'DADOS:',
-    headers.join(' | '),
-    ...data.slice(0, 10).map(row => 
-      headers.map(header => row[header]).join(' | ')
-    ),
-    data.length > 10 ? `... e mais ${data.length - 10} registros` : ''
-  ].join('\n')
-  
-  return content
+    // Inserir imagem do gráfico se disponível
+    if (opts?.chartImage) {
+      try {
+        const pageWidth = doc.internal.pageSize.getWidth()
+        const left = 14
+        const right = 14
+        const width = pageWidth - left - right
+        const height = 60
+        doc.addImage(opts.chartImage, 'PNG', left, 35, width, height)
+        if (opts.chartCaption) {
+          doc.text(opts.chartCaption, left, 35 + height + 6)
+        }
+        tableStartY = 35 + height + 12
+      } catch (e) {
+        // ignora erro de imagem e continua com tabela
+      }
+    }
+
+    // Extrair cabeçalhos e linhas
+    const headers = Object.keys(data[0])
+    const rows = data.map(row => headers.map(header => {
+      const value = row[header]
+      // Formatar valores
+      if (typeof value === 'number') {
+        return value.toLocaleString('pt-BR')
+      }
+      return value !== null && value !== undefined ? String(value) : ''
+    }))
+    
+    // Gerar tabela
+    autoTable(doc, {
+      head: [headers],
+      body: rows,
+      startY: tableStartY,
+      styles: { 
+        fontSize: 8,
+        cellPadding: 2
+      },
+      headStyles: { 
+        fillColor: [41, 128, 185],
+        textColor: 255,
+        fontStyle: 'bold'
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245]
+      },
+      margin: { top: tableStartY }
+    })
+    
+    // Baixar PDF
+    doc.save(`${filename}.pdf`)
+    
+    console.log('PDF gerado com sucesso:', {
+      filename: `${filename}.pdf`,
+      records: data.length
+    })
+  } catch (error) {
+    console.error('Erro ao gerar PDF:', error)
+    alert('Erro ao gerar PDF. Verifique o console para mais detalhes.')
+  }
 }
 
 // =============================================
-// EXPORTAÇÃO EXCEL (Simulada)
+// EXPORTAÇÃO EXCEL
 // =============================================
 
 export function exportToExcel(data: any[], filename: string): void {
@@ -110,15 +159,35 @@ export function exportToExcel(data: any[], filename: string): void {
     return
   }
 
-  // Simular geração de Excel
-  alert(`Arquivo Excel "${filename}.xlsx" seria gerado com ${data.length} registros.`)
-  
-  // Em um cenário real, você usaria uma biblioteca como xlsx
-  console.log('Excel gerado:', {
-    filename: `${filename}.xlsx`,
-    records: data.length,
-    sheets: ['Dados', 'Resumo', 'Gráficos']
-  })
+  try {
+    // Criar workbook e worksheet
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(data)
+    
+    // Ajustar largura das colunas automaticamente
+    const cols = Object.keys(data[0]).map(key => {
+      const maxLength = Math.max(
+        key.length,
+        ...data.map(row => String(row[key] || '').length)
+      )
+      return { wch: Math.min(maxLength + 2, 50) }
+    })
+    ws['!cols'] = cols
+    
+    // Adicionar worksheet ao workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Dados')
+    
+    // Gerar e baixar arquivo Excel
+    XLSX.writeFile(wb, `${filename}.xlsx`)
+    
+    console.log('Excel gerado com sucesso:', {
+      filename: `${filename}.xlsx`,
+      records: data.length
+    })
+  } catch (error) {
+    console.error('Erro ao gerar Excel:', error)
+    alert('Erro ao gerar Excel. Verifique o console para mais detalhes.')
+  }
 }
 
 // =============================================
@@ -251,19 +320,120 @@ export function exportUsers(users: any[], options: ExportOptions): void {
 // =============================================
 
 export function exportReport(reportData: any, filename: string, options: ExportOptions): void {
-  const exportData = Array.isArray(reportData) ? reportData : [reportData]
+  // Processar dados complexos de relatórios
+  let exportData: any[] = []
+  
+  if (Array.isArray(reportData)) {
+    exportData = reportData
+  } else if (typeof reportData === 'object' && reportData !== null) {
+    // Processar estrutura de relatório complexa
+    exportData = processComplexReportData(reportData)
+  } else {
+    exportData = [reportData]
+  }
+  
+  if (exportData.length === 0) {
+    alert('Nenhum dado disponível para exportar')
+    return
+  }
   
   switch (options.format) {
     case 'csv':
       exportToCSV(exportData, filename)
       break
     case 'pdf':
-      exportToPDF(exportData, filename, 'Relatório Avançado')
+      exportToPDF(
+        exportData,
+        filename,
+        'Relatório Completo - Instituto Imagine',
+        {
+          chartImage: (reportData && reportData.__chartImage) ? reportData.__chartImage : undefined,
+          chartCaption: (reportData && reportData.__chartCaption) ? reportData.__chartCaption : 'Evolução de Arrecadação'
+        }
+      )
       break
     case 'excel':
       exportToExcel(exportData, filename)
       break
   }
+}
+
+// Processar estrutura complexa de relatórios
+function processComplexReportData(reportData: any): any[] {
+  const exportData: any[] = []
+  
+  // Se tiver overview, adicionar métricas gerais
+  if (reportData.overview) {
+    exportData.push({
+      'Seção': 'MÉTRICAS GERAIS',
+      'Métrica': 'Total Arrecadado',
+      'Valor': formatCurrencyForExport(reportData.overview.totalDonations || 0)
+    })
+    exportData.push({
+      'Seção': 'MÉTRICAS GERAIS',
+      'Métrica': 'Total de Doadores',
+      'Valor': reportData.overview.totalDonors || 0
+    })
+    exportData.push({
+      'Seção': 'MÉTRICAS GERAIS',
+      'Métrica': 'Projetos Ativos',
+      'Valor': reportData.overview.activeProjects || 0
+    })
+    exportData.push({
+      'Seção': 'MÉTRICAS GERAIS',
+      'Métrica': 'Projetos Concluídos',
+      'Valor': reportData.overview.completedProjects || 0
+    })
+    exportData.push({
+      'Seção': 'MÉTRICAS GERAIS',
+      'Métrica': 'Total de Voluntários',
+      'Valor': reportData.overview.totalVolunteers || 0
+    })
+    exportData.push({
+      'Seção': 'MÉTRICAS GERAIS',
+      'Métrica': 'Doação Média',
+      'Valor': formatCurrencyForExport(reportData.overview.averageDonation || 0)
+    })
+  }
+  
+  // Adicionar dados mensais
+  if (reportData.monthlyData && Array.isArray(reportData.monthlyData)) {
+    reportData.monthlyData.forEach((item: any) => {
+      exportData.push({
+        'Seção': 'ARRECADAÇÃO MENSAL',
+        'Mês': item.month,
+        'Valor': formatCurrencyForExport(item.donations || 0)
+      })
+    })
+  }
+  
+  // Adicionar top projetos
+  if (reportData.topProjects && Array.isArray(reportData.topProjects)) {
+    reportData.topProjects.forEach((project: any) => {
+      exportData.push({
+        'Seção': 'TOP PROJETOS',
+        'Projeto': project.name,
+        'Valor Arrecadado': formatCurrencyForExport(project.amount || 0),
+        'Doadores': project.donors || 0,
+        'Progresso': `${project.progress || 0}%`
+      })
+    })
+  }
+  
+  // Adicionar doações recentes
+  if (reportData.recentDonations && Array.isArray(reportData.recentDonations)) {
+    reportData.recentDonations.forEach((donation: any) => {
+      exportData.push({
+        'Seção': 'DOAÇÕES RECENTES',
+        'Doador': donation.donor || 'N/A',
+        'Projeto': donation.project || 'N/A',
+        'Valor': formatCurrencyForExport(donation.amount || 0),
+        'Data': donation.date ? new Date(donation.date).toLocaleDateString('pt-BR') : 'N/A'
+      })
+    })
+  }
+  
+  return exportData
 }
 
 // =============================================

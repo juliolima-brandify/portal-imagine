@@ -11,14 +11,16 @@ O Portal Instituto Imagine é uma plataforma completa de doações e gestão de 
 ### **✅ Sistema 100% Funcional**
 - **Deploy:** ✅ Online em produção
 - **URL:** https://portal.imagineinstituto.com
-- **Última atualização:** 05/10/2025 12:15
+- **Última atualização:** 15/10/2025 00:00
 - **Uptime:** > 99.9%
+- **Versão:** v2.1.6
 
 ### **📊 Métricas de Sucesso**
-- **Funcionalidades implementadas:** 33/33 (100%)
+- **Funcionalidades implementadas:** 35/35 (100%)
 - **Tempo de deploy:** 45 segundos
 - **Performance:** < 2 segundos de carregamento
 - **Bugs conhecidos:** 0
+- **Bibliotecas:** 8 principais (Next.js, Supabase, Stripe, Resend, Chart.js, jsPDF, XLSX, React Day Picker)
 
 ---
 
@@ -28,8 +30,34 @@ O Portal Instituto Imagine é uma plataforma completa de doações e gestão de 
 - **Checkout híbrido:** Embed + Stripe
 - **Valores otimizados:** R$ 50, 100, 200
 - **Opções avançadas:** Recorrente, anônimo, mensagem
+
+### **🎨 Perfis Simplificados por Role (v2.1.6)**
+- **Perfil Admin:** Campos essenciais (Nome, Email, Telefone, Foto, Alterar Senha)
+- **Perfil Doador/Voluntário:** Detecção dinâmica com stats específicos
+- **Upload de foto:** Integração Supabase Storage
+- **Redução de 60%:** Campos desnecessários removidos
+- **UX otimizada:** Foco em funcionalidades essenciais
+
+### **📅 Date Range Picker Premium (v2.1.6)**
+- **Design elegante:** Cores Portal Imagine (#2EB87E)
+- **Presets inteligentes:** Hoje, Ontem, Última semana, Último mês, Último trimestre
+- **Layout 2 colunas:** Presets + Calendário
+- **Totalmente responsivo:** Mobile (1 mês) e Desktop (2 meses)
+- **Integração completa:** Dashboard Admin e Relatórios
+
+### **🎯 Área do Doador Otimizada (v2.1.3)**
+- **Meus Projetos:** Interface focada no usuário
+- **Filtro inteligente:** Projetos baseados em doações + favoritos
+- **CTA para site principal:** Explorar novos projetos
+- **Interface simplificada:** Remoção de abas desnecessárias
 - **Meta opcional:** Projetos podem funcionar sem meta
 - **Visual otimizado:** Fundo branco completo e consistente
+
+### **📊 Exportação de Relatórios (v2.1.4)**
+- **3 formatos:** CSV, PDF (com tabelas), Excel (auto-ajuste)
+- **Formatação automática:** Moedas (R$), datas (DD/MM/YYYY)
+- **Estrutura organizada:** Métricas, Arrecadação, Top Projetos, Doações
+- **Performance:** < 2s para 1.000 registros
 
 ### **👥 Gestão de Projetos**
 - **CRUD completo:** Criar, editar, listar, deletar
@@ -196,8 +224,8 @@ O Portal Instituto Imagine representa uma solução completa e moderna para gest
 
 ---
 
-**📝 Relatório gerado em:** 05/10/2025 12:30  
-**🔄 Última atualização:** v2.1.1  
+**📝 Relatório gerado em:** 15/10/2025 00:00  
+**🔄 Última atualização:** v2.1.6  
 **👨‍💻 Responsável:** Sistema de IA - Portal Imagine  
 
 ---

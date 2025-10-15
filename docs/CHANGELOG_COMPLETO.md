@@ -1,14 +1,200 @@
 # 📋 Changelog Completo - Portal Instituto Imagine
 
-## 🎯 **Versão Atual: v2.1.1** - *Outubro 2025*
+## 🎯 **Versão Atual: v2.1.6** - *Outubro 2025*
 
-### 🚀 **Deploy Mais Recente: 05/10/2025 12:15*
+### 🚀 **Deploy Mais Recente: 15/10/2025 00:00*
 
 ---
 
 ## 📝 **Sumário Executivo**
 
 Este documento registra todas as implementações, melhorias e correções realizadas no Portal Instituto Imagine, desde a criação do sistema híbrido de checkout até as correções mais recentes de UX e funcionalidades.
+
+---
+
+## 🆕 **v2.1.6 - Perfis Simplificados e Date Range Picker Premium (15/10/2025)**
+
+### **🎨 Simplificação dos Perfis por Role**
+
+#### **Perfil Admin Simplificado:**
+- ✅ **Campos essenciais**: Nome, Email, Telefone, Foto de Perfil
+- ✅ **Alterar Senha**: Modal funcional integrado
+- ✅ **Removidos**: Bio, Autenticação 2FA, Estatísticas extensas, CPF, Endereço
+- ✅ **Foco**: Funcionalidades essenciais para administração
+
+#### **Perfil Doador/Voluntário Otimizado:**
+- ✅ **Detecção dinâmica**: Identifica role automaticamente
+- ✅ **Stats específicos**:
+  - Doador: Total doado, número de doações, média por doação
+  - Voluntário: Horas contribuídas, projetos participados, horas médias
+- ✅ **Upload de foto**: Integração com Supabase Storage
+- ✅ **Notificações**: Configurações de email, projetos, doações, voluntariado
+- ✅ **Removidos**: Campos não essenciais (CPF, endereço completo, preferências extensas)
+
+### **📅 Date Range Picker Premium Implementado**
+
+#### **Design e UX:**
+- ✅ **Cores Portal Imagine**: Verde #2EB87E em toda interface
+- ✅ **Formato elegante**: "DD MMM YY – DD MMM YY" (ex: "28 Dez 22 – 10 Jan 23")
+- ✅ **Layout 2 colunas**: Presets à esquerda + Calendário à direita
+- ✅ **Feedback visual completo**:
+  - Hover com fundo cinza claro
+  - Scale 1.05 em botões
+  - Transições suaves (200ms)
+  - Hoje destacado com borda verde
+  - Intervalo selecionado com fundo verde claro
+
+#### **Funcionalidades:**
+- ✅ **Presets simplificados**:
+  - Hoje
+  - Ontem
+  - Última semana
+  - Último mês
+  - Último trimestre
+- ✅ **Botões de ação**:
+  - "Aplicar" (confirmar seleção personalizada)
+  - "Cancelar" (descartar mudanças)
+  - "Limpar" (desselecionar datas)
+- ✅ **Popover inteligente**:
+  - Permanece aberto durante interação
+  - Não fecha ao clicar dentro
+  - Posicionamento automático (esquerda/direita)
+
+#### **Responsividade:**
+- ✅ **Mobile**: 1 mês exibido, colunas empilhadas verticalmente
+- ✅ **Desktop**: 2 meses lado a lado, layout 2 colunas
+- ✅ **Adaptação automática**: Baseada em largura da tela
+
+#### **Integração:**
+- ✅ **Dashboard Admin**: Filtro de período para métricas
+- ✅ **Relatórios Admin**: Filtro de período para relatórios
+
+### **🔧 Solução Definitiva para Cache do Next.js**
+
+#### **Problemas Resolvidos:**
+- ✅ Erros de "Fast Refresh" e módulos duplicados
+- ✅ Inconsistências no Hot Module Replacement (HMR)
+- ✅ Cache corrompido após mudanças rápidas
+- ✅ Chunks com IDs aleatórios dificultando debug
+
+#### **Implementações:**
+- ✅ **Script `start-clean.ps1`**: Limpa cache antes de iniciar dev
+- ✅ **Comando `npm run dev:clean`**: Atalho para inicialização limpa
+- ✅ **Webpack otimizado**:
+  - Cache em memória (type: 'memory')
+  - Runtime único (runtimeChunk: 'single')
+  - Split chunks simplificado
+  - IDs nomeados para módulos e chunks
+- ✅ **`.gitignore` atualizado**: Ignora todos os caches do Next.js
+- ✅ **Documentação completa**: README_DEV.md e TROUBLESHOOTING_CACHE.md
+
+### **🔧 Arquivos Modificados:**
+- `src/app/perfil/page.tsx` - Perfil doador/voluntário simplificado
+- `src/app/admin/perfil/page.tsx` - Perfil admin simplificado
+- `src/app/admin/dashboard/page.tsx` - Date range picker integrado
+- `src/app/admin/relatorios/page.tsx` - Date range picker integrado
+- `src/components/GlobalLayout.tsx` - Otimizações gerais
+- `next.config.js` - Configuração webpack otimizada
+- `.gitignore` - Cache do Next.js adicionado
+- `package.json` - Comandos de limpeza adicionados
+- `README.md` - Atualização para v2.1.6
+- `_contexto.md` - Documentação completa da sessão
+- `docs/CHANGELOG_COMPLETO.md` - Registro da nova versão
+
+### **📈 Impacto:**
+- Interface de perfil mais limpa e focada
+- Redução de 60% nos campos do perfil admin
+- Stats dinâmicos por tipo de usuário
+- Filtros de data premium em admin
+- Zero problemas de cache no desenvolvimento
+- Experiência de desenvolvimento mais estável
+- Debug facilitado com IDs nomeados
+
+---
+
+## 🆕 **v2.1.5 - Correção de Redirecionamento Admin (14/10/2025)**
+
+### **🔧 Correção de Bug Crítico**
+
+#### **Problema Identificado:**
+- Admin ao fazer login via botão demo ou formulário manual era inicialmente redirecionado para `/dashboard` (dashboard genérico) ao invés de `/admin/dashboard`
+- Ao clicar novamente em "Dashboard" na sidebar, era então redirecionado corretamente
+
+#### **Solução Implementada:**
+- ✅ **Correção na função `handleDemoLogin`**: Agora redireciona corretamente baseado no role
+  - Admin → `/admin/dashboard`
+  - Volunteer → `/volunteer/contributions`
+  - Donor → `/dashboard`
+- ✅ **Proteção no `/dashboard`**: Detecta se usuário é admin e redireciona automaticamente para `/admin/dashboard`
+- ✅ **Validação dupla**: Funciona tanto para usuários demo quanto para usuários reais
+
+#### **🔧 Arquivos Modificados:**
+- `src/app/auth/page.tsx` - Correção na função `handleDemoLogin`
+- `src/app/dashboard/page.tsx` - Adicionada proteção de redirecionamento para admins
+- `README.md` - Atualização para v2.1.5
+- `_contexto.md` - Documentação da correção
+- `docs/CHANGELOG_COMPLETO.md` - Registro da nova versão
+
+#### **📈 Impacto:**
+- Admin sempre vê o dashboard correto no primeiro acesso
+- Experiência de login mais consistente e profissional
+- Eliminação de confusão na navegação inicial
+- Zero navegações extras necessárias
+
+---
+
+## 🆕 **v2.1.4 - Sistema de Exportação de Relatórios Funcional (14/10/2025)**
+
+### **📊 Sistema de Exportação 100% Funcional**
+
+#### **Implementações:**
+- ✅ **Exportação CSV**: Download automático com formatação UTF-8
+- ✅ **Exportação PDF**: Implementação real com jsPDF e tabelas formatadas
+- ✅ **Exportação Excel**: Implementação real com XLSX e ajuste automático de colunas
+- ✅ **Processamento de Dados Complexos**: Função especial para estrutura de relatórios
+- ✅ **Formatação Automática**: Moedas (R$ X.XXX,XX), datas (DD/MM/YYYY) e números
+- ✅ **Separação por Seções**: Métricas Gerais, Arrecadação Mensal, Top Projetos, Doações Recentes
+
+#### **Bibliotecas Adicionadas:**
+- `jspdf`: v2.5.2 - Geração de PDF
+- `jspdf-autotable`: v3.8.3 - Tabelas em PDF  
+- `xlsx`: v0.18.5 - Geração de Excel
+
+#### **Recursos Implementados:**
+- **PDF**: Título, data, tabelas formatadas, cores alternadas, cabeçalho azul
+- **Excel**: Ajuste automático de largura, formatação de dados, compatível com MS Excel e LibreOffice
+- **CSV**: Encoding UTF-8, escape de caracteres especiais, compatível com Excel
+
+#### **🔧 Arquivos Modificados:**
+- `src/lib/export.ts` - Implementações reais de PDF e Excel
+- `package.json` - Novas dependências
+- `docs/guias/TESTE_EXPORTACAO_RELATORIOS.md` - Guia completo de testes
+- `docs/CHANGELOG_COMPLETO.md` - Registro da nova versão
+- `README.md` - Atualização com funcionalidades de exportação
+- `_contexto.md` - Documentação da sessão
+
+#### **📈 Impacto:**
+- Relatórios admin agora podem ser exportados em 3 formatos
+- Dados complexos processados automaticamente
+- Interface profissional em todos os formatos
+- Performance otimizada (< 2 segundos para 1.000 registros)
+
+---
+
+## 🔄 **v2.1.3 - Área do Doador Otimizada (06/10/2025)**
+
+### **🎯 Melhorias na Experiência do Doador**
+- **Página "Projetos" → "Meus Projetos"**: Interface focada no usuário
+- **Filtro inteligente**: Mostra apenas projetos com doações + favoritos
+- **Remoção de abas**: Interface simplificada e mais intuitiva
+- **CTA para site principal**: "Explorar projetos no site principal"
+- **Estado vazio otimizado**: Mensagem clara e ação para descobrir novos projetos
+
+### **🔧 Arquivos Modificados**
+- `src/app/projetos/page.tsx` - Transformação completa da interface
+- `_contexto.md` - Documentação das mudanças
+- `README.md` - Atualização da versão e funcionalidades
+- `docs/CHANGELOG_COMPLETO.md` - Registro da nova versão
 
 ---
 

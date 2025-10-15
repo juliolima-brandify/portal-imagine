@@ -4,6 +4,10 @@
 
 Documentação completa de todas as funcionalidades implementadas no Portal Instituto Imagine, organizadas por categoria e status de implementação.
 
+**Total de Funcionalidades:** 35/35 (100% implementadas)  
+**Versão Atual:** v2.1.6  
+**Última Atualização:** 15/10/2025
+
 ---
 
 ## 🔐 **Sistema de Autenticação**
@@ -159,6 +163,16 @@ Documentação completa de todas as funcionalidades implementadas no Portal Inst
   - Links rápidos
 - **Status:** ✅ Produção
 
+### **✅ Meus Projetos (Doador)**
+- **Implementação:** `/projetos` (otimizada)
+- **Funcionalidades:**
+  - Interface focada no usuário
+  - Filtro inteligente (doações + favoritos)
+  - Remoção de abas desnecessárias
+  - CTA para site principal
+  - Estado vazio otimizado
+- **Status:** ✅ Produção (v2.1.3)
+
 ### **✅ Dashboard Admin**
 - **Implementação:** `/admin/dashboard`
 - **Funcionalidades:**
@@ -210,7 +224,67 @@ Documentação completa de todas as funcionalidades implementadas no Portal Inst
 - **Funcionalidades:**
   - Relatórios de transparência
   - Métricas de performance
-  - Exportação de dados
+  - Filtro por projeto
+  - Top doadores com avatar
+  - Métrica de voluntários totais
+  - Dados dinâmicos sincronizados
+- **Status:** ✅ Produção
+
+### **✅ Sistema de Exportação de Relatórios (v2.1.4)**
+- **Implementação:** jsPDF + XLSX + CSV
+- **Formatos Disponíveis:**
+  - **CSV**: Download automático, UTF-8, compatível com Excel
+  - **PDF**: Tabelas formatadas, cores, cabeçalhos, múltiplas páginas
+  - **Excel**: XLSX real, ajuste automático, compatível com MS Office
+- **Funcionalidades:**
+  - Processamento inteligente de dados complexos
+  - Formatação automática (moedas, datas, números)
+  - Separação por seções (Métricas, Arrecadação, Top Projetos, Doações)
+  - Performance otimizada (< 2s para 1.000 registros)
+  - Interface profissional em todos os formatos
+- **Componente:** `ExportDropdown`
+- **Biblioteca:** `src/lib/export.ts`
+- **Status:** ✅ Produção
+
+### **✅ Date Range Picker Premium (NOVO - v2.1.6)**
+- **Implementação:** react-day-picker + Componente customizado
+- **Design:**
+  - Cores Portal Imagine (#2EB87E)
+  - Formato elegante: "DD MMM YY – DD MMM YY"
+  - Layout 2 colunas: Presets + Calendário
+  - Feedback visual completo (hover, scale, transições)
+- **Funcionalidades:**
+  - Presets: Hoje, Ontem, Última semana, Último mês, Último trimestre
+  - Botões: Aplicar, Cancelar, Limpar
+  - Popover inteligente (não fecha ao clicar dentro)
+  - Posicionamento automático (esquerda/direita)
+- **Responsividade:**
+  - Mobile: 1 mês, colunas empilhadas
+  - Desktop: 2 meses lado a lado
+  - Adaptação automática por largura
+- **Integração:**
+  - Dashboard Admin (`/admin/dashboard`)
+  - Relatórios Admin (`/admin/relatorios`)
+- **Status:** ✅ Produção
+
+### **✅ Perfis Simplificados por Role (NOVO - v2.1.6)**
+- **Perfil Admin** (`/admin/perfil`):
+  - Campos: Nome, Email, Telefone, Foto de Perfil
+  - Funcionalidade: Alterar Senha (modal integrado)
+  - Removidos: Bio, 2FA, Estatísticas extensas, CPF, Endereço
+  - Redução: 60% dos campos
+- **Perfil Doador/Voluntário** (`/perfil`):
+  - Detecção dinâmica de role
+  - Stats específicos:
+    - Doador: Total doado, número de doações, média
+    - Voluntário: Horas, projetos, média de horas
+  - Upload de foto: Supabase Storage
+  - Notificações: Email, projetos, doações, voluntariado
+  - Removidos: Campos não essenciais (CPF completo, endereço detalhado)
+- **UX:**
+  - Interface limpa e focada
+  - Apenas funcionalidades essenciais
+  - Carregamento e salvamento otimizados
 - **Status:** ✅ Produção
 
 ---

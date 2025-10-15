@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: 'Conectamos pessoas que querem ajudar com projetos que precisam de apoio, garantindo transparência total e impacto mensurável.',
   keywords: 'ONG, doações, educação, solidariedade, impacto social, projetos sociais',
   authors: [{ name: 'Instituto Imagine' }],
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'https://portal.imagineinstituto.com'),
   icons: {
     icon: '/favicon.ico',
     shortcut: '/favicon.ico',

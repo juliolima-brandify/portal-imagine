@@ -243,21 +243,20 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Status da Configuração */}
-          <div className={`card p-4 ${isSupabaseConfigured() ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${isSupabaseConfigured() ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-              <p className={`text-sm font-medium ${isSupabaseConfigured() ? 'text-green-700' : 'text-yellow-700'}`}>
-                {isSupabaseConfigured() ? 'Sistema configurado' : 'Sistema em manutenção'}
+          {/* Status da Configuração - exibido apenas quando indisponível */}
+          {!isSupabaseConfigured() && (
+            <div className="card p-4 bg-yellow-50 border-yellow-200">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                <p className="text-sm font-medium text-yellow-700">
+                  Sistema em manutenção
+                </p>
+              </div>
+              <p className="text-xs mt-1 text-yellow-600">
+                Sistema temporariamente indisponível - Tente novamente mais tarde
               </p>
             </div>
-            <p className={`text-xs mt-1 ${isSupabaseConfigured() ? 'text-green-600' : 'text-yellow-600'}`}>
-              {isSupabaseConfigured() 
-                ? 'Conexão com Supabase ativa - Criação de contas disponível' 
-                : 'Sistema temporariamente indisponível - Tente novamente mais tarde'
-              }
-            </p>
-          </div>
+          )}
 
           {/* Botões Demo - Apenas no ambiente local */}
           {isLocalEnvironment() && isSupabaseConfigured() && (
@@ -448,7 +447,7 @@ export default function Home() {
                         setResetEmail('')
                         setResetMessage('')
                       }}
-                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors"
+                      className="btn-outline flex-1"
                       disabled={resetLoading}
                     >
                       Cancelar
@@ -456,7 +455,7 @@ export default function Home() {
                     <button
                       type="submit"
                       disabled={resetLoading}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      className="btn-primary flex-1"
                     >
                       {resetLoading ? 'Enviando...' : 'Enviar'}
                     </button>
