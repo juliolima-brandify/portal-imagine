@@ -12,8 +12,9 @@ const FRAMER_COLS = ['framer_item_id', 'framer_synced_at', 'framer_sync_status']
 
 function onlyFramerColsChanged(record: any, old: any): boolean {
   if (!record || !old) return false
-  const keys = new Set([...Object.keys(record), ...Object.keys(old)])
-  for (const k of keys) {
+  const keys = Object.keys(record).concat(Object.keys(old))
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i]
     if (FRAMER_COLS.includes(k)) continue
     if (JSON.stringify(record[k]) !== JSON.stringify(old[k])) return false
   }
