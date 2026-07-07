@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import ProjectForm from '@/components/ProjectForm'
+import { adminFetch } from '@/lib/admin-api'
 import ConfirmDialog, { Modal } from '@/components/ConfirmDialog'
 import { generateCheckoutUrl, generateEmbedUrl } from '@/lib/urls'
 import { ToastContainer, useToast } from '@/components/Toast'
@@ -46,7 +47,7 @@ export default function AdminProjetosPage() {
     setIsLoading(true)
     try {
       console.log('📡 [PROJETOS] Fazendo requisição para /api/admin/projects...')
-      const response = await fetch('/api/admin/projects')
+      const response = await adminFetch('/api/admin/projects')
       const result = await response.json()
       
       console.log('📥 [PROJETOS] Resposta da API:', { 
@@ -76,7 +77,7 @@ export default function AdminProjetosPage() {
   const reloadProjectsFromSupabase = async () => {
     try {
       console.log('🔄 Recarregando projetos via API...')
-      const response = await fetch('/api/admin/projects')
+      const response = await adminFetch('/api/admin/projects')
       const result = await response.json()
       
       if (!response.ok) {
@@ -132,7 +133,7 @@ export default function AdminProjetosPage() {
       // Salvar no Supabase
       try {
         console.log('📡 Salvando projeto duplicado via API...')
-        const response = await fetch('/api/admin/projects', {
+        const response = await adminFetch('/api/admin/projects', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -174,7 +175,7 @@ export default function AdminProjetosPage() {
         
         try {
           console.log('📡 Atualizando projeto via API...')
-          const response = await fetch('/api/admin/projects', {
+          const response = await adminFetch('/api/admin/projects', {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -212,7 +213,7 @@ export default function AdminProjetosPage() {
         
         try {
           console.log('📡 Criando projeto via API...')
-          const response = await fetch('/api/admin/projects', {
+          const response = await adminFetch('/api/admin/projects', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -261,7 +262,7 @@ export default function AdminProjetosPage() {
       // Deletar do Supabase
       try {
         console.log('📡 Deletando projeto via API...')
-        const response = await fetch(`/api/admin/projects?id=${projectToDelete.id}`, {
+        const response = await adminFetch(`/api/admin/projects?id=${projectToDelete.id}`, {
           method: 'DELETE',
         })
 
@@ -300,7 +301,7 @@ export default function AdminProjetosPage() {
       // Atualizar no Supabase
       try {
         console.log('🔄 Alterando status via API...')
-        const response = await fetch('/api/admin/projects', {
+        const response = await adminFetch('/api/admin/projects', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',

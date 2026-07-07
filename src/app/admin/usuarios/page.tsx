@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Modal } from '@/components/ConfirmDialog'
 import { ToastContainer, useToast } from '@/components/Toast'
+import { adminFetch } from '@/lib/admin-api'
 
 // Página simplificada - autenticação gerenciada pelo layout
 export default function AdminUsuariosPage() {
@@ -33,7 +34,7 @@ export default function AdminUsuariosPage() {
     try {
       console.log('🔄 [USUÁRIOS] Carregando usuários do Supabase via API...')
       
-      const response = await fetch('/api/admin/users')
+      const response = await adminFetch('/api/admin/users')
       const result = await response.json()
 
       if (!response.ok) {
@@ -116,7 +117,7 @@ export default function AdminUsuariosPage() {
       
       console.log('🔍 [DEBUG] cleanUserData:', cleanUserData)
       
-      const response = await fetch('/api/admin/users', {
+      const response = await adminFetch('/api/admin/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -158,7 +159,7 @@ export default function AdminUsuariosPage() {
     try {
       console.log('🔄 [USUÁRIOS] Editando usuário via API:', userData.id)
       
-      const response = await fetch('/api/admin/users', {
+      const response = await adminFetch('/api/admin/users', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -202,7 +203,7 @@ export default function AdminUsuariosPage() {
     try {
       console.log('🔄 [USUÁRIOS] Excluindo usuário via API:', userId)
       
-      const response = await fetch(`/api/admin/users?id=${userId}`, {
+      const response = await adminFetch(`/api/admin/users?id=${userId}`, {
         method: 'DELETE',
       })
 
