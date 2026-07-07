@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   cpf TEXT,
   address JSONB,
   preferences JSONB DEFAULT '{}',
-  role TEXT DEFAULT 'donor' CHECK (role IN ('donor', 'admin')),
+  role TEXT DEFAULT 'donor' CHECK (role IN ('donor', 'admin', 'volunteer')),
   avatar_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

@@ -5,10 +5,10 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholde
 
 // Verificar se as credenciais são válidas
 export const isSupabaseConfigured = () => {
-  return supabaseUrl !== 'https://placeholder.supabase.co' && 
+  return supabaseUrl !== 'https://placeholder.supabase.co' &&
          supabaseAnonKey !== 'placeholder-key' &&
          supabaseUrl.startsWith('https://') &&
-         supabaseAnonKey.startsWith('eyJ')
+         (supabaseAnonKey.startsWith('eyJ') || supabaseAnonKey.startsWith('sb_publishable_'))
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
