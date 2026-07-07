@@ -1,5 +1,7 @@
 # 🚀 Checklist Deploy Produção - Portal Instituto Imagine
 
+> 🔴 **Leia [docs/ESTADO_ATUAL.md](./ESTADO_ATUAL.md) antes (07/07/2026).** Pendências críticas: produção aponta para banco Supabase **morto** (atualizar env Vercel → `zzxtethlsdjjfjjrqmlk` + redeploy) e a API `/api/admin/*` está **sem autenticação** (corrigir antes de religar o banco).
+
 ## 📋 **Status Atual**
 ✅ **Build de produção**: Funcionando (com warnings)  
 🔄 **Ambiente dev**: Deploy realizado com chat  

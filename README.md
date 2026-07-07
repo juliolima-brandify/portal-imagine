@@ -6,6 +6,8 @@ O Portal Instituto Imagine é uma plataforma completa de doações e gestão de 
 
 ## 🚀 **Status Atual**
 
+> 🔴 **Atenção (07/07/2026): a produção está quebrada e há uma falha de segurança aberta.** O status "100% funcional / 0 bugs" abaixo é de out/2025 (v2.1.6) e **não reflete a realidade atual**. Leia **[docs/ESTADO_ATUAL.md](./docs/ESTADO_ATUAL.md)** — é a fonte canônica: a produção aponta para um banco Supabase morto e a API `/api/admin/*` está sem autenticação. O ambiente **local** está funcionando, conectado ao banco novo `zzxtethlsdjjfjjrqmlk`.
+
 - **✅ Sistema:** 100% funcional e em produção
 - **🌐 URL:** https://portal.imagineinstituto.com
 - **📅 Última atualização:** 15/10/2025 v2.1.6

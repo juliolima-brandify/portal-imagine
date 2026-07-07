@@ -1,6 +1,26 @@
 # Diário de Bordo / Contexto para a IA
 
-## Sessão Atual (15/10/2025)
+> 📍 **Estado canônico do projeto: [docs/ESTADO_ATUAL.md](./docs/ESTADO_ATUAL.md).** As sessões abaixo (out/2025 e anteriores) descrevem "sistema 100% funcional em produção", mas **isso mudou** — ver sessão 07/07/2026.
+
+## Sessão Atual (07/07/2026)
+
+### O que foi feito:
+- ✅ **Reconexão ao banco de dados** — o `.env.local` estava com credenciais placeholder; conectado ao **novo projeto Supabase `zzxtethlsdjjfjjrqmlk`** (chave pública no formato novo `sb_publishable_...`).
+- ✅ **Mapeados 3 bancos Supabase na história** (ver `docs/ESTADO_ATUAL.md`): o de produção (`nsnmeufhzxdkqhlwkeml`) está **morto**; o antigo do screenshot estava pausado com backup **vazio**; o novo (`zzxtethlsdjjfjjrqmlk`) é a **fonte da verdade**.
+- ✅ **Banco recriado** via `docs/SETUP-COMPLETO.sql` — 5 tabelas, RLS, 2 buckets storage, 4 projetos de exemplo.
+- ✅ **Correções de código/schema:** `isSupabaseConfigured()` passou a aceitar `sb_publishable_`; `CHECK` de `profiles.role` relaxado para incluir `volunteer` (antes só `donor`/`admin` — quebrava o app).
+- ✅ **3 usuários demo criados** (admin/doador/voluntário, senha `demo123`) — botões de demo voltaram a funcionar.
+- 🔴 **Achado de segurança:** `/api/admin/projects` (e provavelmente `/api/admin/users`) usa service_role **sem autenticação** — corrigir antes de religar a produção.
+- 🔴 **Produção quebrada:** aponta para o banco morto; precisa atualizar env vars na Vercel + redeploy.
+- 📝 **Planejada integração Portal ↔ Framer** (Framer = vitrine via CMS; portal = motor/fonte da verdade; sync via webhook Supabase → Framer CMS API).
+- 📚 **Documentação viva atualizada** e criado o doc-mestre `docs/ESTADO_ATUAL.md`.
+
+### Pendências priorizadas:
+Ver seção "Pendências / próximos passos" em `docs/ESTADO_ATUAL.md`.
+
+---
+
+## Sessão Anterior (15/10/2025)
 
 ### O que foi feito:
 - ✅ **Perfis Simplificados por Role**

@@ -1,5 +1,7 @@
 # 🔍 Troubleshooting Vercel - Botão "Doar Agora"
 
+> ⚠️ **Contexto atual (07/07/2026) — ver [docs/ESTADO_ATUAL.md](../ESTADO_ATUAL.md).** A produção está quebrada porque as env vars da Vercel apontam para um banco Supabase **morto** (`nsnmeufhzxdkqhlwkeml`). O fix é trocar para o projeto atual `zzxtethlsdjjfjjrqmlk` e redeployar. O Stripe também continua em placeholder (pagamentos inativos).
+
 ## ✅ **Se você já configurou as variáveis no Vercel:**
 
 ### **1. Verificar Variáveis de Ambiente no Vercel**

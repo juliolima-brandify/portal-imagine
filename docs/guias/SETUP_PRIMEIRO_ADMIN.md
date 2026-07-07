@@ -1,5 +1,7 @@
 # 🚀 Setup do Primeiro Administrador
 
+> ⚠️ **Contexto atual (07/07/2026) — ver [docs/ESTADO_ATUAL.md](../ESTADO_ATUAL.md).** Fazer isso no projeto Supabase atual `zzxtethlsdjjfjjrqmlk`. O `CHECK` de `profiles.role` agora aceita `donor`, `admin` e `volunteer`. Em **local** já existem 3 usuários demo (`admin@demo.com`/`doador@demo.com`/`voluntario@demo.com`, senha `demo123`) — mas **não use contas demo em produção**; crie um admin real por este guia.
+
 Guia para criar o primeiro administrador do sistema em produção.
 
 ## 📋 **Pré-requisitos**

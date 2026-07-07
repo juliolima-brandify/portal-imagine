@@ -1,5 +1,7 @@
 # ⚡ Configuração Rápida - Supabase
 
+> ⚠️ **Parcialmente desatualizado — leia [docs/ESTADO_ATUAL.md](../ESTADO_ATUAL.md) primeiro (07/07/2026).** Projeto Supabase atual: `zzxtethlsdjjfjjrqmlk`. Chave pública no **formato novo `sb_publishable_...`**. Credenciais reais só no `.env.local`. Para recriar o banco, rode **`docs/SETUP-COMPLETO.sql`** no SQL Editor.
+
 ## 🎯 **Para ativar o Supabase agora:**
 
 ### **1. Configure as variáveis de ambiente**
@@ -7,9 +9,10 @@
 Crie ou edite o arquivo `.env.local` na raiz do projeto com suas credenciais do Supabase:
 
 ```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima_aqui
+# Supabase Configuration (projeto atual: zzxtethlsdjjfjjrqmlk)
+NEXT_PUBLIC_SUPABASE_URL=https://zzxtethlsdjjfjjrqmlk.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_...   # formato novo
+SUPABASE_SERVICE_ROLE_KEY=eyJ...                    # somente server-side
 
 # Stripe Configuration (opcional por enquanto)
 STRIPE_SECRET_KEY=sk_test_...

@@ -1,5 +1,7 @@
 # 🚀 Guia de Deploy para Produção - Portal Instituto Imagine
 
+> 🔴 **Antes de deployar, leia [docs/ESTADO_ATUAL.md](./ESTADO_ATUAL.md) (07/07/2026).** Duas pendências críticas: (1) a produção aponta para um banco Supabase **morto** — atualizar as env vars na Vercel para `zzxtethlsdjjfjjrqmlk` e redeployar; (2) a API `/api/admin/*` está **sem autenticação** e deve ser corrigida **antes** de religar o banco.
+
 ## 📋 **Visão Geral**
 
 Este guia detalha o processo completo de deploy do Portal Instituto Imagine para produção, incluindo pré-requisitos, checklist e procedimentos de verificação.

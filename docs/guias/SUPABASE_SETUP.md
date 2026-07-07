@@ -1,5 +1,7 @@
 # 🚀 Configuração do Supabase - Instituto Imagine
 
+> ⚠️ **Parcialmente desatualizado — leia [docs/ESTADO_ATUAL.md](../ESTADO_ATUAL.md) primeiro (07/07/2026).** Projeto Supabase atual: `zzxtethlsdjjfjjrqmlk`. Chave pública no **formato novo `sb_publishable_...`**. Para recriar o banco do zero, use **`docs/SETUP-COMPLETO.sql`** (script consolidado idempotente).
+
 ## 📋 Passo a Passo para Configurar o Supabase
 
 ### 1. Criar Projeto no Supabase

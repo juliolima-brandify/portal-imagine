@@ -1,5 +1,7 @@
 # 🚀 Deploy no Vercel - Portal Imagine
 
+> 🔴 **Antes de deployar, leia [docs/ESTADO_ATUAL.md](../ESTADO_ATUAL.md) (07/07/2026).** Duas pendências críticas: (1) a produção aponta para um banco Supabase **morto** — é preciso atualizar as env vars na Vercel para `zzxtethlsdjjfjjrqmlk` e redeployar; (2) a API `/api/admin/*` está **sem autenticação** e deve ser corrigida **antes** de religar o banco. Chave pública agora no formato `sb_publishable_...`.
+
 ## 📋 Configuração Atual
 
 - ✅ **Vercel** - Deploy automático e hospedagem

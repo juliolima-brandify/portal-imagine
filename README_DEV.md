@@ -1,5 +1,7 @@
 # 🛠️ Guia de Desenvolvimento - Portal Instituto Imagine
 
+> 📍 **Estado atual do projeto: [docs/ESTADO_ATUAL.md](./docs/ESTADO_ATUAL.md) (07/07/2026).** O dev local está conectado ao banco real `zzxtethlsdjjfjjrqmlk` (chave pública `sb_publishable_...`, credenciais no `.env.local`). Para recriar o banco, use `docs/SETUP-COMPLETO.sql`. Há pendências críticas de produção/segurança descritas no doc canônico.
+
 ## 🚀 **Inicialização Rápida**
 
 ### **Método 1: Inicialização Limpa (Recomendado)**

@@ -1,5 +1,7 @@
 # 🔧 Configuração do Supabase - Portal Imagine
 
+> ⚠️ **Parcialmente desatualizado — leia [docs/ESTADO_ATUAL.md](../ESTADO_ATUAL.md) primeiro (fonte canônica, 07/07/2026).** Projeto Supabase atual: `zzxtethlsdjjfjjrqmlk` (`https://zzxtethlsdjjfjjrqmlk.supabase.co`, região `sa-east-1`). A chave pública agora usa o **formato novo `sb_publishable_...`** (não mais `eyJ...`). As credenciais reais ficam só no `.env.local` (gitignored). Para recriar o banco do zero, use **`docs/SETUP-COMPLETO.sql`**.
+
 ## ❌ Problema Identificado
 
 O erro **"Failed to fetch"** está ocorrendo porque o Supabase não está configurado. O sistema está tentando se conectar com URLs e chaves placeholder.
@@ -11,9 +13,10 @@ O erro **"Failed to fetch"** está ocorrendo porque o Supabase não está config
 Crie um arquivo `.env.local` na raiz do projeto com as seguintes variáveis:
 
 ```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+# Supabase Configuration (projeto atual: zzxtethlsdjjfjjrqmlk)
+NEXT_PUBLIC_SUPABASE_URL=https://zzxtethlsdjjfjjrqmlk.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_...   # formato novo (não mais eyJ...)
+SUPABASE_SERVICE_ROLE_KEY=eyJ...                    # somente server-side, nunca NEXT_PUBLIC
 
 # Stripe Configuration (opcional para testes)
 STRIPE_SECRET_KEY=sk_test_...

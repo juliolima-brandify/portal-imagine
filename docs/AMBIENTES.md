@@ -1,5 +1,7 @@
 # 🌍 Configuração de Ambientes
 
+> ⚠️ **Parcialmente desatualizado — ver [docs/ESTADO_ATUAL.md](./ESTADO_ATUAL.md) (07/07/2026).** Correções importantes: o **Local hoje usa banco real** (projeto `zzxtethlsdjjfjjrqmlk`), não mais mock; a porta padrão do dev é **3001**; a chave pública usa o formato novo `sb_publishable_...`; e a **produção está quebrada** (env da Vercel apontando para um banco Supabase morto). Existiram 3 projetos Supabase na história — veja o mapa no doc canônico.
+
 Este documento descreve a configuração dos 3 ambientes do projeto Portal Instituto Imagine.
 
 ## 📋 Visão Geral dos Ambientes

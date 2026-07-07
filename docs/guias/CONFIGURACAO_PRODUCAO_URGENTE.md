@@ -1,5 +1,7 @@
 # 🚨 CONFIGURAÇÃO URGENTE - PRODUÇÃO
 
+> ⚠️ **Este guia está desatualizado — a produção hoje roda na Vercel, não em CapRover.** Fonte canônica: [docs/ESTADO_ATUAL.md](../ESTADO_ATUAL.md) (07/07/2026). O problema atual da produção **não é o Stripe**, e sim que as env vars da Vercel apontam para um banco Supabase **morto**; é preciso trocar para `zzxtethlsdjjfjjrqmlk` e redeployar. Corrigir também a falha de autenticação em `/api/admin/*` antes de religar. A chave pública usa o formato novo `sb_publishable_...` e as credenciais ficam só no `.env.local`.
+
 ## ❌ **PROBLEMA IDENTIFICADO**
 
 O botão "Doar Agora" não está funcionando na produção porque **as variáveis de ambiente do Stripe não estão configuradas**.

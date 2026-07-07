@@ -1,5 +1,20 @@
 # 📋 Changelog Completo - Portal Instituto Imagine
 
+## 🛠️ **07/07/2026 — Reconexão de banco, correções e mapeamento Framer**
+
+> Estado canônico do projeto: **[ESTADO_ATUAL.md](./ESTADO_ATUAL.md)**.
+
+- **Reconexão ao Supabase:** `.env.local` estava com credenciais placeholder; conectado ao **novo projeto `zzxtethlsdjjfjjrqmlk`** (chave pública no **formato novo `sb_publishable_...`**).
+- **Mapa dos 3 bancos:** produção (`nsnmeufhzxdkqhlwkeml`) **morto**; antigo do screenshot pausado com backup **vazio**; novo (`zzxtethlsdjjfjjrqmlk`) é a fonte da verdade.
+- **Banco recriado** com `docs/SETUP-COMPLETO.sql` (5 tabelas, RLS, 2 buckets, 4 projetos seed).
+- **Correções:** `isSupabaseConfigured()` aceita `sb_publishable_`; `CHECK` de `profiles.role` passou a incluir `volunteer` (corrigido no banco e em `supabase-setup-safe.sql`/`supabase-setup.sql`).
+- **Usuários demo** recriados (admin/doador/voluntário) — botões de demo voltaram a funcionar.
+- 🔴 **Achado de segurança:** `/api/admin/*` usa service_role **sem autenticação** — pendência crítica.
+- 🔴 **Produção quebrada:** env da Vercel aponta para banco morto — pendência crítica (atualizar env + redeploy).
+- **Planejada** a integração Portal ↔ Framer (sync de projetos via webhook Supabase → Framer CMS API).
+
+---
+
 ## 🎯 **Versão Atual: v2.1.6** - *Outubro 2025*
 
 ### 🚀 **Deploy Mais Recente: 15/10/2025 00:00*
