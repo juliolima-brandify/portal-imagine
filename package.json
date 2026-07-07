@@ -12,11 +12,12 @@
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^2.4.0",
+    "@stripe/stripe-js": "^2.2.0",
     "@supabase/ssr": "^0.1.0",
     "@supabase/supabase-js": "^2.39.0",
-    "@stripe/stripe-js": "^2.2.0",
     "chart.js": "^4.4.1",
     "date-fns": "^3.0.6",
+    "framer-api": "^0.1.18",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.3",
     "next": "14.0.4",
