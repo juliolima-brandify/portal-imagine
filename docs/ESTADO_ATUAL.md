@@ -6,12 +6,11 @@
 
 ## 🔴 Pendências críticas (ler antes de qualquer deploy)
 
-### 1. Falha de segurança: API admin sem autenticação
-`src/app/api/admin/projects/route.ts` (e provavelmente `src/app/api/admin/users/route.ts`) usa a **service_role key SEM verificar login nem role**. Qualquer pessoa com a URL pode **criar, editar e apagar projetos** direto pela API.
+### 1. Falha de segurança: API admin sem autenticação — ✅ CORRIGIDA (falta deploy)
+`src/app/api/admin/projects/route.ts` e `src/app/api/admin/users/route.ts` usavam a **service_role key SEM verificar login nem role**. Qualquer pessoa com a URL podia **criar, editar e apagar projetos e usuários** direto pela API.
 
-- Hoje está "protegida por acidente" porque o banco de **produção está morto** (ver abaixo).
-- **No instante em que a produção for religada ao banco novo (vivo), vira exploração total.**
-- **Correção obrigatória ANTES de religar a produção:** validar a sessão do Supabase (via `src/lib/supabase-server.ts`) e exigir `profiles.role = 'admin'` em todos os handlers (GET/POST/PUT/DELETE). Remover também o fallback perigoso `SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY` na linha 5.
+- **Corrigido no código em 07/07/2026** (commit na `main`): guard `requireAdmin()` em `src/lib/admin-auth.ts` (valida Bearer token com fallback para cookie + exige `profiles.role='admin'`) aplicado em todos os handlers; helper `adminFetch()` (`src/lib/admin-api.ts`) injeta o token nas chamadas das páginas admin; removido o fallback inseguro `SERVICE_ROLE || ANON`. Verificado: sem token=401, admin=200, não-admin=403.
+- ⚠️ **A correção só vale em produção após o redeploy da Vercel.** Até lá, a produção segue rodando o código antigo (hoje inofensivo porque o banco de produção está morto — ver #2).
 
 ### 2. Produção aponta para um banco morto
 O deploy em `portal.imagineinstituto.com` (Vercel) foi construído apontando para o Supabase `nsnmeufhzxdkqhlwkeml`, que **não existe mais** (DNS não resolve). O site está no ar, mas **não conecta no banco**.
@@ -118,14 +117,14 @@ O site público **imagineinstituto.com é um site Framer** (plano pago, já tem 
 
 ## 🧩 Pendências / próximos passos (priorizado)
 
-1. 🔴 **Corrigir segurança da API admin** (`/api/admin/projects` e `/api/admin/users`).
-2. 🔴 **Religar a produção** ao banco novo (env Vercel + redeploy) — só depois do item 1.
+1. ✅ **Segurança da API admin corrigida** (código na `main`; falta entrar em produção via redeploy).
+2. 🔴 **Religar a produção** ao banco novo (env Vercel + redeploy) — já leva junto a correção de segurança do item 1.
 3. 🟡 **Criar admin real** em produção (não usar contas demo).
 4. 🟡 **Reativar Stripe** (chaves live + webhook) — hoje em placeholder, pagamentos inativos.
 5. 🟡 **Reativar Resend** (emails transacionais) — hoje em placeholder.
 6. 🟢 **Criar a página `/doar/[id]`** (existe desativada em `checkouts-desativados/`) e opcionalmente `src/app/projetos/[id]/page.tsx` (pasta existe vazia).
 7. 🟢 **Implementar a integração Framer** (Elo 1 e Elo 2).
-8. 🟢 **Commitar** as mudanças de código/SQL desta sessão.
+8. ✅ **Mudanças de código/SQL/docs desta sessão commitadas** na `main`.
 
 ---
 
