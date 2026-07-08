@@ -83,10 +83,14 @@ function buildFieldData(project: Project, fieldsByName: Record<string, any>) {
   fd[f('Link')] = { type: 'link', value: checkoutUrl(project.id) }
   fd[f('EmbedURL')] = { type: 'string', value: embedUrl(project.id, project.title) }
   if (project.created_at) fd[f('Date')] = { type: 'date', value: new Date(project.created_at).toISOString() }
-  // imagem só se for URL pública absoluta (Framer re-hospeda)
-  if (typeof project.image_url === 'string' && project.image_url.startsWith('http')) {
-    fd[f('Featured Image')] = { type: 'image', value: project.image_url }
-  }
+  // Featured Image é obrigatória na "Programas". Usa a imagem real do projeto se
+  // for URL pública absoluta; senão cai num fallback (logo) para o item nunca
+  // ficar inválido e bloquear a publicação. Projetos reais devem ter foto própria.
+  const img =
+    typeof project.image_url === 'string' && project.image_url.startsWith('http')
+      ? project.image_url
+      : `${PORTAL}/images/logo.png`
+  fd[f('Featured Image')] = { type: 'image', value: img }
 
   // remove chaves de campos que não existem na collection
   for (const k of Object.keys(fd)) if (!k || k === 'undefined') delete fd[k]
