@@ -1,21 +1,24 @@
-# 📍 Estado Atual do Projeto — 07/07/2026
+# 📍 Estado Atual do Projeto — 08/07/2026
 
 > **Este é o documento canônico de estado do projeto.** Em caso de conflito com qualquer outro `.md`, **este prevalece**. Guias mais antigos podem conter informações desatualizadas (versão v2.1.6 de out/2025, referências a CapRover, credenciais placeholder, etc.).
 
 ---
 
-## 🔴 Pendências críticas (ler antes de qualquer deploy)
+## 🟢 Estado geral: produção NO AR e conectada
 
-### 1. Falha de segurança: API admin sem autenticação — ✅ CORRIGIDA (falta deploy)
+As duas pendências críticas anteriores (segurança da API admin e produção apontando para banco morto) foram **resolvidas e deployadas** em 07–08/07/2026. Além disso, a **integração Portal ↔ Framer foi construída e publicada ao vivo**. Detalhes abaixo.
+
+### 1. Falha de segurança: API admin sem autenticação — ✅ CORRIGIDA E DEPLOYADA
 `src/app/api/admin/projects/route.ts` e `src/app/api/admin/users/route.ts` usavam a **service_role key SEM verificar login nem role**. Qualquer pessoa com a URL podia **criar, editar e apagar projetos e usuários** direto pela API.
 
-- **Corrigido no código em 07/07/2026** (commit na `main`): guard `requireAdmin()` em `src/lib/admin-auth.ts` (valida Bearer token com fallback para cookie + exige `profiles.role='admin'`) aplicado em todos os handlers; helper `adminFetch()` (`src/lib/admin-api.ts`) injeta o token nas chamadas das páginas admin; removido o fallback inseguro `SERVICE_ROLE || ANON`. Verificado: sem token=401, admin=200, não-admin=403.
-- ⚠️ **A correção só vale em produção após o redeploy da Vercel.** Até lá, a produção segue rodando o código antigo (hoje inofensivo porque o banco de produção está morto — ver #2).
+- **Corrigido e em produção:** guard `requireAdmin()` em `src/lib/admin-auth.ts` (valida Bearer token com fallback para cookie + exige `profiles.role='admin'`) aplicado em todos os handlers; helper `adminFetch()` (`src/lib/admin-api.ts`) injeta o token nas chamadas das páginas admin; removido o fallback inseguro `SERVICE_ROLE || ANON`.
+- **Verificado em produção:** `/api/admin/*` retorna **401 sem login** e **200 para admin autenticado**.
 
-### 2. Produção aponta para um banco morto
-O deploy em `portal.imagineinstituto.com` (Vercel) foi construído apontando para o Supabase `nsnmeufhzxdkqhlwkeml`, que **não existe mais** (DNS não resolve). O site está no ar, mas **não conecta no banco**.
+### 2. Produção reconectada ao banco novo — ✅ RELIGADA E NO AR
+O deploy em `portal.imagineinstituto.com` (Vercel, projeto `portal-imagine-of`, scope "Brandify Hub") apontava para o Supabase `nsnmeufhzxdkqhlwkeml`, que **não existe mais** (DNS não resolve).
 
-- **Correção:** atualizar as variáveis de ambiente na Vercel para o projeto novo (`zzxtethlsdjjfjjrqmlk`) e **redeploy** (a chave pública fica embutida no build; só muda com novo deploy). Passo a passo na seção [Como consertar a produção](#-como-consertar-a-produção).
+- **Corrigido:** variáveis de ambiente atualizadas na Vercel para o projeto novo (`zzxtethlsdjjfjjrqmlk`) + **redeploy**; `vercel.json` corrigido (removido `NODE_ENV=development`, que forçava modo dev em produção).
+- **Verificado:** o portal serve o **banco novo** e está no ar e funcional.
 
 ---
 
@@ -63,7 +66,9 @@ Todas as credenciais reais vivem **apenas** no `.env.local` (que é **gitignored
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://zzxtethlsdjjfjjrqmlk.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Formato novo** `sb_publishable_...` (não é mais `eyJ...`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Formato `eyJ...` — **somente server-side**, nunca com prefixo `NEXT_PUBLIC` |
-| `FRAMER_API_TOKEN` | Token do CMS do Framer (`fr_...`) — segredo, rotacionar após a integração |
+| `FRAMER_API_TOKEN` | Token do CMS do Framer (`fr_...`) — segredo, usado pelo sync. Também na Vercel (produção+preview) |
+| `FRAMER_PROJECT_URL` | URL do projeto Framer (`https://framer.com/projects/INSTITUTO-IMAGINE--...`) — usada pelo `framer-api` |
+| `SUPABASE_WEBHOOK_SECRET` | Segredo compartilhado entre o trigger `pg_net` do Supabase e a rota `/api/webhooks/supabase-projects` (header `x-webhook-secret`) |
 | Senha do banco Postgres | Guardada no `.env.local` (comentada); usada só para conexão direta/migrations |
 
 > ⚠️ **Nunca** escreva service_role key, senha do banco ou token do Framer em arquivos versionados (`.md`, `.sql`, `.ts`).
@@ -82,11 +87,13 @@ Para aplicar: **SQL Editor do Supabase** → colar o conteúdo de `docs/SETUP-CO
 
 ---
 
-## 🚑 Como consertar a produção
+## 🚑 Como consertar a produção — ✅ FEITO (referência histórica / para recriar)
+
+> Estes passos **já foram executados** em 07–08/07/2026; a produção está no ar e conectada. A sequência fica registrada como referência caso seja preciso reconfigurar o ambiente do zero.
 
 Ordem obrigatória (não pular o passo 1):
 
-1. **Corrigir a segurança** de `/api/admin/*` (sessão + `role='admin'`) — ver [Pendência #1](#1-falha-de-segurança-api-admin-sem-autenticação). Deve entrar no mesmo deploy que religa o banco.
+1. **Corrigir a segurança** de `/api/admin/*` (sessão + `role='admin'`) — ver [Pendência #1](#1-falha-de-segurança-api-admin-sem-autenticação--corrigida-e-deployada). Deve entrar no mesmo deploy que religa o banco.
 2. **Atualizar variáveis de ambiente na Vercel** (Production) para o banco novo:
    - `NEXT_PUBLIC_SUPABASE_URL` → `https://zzxtethlsdjjfjjrqmlk.supabase.co`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` → a chave `sb_publishable_...` (ver `.env.local`)
@@ -100,41 +107,53 @@ Ordem obrigatória (não pular o passo 1):
 
 ---
 
-## 🎨 Integração Portal ↔ Framer (planejada)
+## 🎨 Integração Portal ↔ Framer — ✅ CONSTRUÍDA e PUBLICADA
 
-O site público **imagineinstituto.com é um site Framer** (plano pago, já tem CMS com 2 collections). A visão acordada:
+O site público **imagineinstituto.com é um site Framer** (plano pago). A integração está **no ar**: mudar um projeto no banco reflete no Framer sozinho em ~10s.
 
-- **Framer = vitrine pública** (marketing, lista de projetos, página de cada projeto via CMS + template).
-- **Portal (este sistema) = motor logado** (admin, login, checkout, dashboards) e **fonte da verdade** (Supabase).
-- **Elo 1 (Portal → Framer):** criar/editar projeto no admin → **Database Webhook do Supabase** → rota `/api/webhooks/supabase-projects` no portal → **Framer CMS API** cria/atualiza a página automaticamente.
-- **Elo 2 (Framer → Portal):** botão "Doar" da página do Framer → checkout do portal com o `id` do projeto.
+> **Referência técnica completa:** [`INTEGRACAO_FRAMER.md`](./INTEGRACAO_FRAMER.md) — arquitetura, mapa de campos, embed dinâmico, fluxo automático, env vars, como publicar. Esta seção é apenas o resumo de estado.
 
-**Abordagem recomendada:** Opção B (custom, webhook + Framer CMS API no próprio portal) em vez de plugin low-code — custo zero, mesma stack, e o segredo do Framer fica só no Vercel. Fases sugeridas: (0) decisões/plano Framer, (1) portal publicado com env correto, (2) segurança + rota `/doar/[id]`, (3) colunas `slug`/`framer_item_id` em `projects`, (4) collection+template no Framer, (5) sync, (6) botão Doar + Stripe, (7) reconciliação/SEO.
+**Arquitetura:**
+- **Portal Next.js = motor / fonte da verdade** (admin, checkout, Supabase).
+- **Site Framer `imagineinstituto.com` = vitrine pública.**
 
-> Detalhes completos (mapeamento de campos, tratamento de imagens, riscos) foram levantados em sessão e devem virar um doc próprio quando a integração começar.
+**O que foi entregue:**
+- **Collection:** reusa a **"Programas"** (o plano Framer só permite 2 collections; uma 3ª "Projetos" estourava o limite — foi criada e deletada).
+- **Template CMS:** Detail Page da "Programas" em `/programas/[slug]`, reaproveitando o design da página estática `/esporte` (recurso "Swap Collection" do Framer). Conteúdo dinâmico por item.
+- **Embed de doação dinâmico:** campo **EmbedURL** na Programas guarda a URL do checkout embed por projeto (`https://portal.imagineinstituto.com/embed/checkout/checkout-stripe?project=<id>&source=embed&utm_campaign=<slug>`); no Framer o componente Embed (Type URL) tem a URL ligada por "Convert" a esse campo.
+- **Código:** `src/lib/framer-sync.ts` (upsert/remove via pacote npm `framer-api`, import dinâmico ESM, imagem de fallback = logo do portal quando o projeto não tem foto) + rota `src/app/api/webhooks/supabase-projects/route.ts` (runtime `nodejs`, valida header `x-webhook-secret`, previne loop ignorando eventos que só mexem nas colunas `framer_*`).
+- **Colunas novas em `projects`:** `framer_item_id`, `framer_synced_at`, `framer_sync_status`.
+- **Fluxo automático (Elo 1, Portal → Framer):** trigger `framer_sync_projects` na tabela `public.projects` (função `notify_framer_sync` via extensão `pg_net` / `net.http_post`) chama a rota do portal com o header do segredo → `framer-api` cria/atualiza o item. **Testado E2E.**
+- **Elo 2 (Framer → Portal):** botão "Doar" da página Framer → checkout embed do portal com o `id` do projeto (via campo EmbedURL).
+- **Publicado ao vivo** via `framer.publish()` (deployment b0baae0de) → páginas em `imagineinstituto.com/programas/{slug}` (ex.: `/programas/esporte-social`, `/educacao-digital`, `/saude-comunitaria` — todas retornam 200).
+
+**Env vars** (na Vercel produção+preview e no `.env.local`): `FRAMER_API_TOKEN`, `FRAMER_PROJECT_URL`, `SUPABASE_WEBHOOK_SECRET`. Pacote `framer-api` adicionado ao `package.json`.
+
+**Follow-ups não-bloqueantes:** (1) fotos reais nos projetos (hoje usam o logo de fallback); (2) limpar projetos-seed de teste (ex.: "Meio Ambiente (Cópia)") — deletar no admin remove do Framer automaticamente; (3) opcional: `noindex` nos itens curados (`educacao/arte/esporte/social/saude`) que ganharam `/programas/{slug}` pela template mas não são linkados — **decisão atual: deixar como está**.
 
 ---
 
 ## 🧩 Pendências / próximos passos (priorizado)
 
-1. ✅ **Segurança da API admin corrigida** (código na `main`; falta entrar em produção via redeploy).
-2. 🔴 **Religar a produção** ao banco novo (env Vercel + redeploy) — já leva junto a correção de segurança do item 1.
-3. 🟡 **Criar admin real** em produção (não usar contas demo).
-4. 🟡 **Reativar Stripe** (chaves live + webhook) — hoje em placeholder, pagamentos inativos.
-5. 🟡 **Reativar Resend** (emails transacionais) — hoje em placeholder.
-6. 🟢 **Criar a página `/doar/[id]`** (existe desativada em `checkouts-desativados/`) e opcionalmente `src/app/projetos/[id]/page.tsx` (pasta existe vazia).
-7. 🟢 **Implementar a integração Framer** (Elo 1 e Elo 2).
-8. ✅ **Mudanças de código/SQL/docs desta sessão commitadas** na `main`.
+1. ✅ **Segurança da API admin corrigida e deployada** — `/api/admin/*` exige admin autenticado em produção (401 sem login).
+2. ✅ **Produção religada** ao banco novo (env Vercel + redeploy + `vercel.json` corrigido) — no ar e conectada.
+3. ✅ **Integração Framer implementada e publicada** (Elo 1 automático via trigger; Elo 2 via embed dinâmico) — ver [`INTEGRACAO_FRAMER.md`](./INTEGRACAO_FRAMER.md).
+4. 🟡 **Criar admin real** em produção (não usar contas demo).
+5. 🟡 **Reativar Stripe** (chaves live + webhook) — hoje em placeholder, pagamentos inativos.
+6. 🟡 **Reativar Resend** (emails transacionais) — hoje em placeholder.
+7. 🟢 **Follow-ups Framer (não-bloqueantes):** fotos reais nos projetos (hoje logo de fallback); limpar projetos-seed de teste; `noindex` opcional nos itens curados.
+8. ✅ **Mudanças de código/SQL/docs commitadas** na `main`.
 
 ---
 
 ## 📌 Notas de estado que corrigem docs antigos
 
-- A afirmação "Sistema 100% funcional em produção / 0 bugs" (README, `_contexto.md`, changelog v2.1.6) **está desatualizada**: a produção está quebrada por causa do banco morto e há a falha de segurança aberta.
+- A afirmação "Sistema 100% funcional em produção / 0 bugs" (README, `_contexto.md`, changelog v2.1.6) refere-se à versão de out/2025; o estado real e atual é **este documento**. A produção hoje está **no ar e conectada ao banco novo**, com a segurança da API admin corrigida.
 - Guias que citam "credenciais placeholder" ou "criar novo projeto Supabase" devem apontar para o ref atual `zzxtethlsdjjfjjrqmlk` e o formato de chave `sb_publishable_`.
-- `docs/guias/CONFIGURACAO_PRODUCAO_URGENTE.md` menciona **CapRover** — a produção hoje é **Vercel**.
+- `docs/guias/CONFIGURACAO_PRODUCAO_URGENTE.md` menciona **CapRover** — a produção hoje é **Vercel** (projeto `portal-imagine-of`).
 - Ambiente **Local** hoje usa **banco real** (não mais mock), conectado ao projeto novo.
+- A integração com o Framer deixou de ser "planejada": está **construída e publicada** — ver [`INTEGRACAO_FRAMER.md`](./INTEGRACAO_FRAMER.md).
 
 ---
 
-*Documento criado em 07/07/2026 para consolidar o estado real do projeto após a reconexão do banco e o mapeamento da integração com o Framer.*
+*Documento criado em 07/07/2026 para consolidar o estado real do projeto após a reconexão do banco e o mapeamento da integração com o Framer. Atualizado em 08/07/2026: produção religada e no ar, segurança deployada, integração Framer construída e publicada.*

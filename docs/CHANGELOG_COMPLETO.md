@@ -1,5 +1,23 @@
 # 📋 Changelog Completo - Portal Instituto Imagine
 
+## 🚀 **08/07/2026 — Produção religada, segurança deployada e integração Framer publicada**
+
+> Estado canônico do projeto: **[ESTADO_ATUAL.md](./ESTADO_ATUAL.md)**. Referência técnica da integração: **[INTEGRACAO_FRAMER.md](./INTEGRACAO_FRAMER.md)**.
+
+- **✅ Produção religada e NO AR:** portal `portal.imagineinstituto.com` (Vercel, projeto `portal-imagine-of`, scope "Brandify Hub") reconectado ao Supabase novo `zzxtethlsdjjfjjrqmlk` — env vars atualizadas na Vercel + redeploy; `vercel.json` corrigido (removido `NODE_ENV=development`). Verificado: serve o banco novo.
+- **✅ Segurança da API admin deployada:** `/api/admin/*` agora exige admin autenticado em produção (401 sem login, 200 para admin). Guard `requireAdmin()` (`src/lib/admin-auth.ts`) + helper `adminFetch()` (`src/lib/admin-api.ts`) aplicados em `/api/admin/projects` e `/api/admin/users`.
+- **✅ Integração Portal ↔ Framer construída e PUBLICADA ao vivo:**
+  - Portal Next.js = motor/fonte da verdade; site Framer `imagineinstituto.com` = vitrine pública.
+  - Reusa a collection **"Programas"** (limite de 2 collections no plano Framer); template Detail Page em `/programas/[slug]` reaproveitando o design de `/esporte` via "Swap Collection".
+  - **Embed de doação dinâmico:** campo `EmbedURL` na collection ligado por "Convert" ao componente Embed → checkout do portal por projeto.
+  - **Sync automático:** trigger `framer_sync_projects` (função `notify_framer_sync` via `pg_net`) → rota `src/app/api/webhooks/supabase-projects/route.ts` (valida `x-webhook-secret`, anti-loop nas colunas `framer_*`) → `src/lib/framer-sync.ts` (pacote npm `framer-api`, imagem de fallback = logo). Testado E2E (~10s).
+  - Colunas novas em `projects`: `framer_item_id`, `framer_synced_at`, `framer_sync_status`.
+  - Publicado via `framer.publish()` (deployment b0baae0de) → páginas `imagineinstituto.com/programas/{slug}` retornam 200.
+  - Env vars (Vercel prod+preview e `.env.local`): `FRAMER_API_TOKEN`, `FRAMER_PROJECT_URL`, `SUPABASE_WEBHOOK_SECRET`. Pacote `framer-api` no `package.json`.
+- **Follow-ups não-bloqueantes:** fotos reais nos projetos (hoje logo de fallback); limpar projetos-seed de teste; `noindex` opcional nos itens curados.
+
+---
+
 ## 🛠️ **07/07/2026 — Reconexão de banco, correções e mapeamento Framer**
 
 > Estado canônico do projeto: **[ESTADO_ATUAL.md](./ESTADO_ATUAL.md)**.
