@@ -1,39 +1,48 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-// Função para obter as credenciais (funciona tanto no servidor quanto no cliente)
 function getSupabaseCredentials() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-key'
-  
-  console.log('🔑 Credenciais Supabase Admin:', {
-    url: supabaseUrl,
-    serviceKey: supabaseServiceKey ? `${supabaseServiceKey.substring(0, 20)}...` : 'NÃO ENCONTRADA'
-  })
-  
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   return { supabaseUrl, supabaseServiceKey }
 }
 
-// Cliente Supabase com Service Role Key (bypassa RLS)
-export const supabaseAdmin = (() => {
+let cachedClient: SupabaseClient | null = null
+
+function getAdminClient(): SupabaseClient {
+  if (cachedClient) return cachedClient
   const { supabaseUrl, supabaseServiceKey } = getSupabaseCredentials()
-  
+
+  if (!supabaseUrl || !supabaseUrl.startsWith('https://')) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL não configurada')
+  }
   if (!supabaseServiceKey || supabaseServiceKey === 'placeholder-key') {
-    console.error('❌ SUPABASE_SERVICE_ROLE_KEY não configurada!')
     throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada')
   }
-  
-  return createClient(supabaseUrl, supabaseServiceKey, {
+
+  cachedClient = createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       persistSession: false,
     },
   })
-})()
+  return cachedClient
+}
+
+// Cliente Supabase com Service Role Key (lazy para compatibilidade com build e Cloudflare Workers)
+export const supabaseAdmin: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop, receiver) {
+    const client = getAdminClient()
+    const value = Reflect.get(client, prop, receiver)
+    return typeof value === 'function' ? value.bind(client) : value
+  },
+})
 
 // Verificar se as credenciais são válidas
 export const isSupabaseAdminConfigured = () => {
   const { supabaseUrl, supabaseServiceKey } = getSupabaseCredentials()
-  return supabaseUrl !== 'https://placeholder.supabase.co' && 
-         supabaseServiceKey !== 'placeholder-key' &&
-         supabaseUrl.startsWith('https://') &&
-         supabaseServiceKey.startsWith('eyJ')
+  return (
+    supabaseUrl.startsWith('https://') &&
+    supabaseUrl !== 'https://placeholder.supabase.co' &&
+    supabaseServiceKey !== 'placeholder-key' &&
+    supabaseServiceKey.startsWith('eyJ')
+  )
 }

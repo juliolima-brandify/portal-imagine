@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { ReactNode } from 'react'
 import UnifiedLayout from './UnifiedLayout'
 import { supabase } from '@/lib/supabase'
+import { isInstitutionalPath } from '@/lib/imagine-site'
 
 interface GlobalLayoutProps {
   children: ReactNode
@@ -109,12 +110,14 @@ export default function GlobalLayout({ children }: GlobalLayoutProps) {
     )
   }
 
-  // Páginas que NÃO devem ter sidebar (apenas wrapper simples)
-  const noSidebarPaths = ['/auth', '/', '/admin', '/prototype/checkout', '/embed/checkout', '/doar']
-  const shouldSkipSidebar = noSidebarPaths.some(path => 
-    pathname === path || 
-    (path !== '/auth' && path !== '/' && pathname.startsWith(path))
-  )
+  // Páginas que NÃO devem ter sidebar (site institucional, login, admin, checkouts)
+  const noSidebarPaths = ['/auth', '/entrar', '/', '/admin', '/prototype/checkout', '/embed/checkout', '/doar']
+  const shouldSkipSidebar =
+    isInstitutionalPath(pathname) ||
+    noSidebarPaths.some(path =>
+      pathname === path ||
+      (path !== '/auth' && path !== '/entrar' && path !== '/' && pathname.startsWith(path))
+    )
   
   if (shouldSkipSidebar) {
     return <>{children}</>

@@ -2,21 +2,23 @@
 
 import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
+import { isInstitutionalPath } from '@/lib/imagine-site'
 
 export default function ConditionalChat() {
   const pathname = usePathname()
 
-  // Páginas onde o chat NÃO deve aparecer
+  // Páginas onde o chat NÃO deve aparecer (inclui site institucional que já tem botão flutuante do WhatsApp)
   const excludePaths = [
     '/admin',
     '/embed/checkout',
     '/prototype/checkout',
     '/doacao-sucesso',
-    '/auth'
+    '/auth',
+    '/entrar',
   ]
 
   // Verificar se a página atual deve ter chat
-  const shouldShowChat = !excludePaths.some(path => pathname.startsWith(path))
+  const shouldShowChat = !isInstitutionalPath(pathname) && !excludePaths.some(path => pathname.startsWith(path))
 
   useEffect(() => {
     if (typeof window === 'undefined') return
