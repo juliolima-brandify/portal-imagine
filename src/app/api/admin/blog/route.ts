@@ -1,78 +1,63 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { requireAdmin } from '@/lib/admin-auth'
+import { jsonNoStore, verifyAdminMutationOrigin } from '@/lib/admin-http'
 import { deleteBlogCoverIfOrphan } from '@/lib/blog-media'
 import {
+  ALLOWED_BLOG_POST_STATUSES,
+  ALLOWED_BLOG_POST_TYPES,
   isValidBlogUuid,
   sanitizeAdminBlogPostPayload,
 } from '@/lib/blog-posts'
 
-const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' }
-
-const ALLOWED_MUTATION_ORIGINS = new Set([
-  'https://imagineinstituto.com',
-  'https://www.imagineinstituto.com',
-  'https://portal.imagineinstituto.com',
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:3001',
-])
+const MAX_ADMIN_BLOG_PAGE = 10000
+const DEFAULT_ADMIN_PAGE_SIZE = 24
+const MAX_ADMIN_PAGE_SIZE = 100
 
 const ADMIN_LIST_COLUMNS =
-  'id,slug,title,excerpt,post_type,project_id,cover_image_url,cover_alt,status,seo_title,seo_description,author_id,published_at,created_at,updated_at'
+  'id,slug,title,excerpt,post_type,project_id,cover_image_url,cover_alt,status,seo_title,seo_description,reading_time_minutes,author_id,published_at,created_at,updated_at'
 
 const ADMIN_DETAIL_COLUMNS = `${ADMIN_LIST_COLUMNS},content`
-
-function jsonNoStore(body: unknown, status = 200) {
-  return NextResponse.json(body, { status, headers: NO_STORE_HEADERS })
-}
-
-function verifyMutationOrigin(request: NextRequest): NextResponse | null {
-  const origin = request.headers.get('origin')
-  if (!origin) return null
-
-  if (ALLOWED_MUTATION_ORIGINS.has(origin)) return null
-
-  const host = (request.headers.get('host') || '').toLowerCase()
-  try {
-    const parsedOrigin = new URL(origin)
-    if (host && parsedOrigin.host.toLowerCase() === host) {
-      return null
-    }
-  } catch {
-    // origin malformada cai no 403 abaixo
-  }
-
-  return jsonNoStore({ error: 'Origem não autorizada para esta operação.' }, 403)
-}
 
 function mapDbError(error: { code?: string; message?: string }) {
   if (error?.code === '23505') {
     return jsonNoStore(
       { error: 'Já existe uma publicação com este slug. Escolha outro identificador de URL.' },
-      409
+      { status: 409 }
     )
   }
   if (error?.code === '23503') {
     return jsonNoStore(
       { error: 'O projeto vinculado não foi encontrado no banco de dados.' },
-      422
+      { status: 422 }
     )
   }
   if (error?.code === '22P02') {
-    return jsonNoStore({ error: 'Formato de dado ou identificador inválido.' }, 400)
+    return jsonNoStore({ error: 'Formato de dado ou identificador inválido.' }, { status: 400 })
   }
   if (error?.code === '23502' || error?.code === '23514') {
-    return jsonNoStore({ error: 'Os dados informados violam as regras de validação da publicação.' }, 422)
+    return jsonNoStore(
+      { error: 'Os dados informados violam as regras de validação da publicação.' },
+      { status: 422 }
+    )
   }
   if (error?.code === '42P01') {
     return jsonNoStore(
       { error: 'Tabela blog_posts ainda não criada no Supabase. Aplique a migração SQL primeiro.' },
-      503
+      { status: 503 }
     )
   }
-  return jsonNoStore({ error: 'Erro ao persistir publicação no banco de dados.' }, 500)
+  return jsonNoStore({ error: 'Erro ao persistir publicação no banco de dados.' }, { status: 500 })
+}
+
+function sanitizePostgrestSearchTerm(raw: string | null): string {
+  if (!raw) return ''
+  return raw
+    .trim()
+    .slice(0, 80)
+    .replace(/[%_\\(),."']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 export async function GET(request: NextRequest) {
@@ -85,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     if (id) {
       if (!isValidBlogUuid(id)) {
-        return jsonNoStore({ error: 'ID da publicação inválido (esperado UUID).' }, 400)
+        return jsonNoStore({ error: 'ID da publicação inválido (esperado UUID).' }, { status: 400 })
       }
       const { data, error } = await supabaseAdmin
         .from('blog_posts')
@@ -98,52 +83,103 @@ export async function GET(request: NextRequest) {
         return mapDbError(error)
       }
       if (!data) {
-        return jsonNoStore({ error: 'Publicação não encontrada.' }, 404)
+        return jsonNoStore({ error: 'Publicação não encontrada.' }, { status: 404 })
       }
       return jsonNoStore({ data })
     }
 
     const pageParam = Number.parseInt(searchParams.get('page') || '1', 10)
-    const pageSizeParam = Number.parseInt(searchParams.get('pageSize') || '100', 10)
-    const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1
+    const pageSizeParam = Number.parseInt(
+      searchParams.get('pageSize') || String(DEFAULT_ADMIN_PAGE_SIZE),
+      10
+    )
+    const page =
+      Number.isFinite(pageParam) && pageParam > 0
+        ? Math.min(MAX_ADMIN_BLOG_PAGE, pageParam)
+        : 1
     const pageSize =
-      Number.isFinite(pageSizeParam) && pageSizeParam > 0 ? Math.min(200, pageSizeParam) : 100
+      Number.isFinite(pageSizeParam) && pageSizeParam > 0
+        ? Math.min(MAX_ADMIN_PAGE_SIZE, pageSizeParam)
+        : DEFAULT_ADMIN_PAGE_SIZE
     const from = (page - 1) * pageSize
     const to = from + pageSize - 1
 
-    const { data, error, count } = await supabaseAdmin
+    const statusFilter = searchParams.get('status')?.trim() || ''
+    const postTypeFilter = searchParams.get('post_type')?.trim() || ''
+    const searchTerm = sanitizePostgrestSearchTerm(searchParams.get('q'))
+
+    let listQuery = supabaseAdmin
       .from('blog_posts')
       .select(ADMIN_LIST_COLUMNS, { count: 'exact' })
-      .order('updated_at', { ascending: false })
-      .range(from, to)
 
-    if (error) {
-      console.error('❌ API Blog: Erro ao listar publicações:', error)
-      return mapDbError(error)
+    if ((ALLOWED_BLOG_POST_STATUSES as readonly string[]).includes(statusFilter)) {
+      listQuery = listQuery.eq('status', statusFilter)
+    }
+
+    if ((ALLOWED_BLOG_POST_TYPES as readonly string[]).includes(postTypeFilter)) {
+      listQuery = listQuery.eq('post_type', postTypeFilter)
+    }
+
+    if (searchTerm) {
+      listQuery = listQuery.or(
+        `title.ilike.%${searchTerm}%,slug.ilike.%${searchTerm}%,excerpt.ilike.%${searchTerm}%`
+      )
+    }
+
+    const [listRes, totalAllRes, publishedRes, draftRes, archivedRes] = await Promise.all([
+      listQuery
+        .order('updated_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(from, to),
+      supabaseAdmin.from('blog_posts').select('id', { count: 'exact', head: true }),
+      supabaseAdmin
+        .from('blog_posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'published'),
+      supabaseAdmin
+        .from('blog_posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'draft'),
+      supabaseAdmin
+        .from('blog_posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'archived'),
+    ])
+
+    if (listRes.error) {
+      console.error('❌ API Blog: Erro ao listar publicações:', listRes.error)
+      return mapDbError(listRes.error)
     }
 
     return jsonNoStore({
-      data: data || [],
-      total: count ?? data?.length ?? 0,
+      data: listRes.data || [],
+      total: listRes.count ?? listRes.data?.length ?? 0,
       page,
       pageSize,
+      stats: {
+        total: totalAllRes.count ?? 0,
+        published: publishedRes.count ?? 0,
+        draft: draftRes.count ?? 0,
+        archived: archivedRes.count ?? 0,
+      },
     })
   } catch (err) {
     console.error('❌ API Blog: Erro interno no GET:', err)
-    return jsonNoStore({ error: 'Erro interno do servidor.' }, 500)
+    return jsonNoStore({ error: 'Erro interno do servidor.' }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
-  const originErr = verifyMutationOrigin(request)
-  if (originErr) return originErr
+  if (!verifyAdminMutationOrigin(request)) {
+    return jsonNoStore({ error: 'Origem não autorizada para esta operação.' }, { status: 403 })
+  }
 
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
   const contentType = (request.headers.get('content-type') || '').toLowerCase()
   if (!contentType.includes('application/json')) {
-    return jsonNoStore({ error: 'Content-Type deve ser application/json.' }, 415)
+    return jsonNoStore({ error: 'Content-Type deve ser application/json.' }, { status: 415 })
   }
 
   try {
@@ -151,7 +187,7 @@ export async function POST(request: NextRequest) {
     try {
       body = await request.json()
     } catch {
-      return jsonNoStore({ error: 'JSON inválido na requisição.' }, 400)
+      return jsonNoStore({ error: 'JSON inválido na requisição.' }, { status: 400 })
     }
 
     const sanitized = sanitizeAdminBlogPostPayload(body, 'create', {
@@ -159,36 +195,37 @@ export async function POST(request: NextRequest) {
     })
 
     if (!sanitized.ok) {
-      return jsonNoStore({ error: sanitized.error }, sanitized.status)
+      return jsonNoStore({ error: sanitized.error }, { status: sanitized.status })
     }
 
     const { data, error } = await supabaseAdmin
       .from('blog_posts')
       .insert([sanitized.data])
-      .select()
+      .select(ADMIN_DETAIL_COLUMNS)
 
     if (error) {
       console.error('❌ API Blog: Erro ao criar publicação:', error)
       return mapDbError(error)
     }
 
-    return jsonNoStore({ data: data?.[0] }, 201)
+    return jsonNoStore({ data: data?.[0] }, { status: 201 })
   } catch (err) {
     console.error('❌ API Blog: Erro interno no POST:', err)
-    return jsonNoStore({ error: 'Erro interno do servidor.' }, 500)
+    return jsonNoStore({ error: 'Erro interno do servidor.' }, { status: 500 })
   }
 }
 
 export async function PUT(request: NextRequest) {
-  const originErr = verifyMutationOrigin(request)
-  if (originErr) return originErr
+  if (!verifyAdminMutationOrigin(request)) {
+    return jsonNoStore({ error: 'Origem não autorizada para esta operação.' }, { status: 403 })
+  }
 
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
   const contentType = (request.headers.get('content-type') || '').toLowerCase()
   if (!contentType.includes('application/json')) {
-    return jsonNoStore({ error: 'Content-Type deve ser application/json.' }, 415)
+    return jsonNoStore({ error: 'Content-Type deve ser application/json.' }, { status: 415 })
   }
 
   try {
@@ -196,7 +233,7 @@ export async function PUT(request: NextRequest) {
     try {
       body = await request.json()
     } catch {
-      return jsonNoStore({ error: 'JSON inválido na requisição.' }, 400)
+      return jsonNoStore({ error: 'JSON inválido na requisição.' }, { status: 400 })
     }
 
     const rawRecord =
@@ -206,7 +243,7 @@ export async function PUT(request: NextRequest) {
 
     const rawId = rawRecord ? String(rawRecord.id || '').trim() : ''
     if (!isValidBlogUuid(rawId)) {
-      return jsonNoStore({ error: 'ID da publicação inválido (esperado UUID).' }, 400)
+      return jsonNoStore({ error: 'ID da publicação inválido (esperado UUID).' }, { status: 400 })
     }
 
     const { data: existing, error: fetchErr } = await supabaseAdmin
@@ -220,7 +257,7 @@ export async function PUT(request: NextRequest) {
       return mapDbError(fetchErr)
     }
     if (!existing) {
-      return jsonNoStore({ error: 'Publicação não encontrada.' }, 404)
+      return jsonNoStore({ error: 'Publicação não encontrada.' }, { status: 404 })
     }
 
     const expectedUpdatedAt =
@@ -237,7 +274,7 @@ export async function PUT(request: NextRequest) {
           error:
             'Esta publicação foi alterada por outro administrador. Recarregue a lista antes de salvar.',
         },
-        409
+        { status: 409 }
       )
     }
 
@@ -249,15 +286,20 @@ export async function PUT(request: NextRequest) {
     if (!sanitized.ok || !sanitized.id) {
       return jsonNoStore(
         { error: sanitized.ok ? 'ID da publicação é obrigatório.' : sanitized.error },
-        sanitized.ok ? 400 : sanitized.status
+        { status: sanitized.ok ? 400 : sanitized.status }
       )
     }
 
-    const { data, error } = await supabaseAdmin
+    let updateQuery = supabaseAdmin
       .from('blog_posts')
       .update(sanitized.data)
       .eq('id', sanitized.id)
-      .select()
+
+    if (existing.updated_at) {
+      updateQuery = updateQuery.eq('updated_at', existing.updated_at)
+    }
+
+    const { data, error } = await updateQuery.select(ADMIN_DETAIL_COLUMNS)
 
     if (error) {
       console.error('❌ API Blog: Erro ao atualizar publicação:', error)
@@ -265,7 +307,13 @@ export async function PUT(request: NextRequest) {
     }
 
     if (!data || data.length === 0) {
-      return jsonNoStore({ error: 'Publicação não encontrada.' }, 404)
+      return jsonNoStore(
+        {
+          error:
+            'Esta publicação foi alterada ou removida simultaneamente. Recarregue a lista antes de salvar.',
+        },
+        { status: 409 }
+      )
     }
 
     if (
@@ -279,13 +327,14 @@ export async function PUT(request: NextRequest) {
     return jsonNoStore({ data: data[0] })
   } catch (err) {
     console.error('❌ API Blog: Erro interno no PUT:', err)
-    return jsonNoStore({ error: 'Erro interno do servidor.' }, 500)
+    return jsonNoStore({ error: 'Erro interno do servidor.' }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
-  const originErr = verifyMutationOrigin(request)
-  if (originErr) return originErr
+  if (!verifyAdminMutationOrigin(request)) {
+    return jsonNoStore({ error: 'Origem não autorizada para esta operação.' }, { status: 403 })
+  }
 
   const auth = await requireAdmin()
   if (auth.error) return auth.error
@@ -295,7 +344,7 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id')?.trim()
 
     if (!isValidBlogUuid(id)) {
-      return jsonNoStore({ error: 'ID da publicação inválido (esperado UUID).' }, 400)
+      return jsonNoStore({ error: 'ID da publicação inválido (esperado UUID).' }, { status: 400 })
     }
 
     const { data, error } = await supabaseAdmin
@@ -310,7 +359,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (!data || data.length === 0) {
-      return jsonNoStore({ error: 'Publicação não encontrada.' }, 404)
+      return jsonNoStore({ error: 'Publicação não encontrada.' }, { status: 404 })
     }
 
     if (data[0]?.cover_image_url) {
@@ -320,6 +369,6 @@ export async function DELETE(request: NextRequest) {
     return jsonNoStore({ success: true })
   } catch (err) {
     console.error('❌ API Blog: Erro interno no DELETE:', err)
-    return jsonNoStore({ error: 'Erro interno do servidor.' }, 500)
+    return jsonNoStore({ error: 'Erro interno do servidor.' }, { status: 500 })
   }
 }

@@ -402,7 +402,7 @@ export default function ImagineSitePage({
             <Link href={anchor('como-doar')} onClick={() => setMenuOpen(false)}>Como doar</Link>
             <Link href="/blog" onClick={() => setMenuOpen(false)}>Notícias</Link>
             <Link href={anchor('imposto')} onClick={() => setMenuOpen(false)}>Imposto de Renda</Link>
-            <Link href="/empresas" onClick={() => setMenuOpen(false)}>Empresas</Link>
+            <Link href="/empresas" aria-current={page === 'empresas' ? 'page' : undefined} onClick={() => setMenuOpen(false)}>Empresas</Link>
             <Link href={anchor('transparencia')} onClick={() => setMenuOpen(false)}>Transparência</Link>
             <Link href={anchor('faq')} onClick={() => setMenuOpen(false)}>Dúvidas</Link>
             <Link href="/entrar" onClick={() => setMenuOpen(false)}>Entrar</Link>

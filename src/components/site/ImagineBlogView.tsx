@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import './imagine-site.css'
 import {
   IMAGINE_ASSETS,
@@ -10,19 +11,34 @@ import {
 } from '@/lib/imagine-site'
 import {
   formatBlogDatePTBR,
-  type PublicBlogPost,
+  type BlogPostType,
   type PublicBlogPostSummary,
 } from '@/lib/blog-posts'
 
 interface ImagineBlogViewProps {
   mode: 'list' | 'post' | 'not-found' | 'degraded'
   posts: PublicBlogPostSummary[]
-  activePost?: PublicBlogPost | null
+  activePost?: PublicBlogPostSummary | null
   articleContent?: React.ReactNode
   projects: ProjectInfo[]
   currentPage?: number
   totalPages?: number
   totalPosts?: number
+  activeTypeFilter?: 'all' | BlogPostType
+  activeProjectFilter?: string
+}
+
+function buildBlogHref(params: {
+  page?: number
+  tipo?: 'all' | BlogPostType
+  projeto?: string
+}): string {
+  const sp = new URLSearchParams()
+  if (params.tipo && params.tipo !== 'all') sp.set('tipo', params.tipo)
+  if (params.projeto && params.projeto !== 'all') sp.set('projeto', params.projeto)
+  if (params.page && params.page > 1) sp.set('page', String(params.page))
+  const qs = sp.toString()
+  return qs ? `/blog?${qs}` : '/blog'
 }
 
 const ArrowIcon = () => (
@@ -48,12 +64,13 @@ export default function ImagineBlogView({
   currentPage = 1,
   totalPages = 1,
   totalPosts,
+  activeTypeFilter = 'all',
+  activeProjectFilter = 'all',
 }: ImagineBlogViewProps) {
+  const router = useRouter()
   const { irAtivo, whatsapp } = IMAGINE_SITE_CONFIG
   const [navSolid, setNavSolid] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [typeFilter, setTypeFilter] = useState<'all' | 'news' | 'accountability'>('all')
-  const [projectFilter, setProjectFilter] = useState<string>('all')
 
   useEffect(() => {
     const onScroll = () => setNavSolid(window.scrollY > 40)
@@ -69,15 +86,12 @@ export default function ImagineBlogView({
     }
   }, [])
 
-  const filteredPosts = useMemo(() => {
-    return posts.filter((p) => {
-      const okType = typeFilter === 'all' || p.postType === typeFilter
-      const okProject =
-        projectFilter === 'all' ||
-        (projectFilter === 'geral' ? !p.projectId && !p.projectSlug : p.projectSlug === projectFilter)
-      return okType && okProject
-    })
-  }, [posts, typeFilter, projectFilter])
+  const hasActiveFilters = activeTypeFilter !== 'all' || activeProjectFilter !== 'all'
+  const resolvedTotalPosts = totalPosts ?? posts.length
+
+  const applyFilters = (nextTipo: 'all' | BlogPostType, nextProjeto: string) => {
+    router.push(buildBlogHref({ page: 1, tipo: nextTipo, projeto: nextProjeto }))
+  }
 
   const linkedProject = useMemo(() => {
     if (!activePost?.projectSlug) return null
@@ -161,24 +175,38 @@ export default function ImagineBlogView({
                 </p>
               </div>
 
-              {posts.length > 0 && (
+              {(posts.length > 0 || hasActiveFilters) && (
                 <div className="ii-blog-controls">
                   <div className="filtros gb" role="group" aria-label="Filtrar por tipo">
-                    <button type="button" aria-pressed={typeFilter === 'all'} onClick={() => setTypeFilter('all')}>
-                      Todos ({totalPosts ?? posts.length})
+                    <button
+                      type="button"
+                      aria-pressed={activeTypeFilter === 'all'}
+                      onClick={() => applyFilters('all', activeProjectFilter)}
+                    >
+                      {activeTypeFilter === 'all' && activeProjectFilter === 'all'
+                        ? `Todos (${resolvedTotalPosts})`
+                        : 'Todos'}
                     </button>
-                    <button type="button" aria-pressed={typeFilter === 'news'} onClick={() => setTypeFilter('news')}>
+                    <button
+                      type="button"
+                      aria-pressed={activeTypeFilter === 'news'}
+                      onClick={() => applyFilters('news', activeProjectFilter)}
+                    >
                       Notícias de Ações
                     </button>
-                    <button type="button" aria-pressed={typeFilter === 'accountability'} onClick={() => setTypeFilter('accountability')}>
+                    <button
+                      type="button"
+                      aria-pressed={activeTypeFilter === 'accountability'}
+                      onClick={() => applyFilters('accountability', activeProjectFilter)}
+                    >
                       Prestação de Contas
                     </button>
                   </div>
 
                   <select
                     aria-label="Filtrar por projeto"
-                    value={projectFilter}
-                    onChange={(e) => setProjectFilter(e.target.value)}
+                    value={activeProjectFilter}
+                    onChange={(e) => applyFilters(activeTypeFilter, e.target.value)}
                     className="ii-blog-select gb"
                   >
                     <option value="all">Projeto: Todos</option>
@@ -192,7 +220,7 @@ export default function ImagineBlogView({
                 </div>
               )}
 
-              {posts.length === 0 ? (
+              {posts.length === 0 && !hasActiveFilters ? (
                 <div className="ii-blog-empty gb">
                   <span className="k">Em breve</span>
                   <h2>As primeiras notícias e prestações de contas estão sendo preparadas.</h2>
@@ -213,30 +241,30 @@ export default function ImagineBlogView({
                     </a>
                   </div>
                 </div>
-              ) : filteredPosts.length === 0 ? (
+              ) : posts.length === 0 ? (
                 <div className="ii-blog-empty gb">
                   <h2>Nenhuma publicação neste filtro.</h2>
                   <p>Tente selecionar &ldquo;Todos&rdquo; ou escolher outro projeto acima.</p>
-                  <button
-                    type="button"
-                    className="btn-mais"
-                    onClick={() => {
-                      setTypeFilter('all')
-                      setProjectFilter('all')
-                    }}
-                  >
+                  <Link className="btn-mais" href="/blog">
                     Limpar filtros
-                  </button>
+                  </Link>
                 </div>
               ) : (
                 <>
                   <div className="projs" style={{ marginTop: 28 }}>
-                    {filteredPosts.map(renderPostCard)}
+                    {posts.map(renderPostCard)}
                   </div>
                   {totalPages > 1 && (
                     <nav className="ii-blog-pagination" aria-label="Paginação de notícias">
                       {currentPage > 1 ? (
-                        <Link className="btn-mais" href={currentPage === 2 ? '/blog' : `/blog?page=${currentPage - 1}`}>
+                        <Link
+                          className="btn-mais"
+                          href={buildBlogHref({
+                            page: currentPage - 1,
+                            tipo: activeTypeFilter,
+                            projeto: activeProjectFilter,
+                          })}
+                        >
                           ← Mais recentes
                         </Link>
                       ) : (
@@ -246,7 +274,14 @@ export default function ImagineBlogView({
                         Página {currentPage} de {totalPages}
                       </span>
                       {currentPage < totalPages ? (
-                        <Link className="btn-mais" href={`/blog?page=${currentPage + 1}`}>
+                        <Link
+                          className="btn-mais"
+                          href={buildBlogHref({
+                            page: currentPage + 1,
+                            tipo: activeTypeFilter,
+                            projeto: activeProjectFilter,
+                          })}
+                        >
                           Mais antigas →
                         </Link>
                       ) : (

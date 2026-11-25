@@ -39,12 +39,15 @@ test('R2: parseSafeMarkdown formata H2, negrito, listas, links com parenteses e 
   const md = [
     '## Entrega de Novembro',
     '',
-    'Foram entregues **140 cestas** e *320 marmitas*.',
+    'Foram entregues **140 cestas** e *320 marmitas*. Veja **[o relatório completo](https://imagineinstituto.com/blog/relatorio)**.',
     '',
     '- Item [seguro](https://imagineinstituto.com/projetos/social)',
     '- Cidade [Uberlandia]( https://pt.wikipedia.org/wiki/Uberl%C3%A2ndia_(Minas_Gerais) )',
     '- Link [perigoso](javascript:alert(1))',
     '',
+    '##',
+    '>',
+    '-',
     '## ',
     '> ',
     '- ',
@@ -55,6 +58,12 @@ test('R2: parseSafeMarkdown formata H2, negrito, listas, links com parenteses e 
   const blocks = parseSafeMarkdown(md)
   assert.equal(blocks[0].type, 'h2')
   assert.equal(blocks[1].type, 'p')
+  if (blocks[1].type === 'p') {
+    const strongLink = blocks[1].inlines.find((t) => t.type === 'link')
+    assert.ok(strongLink && strongLink.type === 'link')
+    assert.equal(strongLink.strong, true)
+    assert.equal(strongLink.label, 'o relatório completo')
+  }
   assert.equal(blocks[2].type, 'ul')
   if (blocks[2].type === 'ul') {
     assert.equal(blocks[2].items.length, 3)
@@ -70,20 +79,31 @@ test('R2: parseSafeMarkdown formata H2, negrito, listas, links com parenteses e 
     assert.equal(badLink, undefined)
   }
   assert.equal(blocks[3].type, 'p')
+  assert.equal(blocks.length, 4)
 
-  // Proteção contra bypass WHATWG (\t, \n, \r) e esquemas perigosos
+  // Proteção contra bypass WHATWG (\t, \n, \r, /.//, credenciais) e esquemas perigosos
   assert.equal(sanitizeLinkHref('/\t/evil.com'), null)
   assert.equal(sanitizeLinkHref('/\n/evil.com'), null)
+  assert.equal(sanitizeLinkHref('/.//evil.com'), null)
+  assert.equal(sanitizeLinkHref('https://user:pass@evil.com/path'), null)
   assert.equal(sanitizeLinkHref('javascript:alert(1)'), null)
   assert.equal(sanitizeLinkHref('data:text/html,hi'), null)
   assert.equal(sanitizeLinkHref('/projetos/artes'), '/projetos/artes')
   assert.equal(sanitizeLinkHref('//evil.com'), null)
+  assert.equal(sanitizeBlogCoverUrl('/.//evil.com/a.webp', '/img/sobre.webp'), '/img/sobre.webp')
+  assert.equal(sanitizeBlogCoverUrl('https://user:pass@evil.com/a.webp', '/img/sobre.webp'), '/img/sobre.webp')
 
-  // Proteção contra ReDoS O(N^2) com 50 KB de '[' sem fechamento
-  const evilInput = '[a'.repeat(25000)
+  // Proteção contra ReDoS O(N^2) com '[' sem fechamento e parens desbalanceados
+  const evilInputs = [
+    '[a'.repeat(25000),
+    '[a]('.repeat(12500),
+    '[a](x '.repeat(8000),
+  ]
   const t0 = performance.now()
-  stripMarkdown(evilInput)
-  parseInlineMarkdown(evilInput)
+  for (const evilInput of evilInputs) {
+    stripMarkdown(evilInput)
+    parseInlineMarkdown(evilInput)
+  }
   const elapsedMs = performance.now() - t0
   assert.ok(elapsedMs < 200, `Esperado parsing linear < 200ms, levou ${elapsedMs.toFixed(1)}ms`)
 })
@@ -121,6 +141,7 @@ test('R1 & R6 & R8: sanitizeAdminBlogPostPayload faz whitelist, bloqueia coersoe
     assert.equal(created.data.slug, 'entrega-de-cestas-basicas-em-novembro')
     assert.equal(created.data.author_id, '11111111-1111-4111-8111-111111111111')
     assert.equal('created_at' in created.data, false)
+    assert.equal(created.data.reading_time_minutes, 1)
     assert.ok(typeof created.data.published_at === 'string')
     assert.ok(typeof created.data.excerpt === 'string' && created.data.excerpt.length > 10)
   }
@@ -156,6 +177,27 @@ test('R1 & R6 & R8: sanitizeAdminBlogPostPayload faz whitelist, bloqueia coersoe
   assert.equal(badType.ok, false)
   if (!badType.ok) assert.equal(badType.status, 422)
 
+  const badCoverAlt = sanitizeAdminBlogPostPayload(
+    { id: '22222222-2222-4222-8222-222222222222', cover_alt: 999 },
+    'update'
+  )
+  assert.equal(badCoverAlt.ok, false)
+  if (!badCoverAlt.ok) assert.equal(badCoverAlt.status, 422)
+
+  const badSeoTitle = sanitizeAdminBlogPostPayload(
+    { id: '22222222-2222-4222-8222-222222222222', seo_title: { text: 'oi' } },
+    'update'
+  )
+  assert.equal(badSeoTitle.ok, false)
+  if (!badSeoTitle.ok) assert.equal(badSeoTitle.status, 422)
+
+  const badSeoDesc = sanitizeAdminBlogPostPayload(
+    { id: '22222222-2222-4222-8222-222222222222', seo_description: false },
+    'update'
+  )
+  assert.equal(badSeoDesc.ok, false)
+  if (!badSeoDesc.ok) assert.equal(badSeoDesc.status, 422)
+
   const badSlug = sanitizeAdminBlogPostPayload(
     {
       title: 'Admin',
@@ -186,6 +228,7 @@ test('R4: mapDbBlogPostToPublic oculta rascunhos e loadPublicBlogPostsWithFallba
       content: 'Sessenta e cinco crianças participaram no tatame.',
       post_type: 'news',
       project_id: 'dd0107dc-1802-47af-8755-371603acf890',
+      reading_time_minutes: 4,
       status: 'published',
       published_at: '2026-11-20T15:00:00Z',
     },
@@ -194,6 +237,7 @@ test('R4: mapDbBlogPostToPublic oculta rascunhos e loadPublicBlogPostsWithFallba
   assert.ok(published)
   assert.equal(published?.projectSlug, 'esporte')
   assert.equal(published?.projectColorClass, 'cor-azul')
+  assert.equal(published?.readingTimeMinutes, 4)
 
   const origErr = console.error
   console.error = () => {}
@@ -221,8 +265,30 @@ test('R7: detectImageMimeFromBytes e extractBlogStoragePath validam magic bytes 
   assert.equal(detectImageMimeFromBytes(fakeSvg), null)
 
   assert.equal(
-    extractBlogStoragePath('https://zzxtethlsdjjfjjrqmlk.supabase.co/storage/v1/object/public/blog/covers/2026/11/abc.webp'),
-    'covers/2026/11/abc.webp'
+    extractBlogStoragePath(
+      'https://zzxtethlsdjjfjjrqmlk.supabase.co/storage/v1/object/public/blog/covers/2026/11/dd0107dc-1802-47af-8755-371603acf890.webp',
+      'https://zzxtethlsdjjfjjrqmlk.supabase.co'
+    ),
+    'covers/2026/11/dd0107dc-1802-47af-8755-371603acf890.webp'
+  )
+  assert.equal(
+    extractBlogStoragePath(
+      'https://zzxtethlsdjjfjjrqmlk.supabase.co/storage/v1/object/public/blog/covers/2026/11/dd0107dc-1802-47af-8755-371603acf890.webp?download=1'
+    ),
+    null
+  )
+  assert.equal(
+    extractBlogStoragePath(
+      'http://zzxtethlsdjjfjjrqmlk.supabase.co/storage/v1/object/public/blog/covers/2026/11/dd0107dc-1802-47af-8755-371603acf890.webp'
+    ),
+    null
+  )
+  assert.equal(
+    extractBlogStoragePath(
+      'https://evil.com/storage/v1/object/public/blog/covers/2026/11/dd0107dc-1802-47af-8755-371603acf890.webp',
+      'https://zzxtethlsdjjfjjrqmlk.supabase.co'
+    ),
+    null
   )
   assert.equal(
     extractBlogStoragePath('https://zzxtethlsdjjfjjrqmlk.supabase.co/storage/v1/object/public/blog/covers/../secret.webp'),

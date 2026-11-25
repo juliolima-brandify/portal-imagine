@@ -41,6 +41,7 @@ export interface DbBlogPostRow {
   status?: BlogPostStatus | string | null
   seo_title?: string | null
   seo_description?: string | null
+  reading_time_minutes?: number | null
   author_id?: string | null
   published_at?: string | null
   created_at?: string | null
@@ -83,6 +84,7 @@ export interface AdminBlogPostWriteData {
   status?: BlogPostStatus
   seo_title?: string | null
   seo_description?: string | null
+  reading_time_minutes?: number
   author_id?: string
   published_at?: string
 }
@@ -91,7 +93,7 @@ export type MarkdownInline =
   | { type: 'text'; value: string }
   | { type: 'strong'; value: string }
   | { type: 'em'; value: string }
-  | { type: 'link'; label: string; href: string }
+  | { type: 'link'; label: string; href: string; strong?: boolean }
 
 export type MarkdownBlock =
   | { type: 'h2'; inlines: MarkdownInline[] }
@@ -137,6 +139,7 @@ function validateSafeRelativePath(trimmed: string): string | null {
   try {
     const resolved = new URL(trimmed, 'https://imagine.local')
     if (resolved.origin !== 'https://imagine.local') return null
+    if (resolved.pathname.startsWith('//')) return null
     return `${resolved.pathname}${resolved.search}${resolved.hash}`
   } catch {
     return null
@@ -157,7 +160,7 @@ export function sanitizeBlogCoverUrl(
 
   try {
     const parsed = new URL(trimmed)
-    if (parsed.protocol === 'https:') {
+    if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) {
       return parsed.toString()
     }
   } catch {
@@ -177,7 +180,11 @@ export function sanitizeLinkHref(rawHref: string | null | undefined): string | n
 
   try {
     const parsed = new URL(trimmed)
-    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+    if (
+      (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      !parsed.username &&
+      !parsed.password
+    ) {
       return parsed.toString()
     }
   } catch {
@@ -186,9 +193,12 @@ export function sanitizeLinkHref(rawHref: string | null | undefined): string | n
   return null
 }
 
+const MAX_MARKDOWN_LINK_LABEL_LEN = 300
+const MAX_MARKDOWN_LINK_HREF_LEN = 2048
+
 /**
  * Scanner linear O(N) para links Markdown `[label](url)` com suporte a parênteses
- * balanceados na URL (ex.: Wikipedia) e sem risco de ReDoS.
+ * balanceados na URL (ex.: Wikipedia) e limites rígidos para evitar O(N²) em entradas malformadas.
  */
 function findBalancedMarkdownLink(
   text: string,
@@ -197,7 +207,8 @@ function findBalancedMarkdownLink(
   if (text[startIdx] !== '[') return null
 
   let closeBracket = -1
-  for (let i = startIdx + 1; i < text.length; i++) {
+  const labelLimit = Math.min(text.length, startIdx + 1 + MAX_MARKDOWN_LINK_LABEL_LEN)
+  for (let i = startIdx + 1; i < labelLimit; i++) {
     const ch = text[i]
     if (ch === '\n' || ch === '[') return null
     if (ch === ']') {
@@ -212,9 +223,23 @@ function findBalancedMarkdownLink(
 
   let depth = 0
   let closeParen = -1
-  for (let j = closeBracket + 2; j < text.length; j++) {
+  let hrefStart = closeBracket + 2
+  while (hrefStart < text.length && (text[hrefStart] === ' ' || text[hrefStart] === '\t')) {
+    hrefStart++
+  }
+  const hrefLimit = Math.min(text.length, hrefStart + MAX_MARKDOWN_LINK_HREF_LEN)
+  for (let j = hrefStart; j < hrefLimit; j++) {
     const ch = text[j]
-    if (ch === '\n') return null
+    if (ch === '\n' || ch === '[' || ch === '\t' || ch === '\r') return null
+    if (ch === ' ') {
+      let k = j + 1
+      while (k < hrefLimit && text[k] === ' ') k++
+      if (depth === 0 && text[k] === ')') {
+        closeParen = k
+        break
+      }
+      return null
+    }
     if (ch === '(') {
       depth++
     } else if (ch === ')') {
@@ -227,7 +252,7 @@ function findBalancedMarkdownLink(
   }
   if (closeParen === -1) return null
 
-  const rawHref = text.slice(closeBracket + 2, closeParen).trim()
+  const rawHref = text.slice(hrefStart, closeParen).trim()
   if (!rawHref) return null
 
   return { label, rawHref, endIdx: closeParen + 1 }
@@ -327,6 +352,24 @@ export function parseInlineMarkdown(text: string): MarkdownInline[] {
     }
 
     if (text[i] === '*' && text[i + 1] === '*') {
+      if (text[i + 2] === '[') {
+        const strongLink = findBalancedMarkdownLink(text, i + 2)
+        if (strongLink && text[strongLink.endIdx] === '*' && text[strongLink.endIdx + 1] === '*') {
+          flushText()
+          const safeHref = sanitizeLinkHref(strongLink.rawHref)
+          const cleanLabel = strongLink.label
+            .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+            .replace(/\*([^*\n]+)\*/g, '$1')
+          if (safeHref) {
+            tokens.push({ type: 'link', label: cleanLabel, href: safeHref, strong: true })
+          } else {
+            tokens.push({ type: 'strong', value: cleanLabel })
+          }
+          i = strongLink.endIdx + 2
+          continue
+        }
+      }
+
       const closeIdx = text.indexOf('**', i + 2)
       if (closeIdx > i + 2 && !text.slice(i + 2, closeIdx).includes('\n')) {
         flushText()
@@ -379,7 +422,7 @@ export function parseSafeMarkdown(rawContent: string | null | undefined): Markdo
 
   for (const rawLine of lines) {
     const line = rawLine.trim()
-    if (!line) {
+    if (!line || /^(?:#{1,3}|>|[-*])$/.test(line)) {
       flushParagraph()
       flushList()
       continue
@@ -453,6 +496,13 @@ export function mapDbBlogPostToSummary(
   const coverImageUrl = sanitizeBlogCoverUrl(row.cover_image_url, DEFAULT_BLOG_COVER)
   const coverAlt = (row.cover_alt || '').trim() || title
   const publishedAt = row.published_at || row.created_at || new Date().toISOString()
+  const storedReadingTime =
+    typeof row.reading_time_minutes === 'number' &&
+    Number.isInteger(row.reading_time_minutes) &&
+    row.reading_time_minutes >= 1 &&
+    row.reading_time_minutes <= 120
+      ? row.reading_time_minutes
+      : null
 
   return {
     id: row.id,
@@ -470,7 +520,7 @@ export function mapDbBlogPostToSummary(
     seoTitle,
     seoDescription,
     publishedAt,
-    readingTimeMinutes: estimateReadingTimeMinutes(rawContent || excerpt),
+    readingTimeMinutes: storedReadingTime ?? estimateReadingTimeMinutes(rawContent || excerpt),
     shareUrl: resolveCanonicalUrl(`/blog/${slug}`),
   }
 }
@@ -593,6 +643,7 @@ export function sanitizeAdminBlogPostPayload(
       }
     }
     data.content = content
+    data.reading_time_minutes = Math.min(120, estimateReadingTimeMinutes(content))
   }
 
   // Slug (no create deriva do título se omitido; no update só muda se vier explicitamente)
@@ -715,18 +766,27 @@ export function sanitizeAdminBlogPostPayload(
 
   // Cover alt
   if (body.cover_alt !== undefined) {
+    if (body.cover_alt !== null && typeof body.cover_alt !== 'string') {
+      return { ok: false, status: 422, error: 'Texto alternativo da capa inválido.' }
+    }
     const alt = typeof body.cover_alt === 'string' ? body.cover_alt.trim().slice(0, 200) : ''
     data.cover_alt = alt
   } else if (mode === 'create') {
     data.cover_alt = (data.title || '').slice(0, 200)
   }
 
-  // SEO fields (opcionais)
+  // SEO fields (opcionais, sem coerção silenciosa)
   if (body.seo_title !== undefined) {
+    if (body.seo_title !== null && typeof body.seo_title !== 'string') {
+      return { ok: false, status: 422, error: 'Título SEO inválido.' }
+    }
     const v = typeof body.seo_title === 'string' ? body.seo_title.trim().slice(0, 120) : ''
     data.seo_title = v || null
   }
   if (body.seo_description !== undefined) {
+    if (body.seo_description !== null && typeof body.seo_description !== 'string') {
+      return { ok: false, status: 422, error: 'Descrição SEO inválida.' }
+    }
     const v = typeof body.seo_description === 'string' ? body.seo_description.trim().slice(0, 200) : ''
     data.seo_description = v || null
   }
@@ -803,17 +863,28 @@ export function extensionForImageMime(mime: SupportedImageMime): string {
 }
 
 const BLOG_PUBLIC_BUCKET_MARKER = '/storage/v1/object/public/blog/'
+const BLOG_COVER_PATH_REGEX =
+  /^covers\/\d{4}\/(0[1-9]|1[0-2])\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(webp|jpg|png)$/i
 
-export function extractBlogStoragePath(url: string | null | undefined): string | null {
+export function extractBlogStoragePath(
+  url: string | null | undefined,
+  expectedOrigin?: string | null
+): string | null {
   if (typeof url !== 'string' || !url.trim()) return null
   try {
     const parsed = new URL(url.trim())
-    const idx = parsed.pathname.indexOf(BLOG_PUBLIC_BUCKET_MARKER)
-    if (idx === -1) return null
-    const relPath = decodeURIComponent(
-      parsed.pathname.slice(idx + BLOG_PUBLIC_BUCKET_MARKER.length)
-    )
-    if (!relPath.startsWith('covers/') || relPath.includes('..')) return null
+    if (expectedOrigin) {
+      if (parsed.origin !== expectedOrigin) return null
+    } else if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith('.supabase.co')) {
+      return null
+    }
+    if (parsed.search || parsed.hash) return null
+    if (!parsed.pathname.startsWith(BLOG_PUBLIC_BUCKET_MARKER)) return null
+
+    const rawRel = parsed.pathname.slice(BLOG_PUBLIC_BUCKET_MARKER.length)
+    const relPath = decodeURIComponent(rawRel)
+    if (relPath !== rawRel || relPath.includes('..')) return null
+    if (!BLOG_COVER_PATH_REGEX.test(relPath)) return null
     return relPath
   } catch {
     return null

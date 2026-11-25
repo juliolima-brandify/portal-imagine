@@ -95,6 +95,8 @@ export function Toast({ id, type, title, message, duration = 4000, onClose }: To
           )}
         </div>
         <button
+          type="button"
+          aria-label="Fechar notificação"
           onClick={handleClose}
           className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
         >

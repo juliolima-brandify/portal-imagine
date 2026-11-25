@@ -82,6 +82,16 @@ export async function uploadBlogCoverBytes(
   }
 }
 
+function resolveSupabaseOrigin(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!raw) return null
+  try {
+    return new URL(raw).origin
+  } catch {
+    return null
+  }
+}
+
 /**
  * Remove capa antiga do bucket 'blog' apenas se nenhum outro post a referenciar.
  * Falhas de limpeza são logadas sem bloquear a resposta da API.
@@ -90,21 +100,21 @@ export async function deleteBlogCoverIfOrphan(
   coverUrl: string | null | undefined,
   ignorePostId?: string
 ): Promise<void> {
-  const storagePath = extractBlogStoragePath(coverUrl)
+  const storagePath = extractBlogStoragePath(coverUrl, resolveSupabaseOrigin())
   if (!storagePath || !coverUrl) return
 
   try {
     let query = supabaseAdmin
       .from('blog_posts')
       .select('id', { count: 'exact', head: true })
-      .eq('cover_image_url', coverUrl)
+      .like('cover_image_url', `%${storagePath}%`)
 
     if (ignorePostId) {
       query = query.neq('id', ignorePostId)
     }
 
     const { count, error } = await query
-    if (error || (count ?? 0) > 0) return
+    if (error || count === null || count > 0) return
 
     const { error: removeError } = await supabaseAdmin.storage
       .from(BLOG_STORAGE_BUCKET)

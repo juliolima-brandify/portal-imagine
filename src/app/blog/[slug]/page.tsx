@@ -24,7 +24,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
       title: degraded
         ? 'Notícias | Instituto Imagine'
         : 'Publicação não encontrada | Instituto Imagine',
-      robots: degraded ? undefined : { index: false, follow: false },
+      robots: { index: false, follow: false },
     }
   }
 
@@ -80,13 +80,15 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
     redirect(`/blog/${post.slug}`)
   }
 
+  const { content: postContent, ...activePostSummary } = post
+
   return (
     <ImagineBlogView
       mode="post"
       posts={relatedPosts}
-      activePost={post}
+      activePost={activePostSummary}
       projects={projects}
-      articleContent={<SafeMarkdownContent content={post.content} />}
+      articleContent={<SafeMarkdownContent content={postContent} />}
     />
   )
 }

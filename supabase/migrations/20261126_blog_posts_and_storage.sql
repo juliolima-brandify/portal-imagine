@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS public.blog_posts (
     CHECK (status IN ('draft', 'published', 'archived')),
   seo_title TEXT,
   seo_description TEXT,
+  reading_time_minutes INTEGER NOT NULL DEFAULT 1
+    CHECK (reading_time_minutes BETWEEN 1 AND 120),
   author_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   published_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -56,8 +58,12 @@ CREATE INDEX IF NOT EXISTS blog_posts_published_list_idx
   WHERE status = 'published';
 
 CREATE INDEX IF NOT EXISTS blog_posts_project_published_idx
-  ON public.blog_posts (project_id, published_at DESC NULLS LAST)
+  ON public.blog_posts (project_id, published_at DESC NULLS LAST, created_at DESC)
   WHERE status = 'published' AND project_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS blog_posts_project_id_idx
+  ON public.blog_posts (project_id)
+  WHERE project_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS blog_posts_updated_at_idx
   ON public.blog_posts (updated_at DESC);
@@ -65,6 +71,10 @@ CREATE INDEX IF NOT EXISTS blog_posts_updated_at_idx
 CREATE INDEX IF NOT EXISTS blog_posts_author_id_idx
   ON public.blog_posts (author_id)
   WHERE author_id IS NOT NULL;
+
+ALTER TABLE public.blog_posts
+  ADD COLUMN IF NOT EXISTS reading_time_minutes INTEGER NOT NULL DEFAULT 1
+  CHECK (reading_time_minutes BETWEEN 1 AND 120);
 
 -- Trigger de updated_at
 DROP TRIGGER IF EXISTS update_blog_posts_updated_at ON public.blog_posts;
@@ -95,12 +105,12 @@ GRANT SELECT (
   status,
   seo_title,
   seo_description,
+  reading_time_minutes,
   published_at,
   created_at,
   updated_at
-) ON public.blog_posts TO anon;
+) ON public.blog_posts TO anon, authenticated;
 
-GRANT SELECT ON public.blog_posts TO authenticated;
 GRANT ALL ON public.blog_posts TO service_role;
 
 DROP POLICY IF EXISTS "Admins can manage blog posts" ON public.blog_posts;

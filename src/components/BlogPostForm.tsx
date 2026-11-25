@@ -83,7 +83,9 @@ async function safeParseJson(res: Response): Promise<Record<string, unknown>> {
   try {
     const text = await res.text()
     if (!text) return {}
-    return JSON.parse(text) as Record<string, unknown>
+    const parsed: unknown = JSON.parse(text)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return parsed as Record<string, unknown>
   } catch {
     return {}
   }
@@ -120,6 +122,8 @@ export default function BlogPostForm({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const uploadAbortRef = useRef<AbortController | null>(null)
+  const uploadSeqRef = useRef(0)
+  const manualAbortRef = useRef(false)
 
   const isBusy = submittingStatus !== null || uploading
 
@@ -154,6 +158,8 @@ export default function BlogPostForm({
   }
 
   const handleCancelUpload = () => {
+    manualAbortRef.current = true
+    uploadSeqRef.current += 1
     uploadAbortRef.current?.abort()
     uploadAbortRef.current = null
     setUploading(false)
@@ -165,6 +171,8 @@ export default function BlogPostForm({
     e.target.value = ''
     if (!file) return
 
+    const seq = ++uploadSeqRef.current
+    manualAbortRef.current = false
     setError('')
     setUploadNote('')
     setUploading(true)
@@ -175,6 +183,7 @@ export default function BlogPostForm({
 
     try {
       const { blob, originalKB, finalKB } = await compressImageToWebP(file)
+      if (seq !== uploadSeqRef.current) return
 
       if (blob.size > MAX_BLOG_COVER_BYTES) {
         setError('A imagem excede o limite de 5 MB mesmo após otimização. Escolha um arquivo menor.')
@@ -190,6 +199,8 @@ export default function BlogPostForm({
         body: formData,
         signal: controller.signal,
       })
+      if (seq !== uploadSeqRef.current) return
+
       const json = await safeParseJson(res)
       if (!res.ok) {
         setError(String(json.error || 'Não foi possível enviar a imagem de capa.'))
@@ -212,6 +223,7 @@ export default function BlogPostForm({
           : `Capa enviada (${finalKB} KB)`
       )
     } catch (err: unknown) {
+      if (seq !== uploadSeqRef.current || manualAbortRef.current) return
       const isAbort = err instanceof Error && err.name === 'AbortError'
       setError(
         isAbort
@@ -220,8 +232,10 @@ export default function BlogPostForm({
       )
     } finally {
       window.clearTimeout(timeoutId)
-      uploadAbortRef.current = null
-      setUploading(false)
+      if (seq === uploadSeqRef.current) {
+        uploadAbortRef.current = null
+        setUploading(false)
+      }
     }
   }
 
@@ -327,7 +341,7 @@ export default function BlogPostForm({
               type="button"
               onClick={onCancel}
               disabled={isBusy}
-              className="btn-secondary h-11 !py-0 px-4 inline-flex items-center justify-center disabled:opacity-50"
+              className="btn-secondary h-11 !py-0 px-4 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               Cancelar
             </button>
@@ -337,7 +351,7 @@ export default function BlogPostForm({
                   type="button"
                   onClick={() => submitWithStatus('archived')}
                   disabled={isBusy}
-                  className="btn-secondary h-11 !py-0 px-4 inline-flex items-center justify-center disabled:opacity-50"
+                  className="btn-secondary h-11 !py-0 px-4 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   {submittingStatus === 'archived' ? 'Arquivando...' : 'Arquivar'}
                 </button>
@@ -346,7 +360,7 @@ export default function BlogPostForm({
                 type="button"
                 onClick={() => submitWithStatus('draft')}
                 disabled={isBusy}
-                className="btn-secondary h-11 !py-0 px-4 inline-flex items-center justify-center disabled:opacity-50"
+                className="btn-secondary h-11 !py-0 px-4 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 {secondaryLabel}
               </button>
@@ -354,7 +368,7 @@ export default function BlogPostForm({
                 type="button"
                 onClick={() => submitWithStatus('published')}
                 disabled={isBusy}
-                className="btn-primary h-11 !py-0 px-5 inline-flex items-center justify-center disabled:opacity-50"
+                className="btn-primary h-11 !py-0 px-5 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 {primaryLabel}
               </button>
@@ -482,7 +496,7 @@ export default function BlogPostForm({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isBusy}
-                  className="btn-secondary text-sm !py-1.5 px-3 disabled:opacity-50"
+                  className="btn-secondary text-sm !py-1.5 px-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   {uploading ? 'Enviando...' : coverImageUrl ? 'Trocar foto' : 'Enviar foto'}
                 </button>
@@ -504,7 +518,7 @@ export default function BlogPostForm({
                       setUploadNote('')
                     }}
                     disabled={isBusy}
-                    className="text-xs text-red-700 hover:text-red-800 font-medium px-2 py-1"
+                    className="text-xs text-red-700 hover:text-red-800 font-medium px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Remover
                   </button>
@@ -593,7 +607,7 @@ export default function BlogPostForm({
         {/* Acordeão SEO opcional + Prévia WhatsApp */}
         <details className="rounded-lg border border-gray-200 bg-gray-50 p-4">
           <summary className="text-sm font-medium text-gray-800 cursor-pointer select-none">
-            ▸ SEO e resumo avançado (opcional — gerado automaticamente se vazio)
+            SEO e resumo avançado (opcional — gerado automaticamente se vazio)
           </summary>
           <div className="mt-4 space-y-3">
             <div>

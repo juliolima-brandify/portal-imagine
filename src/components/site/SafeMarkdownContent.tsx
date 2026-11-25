@@ -16,10 +16,11 @@ function renderInlines(inlines: MarkdownInline[], keyPrefix: string) {
       return <em key={key}>{token.value}</em>
     }
     if (token.type === 'link') {
+      const contentNode = token.strong ? <strong>{token.label}</strong> : token.label
       if (token.href.startsWith('/')) {
         return (
           <Link key={key} href={token.href} className="ii-md-link">
-            {token.label}
+            {contentNode}
           </Link>
         )
       }
@@ -31,7 +32,7 @@ function renderInlines(inlines: MarkdownInline[], keyPrefix: string) {
           rel="noopener noreferrer"
           className="ii-md-link"
         >
-          {token.label}
+          {contentNode}
         </a>
       )
     }

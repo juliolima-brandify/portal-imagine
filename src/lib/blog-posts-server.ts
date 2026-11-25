@@ -5,6 +5,7 @@ import {
   mapDbBlogPostToPublic,
   mapDbBlogPostsToSummary,
   normalizeBlogSlug,
+  type BlogPostType,
   type DbBlogPostRow,
   type PublicBlogPost,
   type PublicBlogPostSummary,
@@ -13,7 +14,7 @@ import {
 const SUPABASE_BLOG_TIMEOUT_MS = 4000
 
 const PUBLIC_BLOG_SUMMARY_COLUMNS =
-  'id,slug,title,excerpt,post_type,project_id,cover_image_url,cover_alt,status,seo_title,seo_description,published_at,created_at,updated_at'
+  'id,slug,title,excerpt,post_type,project_id,cover_image_url,cover_alt,status,seo_title,seo_description,reading_time_minutes,published_at,created_at,updated_at'
 
 const PUBLIC_BLOG_FULL_COLUMNS = `${PUBLIC_BLOG_SUMMARY_COLUMNS},content`
 
@@ -43,6 +44,9 @@ export interface PublicBlogPostsPageResult {
 export async function getPublicBlogPostsPage(options?: {
   limit?: number
   offset?: number
+  postType?: BlogPostType
+  projectId?: string | null
+  onlyGeneral?: boolean
 }): Promise<PublicBlogPostsPageResult> {
   const limit = Math.max(1, Math.min(50, options?.limit ?? 12))
   const offset = Math.max(0, options?.offset ?? 0)
@@ -51,14 +55,27 @@ export async function getPublicBlogPostsPage(options?: {
 
   try {
     const client = createPublicBlogClient()
+    let query = client
+      .from('blog_posts')
+      .select(PUBLIC_BLOG_SUMMARY_COLUMNS, { count: 'exact' })
+      .eq('status', 'published')
+
+    if (options?.postType === 'news' || options?.postType === 'accountability') {
+      query = query.eq('post_type', options.postType)
+    }
+
+    if (options?.onlyGeneral) {
+      query = query.is('project_id', null)
+    } else if (options?.projectId) {
+      query = query.eq('project_id', options.projectId)
+    }
+
     const [projects, queryRes] = await Promise.all([
       getPublicSiteProjects(),
-      client
-        .from('blog_posts')
-        .select(PUBLIC_BLOG_SUMMARY_COLUMNS, { count: 'exact' })
-        .eq('status', 'published')
+      query
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
         .range(offset, offset + limit - 1)
         .abortSignal(controller.signal),
     ])
@@ -197,14 +214,17 @@ export async function getAllPublishedBlogSlugsForSitemap(): Promise<SitemapBlogE
     const client = createPublicBlogClient()
     const batchSize = 500
     let offset = 0
+    const seenSlugs = new Set<string>()
     const entries: SitemapBlogEntry[] = []
 
     while (offset < 10000) {
       const { data, error } = await client
         .from('blog_posts')
-        .select('slug,published_at,updated_at,created_at')
+        .select('id,slug,published_at,updated_at,created_at')
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
         .range(offset, offset + batchSize - 1)
         .abortSignal(controller.signal)
 
@@ -213,6 +233,7 @@ export async function getAllPublishedBlogSlugsForSitemap(): Promise<SitemapBlogE
       }
 
       const rows = (data || []) as Array<{
+        id?: string
         slug: string
         published_at?: string | null
         updated_at?: string | null
@@ -220,7 +241,8 @@ export async function getAllPublishedBlogSlugsForSitemap(): Promise<SitemapBlogE
       }>
 
       for (const row of rows) {
-        if (!row.slug) continue
+        if (!row.slug || seenSlugs.has(row.slug)) continue
+        seenSlugs.add(row.slug)
         entries.push({
           slug: row.slug,
           lastModified: row.updated_at || row.published_at || row.created_at || undefined,
