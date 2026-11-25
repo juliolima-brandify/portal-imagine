@@ -33,41 +33,11 @@ export default function DoacoesPage() {
           setDonations(userDonations)
           setUserStats(stats)
         } else {
-          // Modo demo via URL
-          const urlParams = new URLSearchParams(window.location.search)
-          const demoEmail = urlParams.get('demo_email')
-          if (demoEmail === 'demo@doador.com' || demoEmail === 'admin@institutoimagine.org' || demoEmail === 'volunteer@institutoimagine.org') {
-            setUser({
-              id: '00000000-0000-0000-0000-000000000001',
-              email: demoEmail,
-              user_metadata: { 
-                name: demoEmail === 'admin@institutoimagine.org' ? 'Admin Demo' : 
-                      demoEmail === 'volunteer@institutoimagine.org' ? 'Voluntário Demo' : 
-                      'Doador Demo' 
-              },
-              app_metadata: {},
-              aud: 'authenticated',
-              created_at: new Date().toISOString()
-            } as User)
-            try {
-              const [userDonations, stats] = await Promise.all([
-                getDonations('00000000-0000-0000-0000-000000000001'),
-                getUserStats('00000000-0000-0000-0000-000000000001')
-              ])
-              setDonations(userDonations)
-              setUserStats(stats)
-            } catch (error) {
-              console.log('Erro ao carregar dados do Supabase para demo:', error)
-              setDonations([])
-              setUserStats({ totalDonated: 0, totalDonations: 0, averageDonation: 0 })
-            }
-          } else {
-            window.location.href = '/auth'
-          }
+          window.location.href = '/entrar'
         }
       } catch (error) {
         console.log('Erro ao carregar dados:', error)
-        window.location.href = '/auth'
+        window.location.href = '/entrar'
       } finally {
         setLoading(false)
       }

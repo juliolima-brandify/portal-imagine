@@ -19,31 +19,16 @@ export default function VolunteerAvailabilityPage() {
 
   useEffect(() => {
     const getUser = async () => {
-      // Verificar se é modo demo via URL
-      const urlParams = new URLSearchParams(window.location.search)
-      const demoEmail = urlParams.get('demo_email')
-      const roleParam = urlParams.get('role')
-      
-      if (demoEmail === 'volunteer@institutoimagine.org' || roleParam === 'volunteer') {
-        setUser({
-          id: 'demo-volunteer',
-          email: demoEmail || 'volunteer@institutoimagine.org',
-          user_metadata: { name: 'Voluntário Demo' },
-          app_metadata: {},
-          aud: 'authenticated',
-          created_at: new Date().toISOString()
-        } as User)
-        setLoading(false)
-        return
-      }
-
-      // Se não for demo, tentar com Supabase
       try {
         const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          window.location.href = '/entrar'
+          return
+        }
         setUser(user)
       } catch (error) {
         console.log('Erro ao obter usuário:', error)
-        window.location.href = '/dashboard'
+        window.location.href = '/entrar'
       }
       setLoading(false)
     }

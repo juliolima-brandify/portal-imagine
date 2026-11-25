@@ -378,12 +378,12 @@ export default function ProjetosPage() {
 
                           {/* Seja Voluntário - Apenas para doadores (não voluntários) */}
                           {!isVolunteerForProject && (
-                            <Link
-                              href="/#contato"
+                            <a
+                              href="https://imagineinstituto.com/#contato"
                               className="w-full btn-secondary text-center block"
                             >
                               Seja Voluntário
-                            </Link>
+                            </a>
                           )}
 
                           {/* Grupo do Projeto - Sempre presente */}

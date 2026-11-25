@@ -25,95 +25,21 @@ export default function HistoricoPage() {
       try {
         setLoading(true)
 
-        // Primeiro, verificar se é modo demo via URL
-        const urlParams = new URLSearchParams(window.location.search)
-        const demoEmail = urlParams.get('demo_email')
-
-        if (demoEmail === 'demo@doador.com') {
-          setUser({
-            id: 'demo-user',
-            email: demoEmail,
-            user_metadata: { name: 'Doador Demo' },
-            app_metadata: {},
-            aud: 'authenticated',
-            created_at: new Date().toISOString()
-          } as User)
-
-          // Dados mock para demo
-          setDonations([
-            {
-              id: '1',
-              user_id: 'demo-user',
-              project_id: '1',
-              amount: 150.00,
-              currency: 'BRL',
-              status: 'completed',
-              payment_method: 'Cartão de Crédito',
-              is_recurring: false,
-              anonymous: false,
-              created_at: '2024-01-15T10:00:00Z',
-              updated_at: '2024-01-15T10:00:00Z',
-              stripe_payment_intent_id: 'pi_demo_001',
-              message: 'Doação de teste para educação.'
-            },
-            {
-              id: '2',
-              user_id: 'demo-user',
-              project_id: '2',
-              amount: 75.50,
-              currency: 'BRL',
-              status: 'completed',
-              payment_method: 'PIX',
-              is_recurring: false,
-              anonymous: false,
-              created_at: '2024-01-10T10:00:00Z',
-              updated_at: '2024-01-10T10:00:00Z',
-              stripe_payment_intent_id: 'pi_demo_002',
-              message: 'Doação para saúde comunitária.'
-            },
-            {
-              id: '3',
-              user_id: 'demo-user',
-              project_id: '3',
-              amount: 200.00,
-              currency: 'BRL',
-              status: 'pending',
-              payment_method: 'Boleto',
-              is_recurring: false,
-              anonymous: false,
-              created_at: '2024-01-20T10:00:00Z',
-              updated_at: '2024-01-20T10:00:00Z',
-              stripe_payment_intent_id: 'pi_demo_003',
-              message: 'Doação para meio ambiente.'
-            }
-          ] as Donation[])
-
-          setUserStats({
-            totalDonated: 425.50,
-            totalDonations: 3,
-            lastDonation: '2024-01-20T10:00:00Z'
-          })
-
-          setLoading(false)
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          window.location.href = '/entrar'
           return
         }
-
-        // Se não for demo, tentar com Supabase
-        const { data: { user } } = await supabase.auth.getUser()
         setUser(user)
 
-        if (user) {
-          // Carregar doações reais
-          const userDonations = await getDonations(user.id)
-          setDonations(userDonations)
+        const userDonations = await getDonations(user.id)
+        setDonations(userDonations)
 
-          // Carregar estatísticas
-          const stats = await getUserStats(user.id)
-          setUserStats(stats)
-        }
+        const stats = await getUserStats(user.id)
+        setUserStats(stats)
       } catch (error) {
         console.log('Erro ao carregar dados:', error)
-        window.location.href = '/auth'
+        window.location.href = '/entrar'
       } finally {
         setLoading(false)
       }

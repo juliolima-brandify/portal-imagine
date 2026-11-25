@@ -100,30 +100,16 @@ export default function ComunidadePage() {
 
   useEffect(() => {
     const getUser = async () => {
-      // Primeiro, verificar se é modo demo via URL
-      const urlParams = new URLSearchParams(window.location.search)
-      const demoEmail = urlParams.get('demo_email')
-      
-      if (demoEmail === 'demo@doador.com') {
-        setUser({
-          id: 'demo-user',
-          email: demoEmail,
-          user_metadata: { name: 'Doador Demo' },
-          app_metadata: {},
-          aud: 'authenticated',
-          created_at: new Date().toISOString()
-        } as User)
-        setLoading(false)
-        return
-      }
-
-      // Se não for demo, tentar com Supabase
       try {
         const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          window.location.href = '/entrar'
+          return
+        }
         setUser(user)
       } catch (error) {
         console.log('Erro ao obter usuário:', error)
-        window.location.href = '/auth'
+        window.location.href = '/entrar'
       }
       setLoading(false)
     }

@@ -301,7 +301,7 @@ export function formatBRLCompact(v: number): string {
 
 export function parseBRNumber(raw: string): number {
   if (typeof raw !== 'string') return 0
-  const cleaned = raw.replace(/^R\$\s*/i, '').replace(/\s+/g, '').trim()
+  const cleaned = raw.trim().replace(/^R\$\s*/i, '').replace(/\s+/g, '')
   if (!cleaned) return 0
 
   let normalized = cleaned

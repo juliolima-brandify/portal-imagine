@@ -291,23 +291,8 @@ export async function getProject(projectId: string): Promise<Project | null> {
     console.log(`✅ Projeto ${projectId} carregado do Supabase:`, data.title)
     return data
   } catch (error) {
-    console.warn('⚠️ Erro ao conectar com Supabase, buscando nos dados mock:', error)
-    console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
-    const mockProject = mockProjects.find(p => p.id === projectId)
-    console.log('🔍 Projeto mock encontrado:', mockProject ? mockProject.title : 'Nenhum')
-    
-    // Se não encontrar o projeto específico, usar o primeiro mock como fallback
-    if (!mockProject) {
-      console.log('🔄 Projeto específico não encontrado, usando primeiro mock como fallback')
-      const fallbackProject = mockProjects[0] ? {
-        ...mockProjects[0],
-        id: projectId, // Manter o ID original solicitado
-        title: `Projeto ${projectId}`
-      } : null
-      return fallbackProject
-    }
-    
-    return mockProject
+    console.warn('⚠️ Erro ao conectar com Supabase ao buscar projeto:', error)
+    return null
   }
 }
 

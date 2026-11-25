@@ -18,15 +18,15 @@ export const userSchema = z.object({
 })
 
 export const createUserSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  name: z.string().min(2).max(100),
+  email: z.string().email('Email inválido. Verifique o formato informado.'),
+  password: z.string().min(8, 'A senha deve ter pelo menos 8 caracteres.'),
+  name: z.string().min(2, 'Informe seu nome completo.').max(100),
   role: userRoleSchema.default('donor'),
 })
 
 export const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
+  email: z.string().email('Email inválido. Verifique o formato informado.'),
+  password: z.string().min(8, 'A senha deve ter pelo menos 8 caracteres.'),
 })
 
 // Project validation schemas

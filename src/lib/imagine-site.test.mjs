@@ -26,6 +26,7 @@ test('parseBRNumber converte formato brasileiro, decimal com ponto e rejeita inv
   assert.equal(parseBRNumber('1000.50'), 1000.5)
   assert.equal(parseBRNumber('50.5'), 50.5)
   assert.equal(parseBRNumber('R$ 100,00'), 100)
+  assert.equal(parseBRNumber('  R$ 100,00 '), 100)
   assert.equal(parseBRNumber('1.000'), 1000)
   assert.equal(parseBRNumber('0'), 0)
   assert.equal(parseBRNumber('-50'), 0)

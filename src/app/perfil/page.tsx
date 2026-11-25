@@ -64,55 +64,10 @@ export default function PerfilPage() {
           return
         }
 
-        // 2) Sem sessão real: modo demo via URL
-        const urlParams = new URLSearchParams(window.location.search)
-        const demoEmail = urlParams.get('demo_email')
-        
-        if (demoEmail === 'demo@doador.com' || demoEmail === 'volunteer@institutoimagine.org') {
-          const isDonor = demoEmail === 'demo@doador.com'
-          
-          setUser({
-            id: '00000000-0000-0000-0000-000000000001',
-            email: demoEmail,
-            user_metadata: { 
-              name: isDonor ? 'Doador Demo' : 'Voluntário Demo'
-            },
-            app_metadata: {},
-            aud: 'authenticated',
-            created_at: new Date().toISOString()
-          } as User)
-          
-          setUserRole(isDonor ? 'donor' : 'volunteer')
-          
-          const defaultProfile = {
-            id: '00000000-0000-0000-0000-000000000001',
-            email: demoEmail,
-            name: isDonor ? 'Doador Demo' : 'Voluntário Demo',
-            phone: '(11) 99999-9999',
-            role: isDonor ? 'donor' : 'volunteer',
-            preferences: {
-              notifications: true,
-              newsletter: true
-            },
-            stats: isDonor ? {
-              totalDonated: 475,
-              totalDonations: 4,
-              memberSince: '2024-01-15'
-            } : {
-              totalHours: 52,
-              projectsCompleted: 2,
-              projectsInProgress: 1,
-              memberSince: '2024-01-15'
-            }
-          }
-          setProfile(defaultProfile)
-          setFormData(defaultProfile)
-        } else {
-          window.location.href = '/auth'
-        }
+        window.location.href = '/entrar'
       } catch (error) {
         console.error('Erro ao carregar perfil:', error)
-        window.location.href = '/auth'
+        window.location.href = '/entrar'
       } finally {
         setLoading(false)
       }

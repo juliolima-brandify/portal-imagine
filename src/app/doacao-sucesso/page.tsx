@@ -157,10 +157,10 @@ function DoacaoSucessoContent() {
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-4">
-            <Link href="/projetos?demo_email=demo@doador.com" className="flex-1 btn-secondary">
+            <Link href="/projetos" className="flex-1 btn-secondary">
               Ver Outros Projetos
             </Link>
-            <Link href="/dashboard?demo_email=demo@doador.com" className="flex-1 btn-primary">
+            <Link href="/dashboard" className="flex-1 btn-primary">
               Ir para Início
             </Link>
           </div>
