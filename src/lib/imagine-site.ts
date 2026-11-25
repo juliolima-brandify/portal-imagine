@@ -1,5 +1,6 @@
 export const SITE_PUBLIC_PATHS = [
   '/',
+  '/blog',
   '/empresas',
   '/natal-feliz',
   '/politica-de-privacidade',
@@ -39,6 +40,8 @@ export function isInstitutionalPath(pathname: string | null | undefined): boolea
   if (!clean) return false
   const normalized = clean.replace(/\/+$/, '') || '/'
   if ((SITE_PUBLIC_PATHS as readonly string[]).includes(normalized)) return true
+  // Qualquer rota pública /blog ou /blog/* é institucional (não existe rota de portal sob /blog).
+  if (normalized === '/blog' || normalized.startsWith('/blog/')) return true
   // Qualquer rota pública /projetos/<slug> (exatamente 2 segmentos) é institucional;
   // /projetos e /projetos/<id>/relatorios pertencem ao Portal autenticado.
   return /^\/projetos\/[a-z0-9][a-z0-9-]*$/.test(normalized)

@@ -2,13 +2,14 @@ import type { Metadata } from 'next'
 import './globals.css'
 import GlobalLayout from '@/components/GlobalLayout'
 import ConditionalChat from '@/components/ConditionalChat'
+import { resolveSiteMetadataBase } from '@/lib/blog-posts'
 
 export const metadata: Metadata = {
   title: 'Instituto Imagine - Transformando vidas através da educação e solidariedade',
   description: 'Conectamos pessoas que querem ajudar com projetos que precisam de apoio, garantindo transparência total e impacto mensurável.',
   keywords: 'ONG, doações, educação, solidariedade, impacto social, projetos sociais',
   authors: [{ name: 'Instituto Imagine' }],
-  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'https://portal.imagineinstituto.com'),
+  metadataBase: resolveSiteMetadataBase(),
   icons: {
     icon: '/favicon.ico',
     shortcut: '/favicon.ico',

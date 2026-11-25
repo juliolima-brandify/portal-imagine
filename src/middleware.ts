@@ -30,6 +30,16 @@ export function middleware(request: NextRequest) {
     return applySecurityHeaders(NextResponse.redirect(url), '/entrar')
   }
 
+  // Rotas públicas do blog acessadas via subdomínio portal. canonicalizam para o domínio institucional
+  if (
+    hostname === 'portal.imagineinstituto.com' &&
+    (pathname === '/blog' || pathname.startsWith('/blog/')) &&
+    isSafeMethod
+  ) {
+    const target = new URL(`${pathname}${request.nextUrl.search}`, 'https://imagineinstituto.com')
+    return applySecurityHeaders(NextResponse.redirect(target, 308), pathname)
+  }
+
   return applySecurityHeaders(NextResponse.next(), pathname)
 }
 

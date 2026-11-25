@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import ImagineSitePage from '@/components/site/ImagineSitePage'
 import { getPublicSiteProjectBySlug } from '@/lib/site-projects-server'
+import { getPublicBlogPostsByProjectId } from '@/lib/blog-posts-server'
+import { resolveCanonicalUrl } from '@/lib/blog-posts'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +26,9 @@ export async function generateMetadata({ params }: ProjetoPublicoPageProps): Pro
     description: project.resumo
       ? `${project.resumo} Doe pelo Pix para o projeto ${project.titulo} do Instituto Imagine, em Uberlândia-MG.`
       : `Conheça e apoie o projeto ${project.titulo} do Instituto Imagine, em Uberlândia-MG.`,
+    alternates: {
+      canonical: resolveCanonicalUrl(`/projetos/${project.id}`),
+    },
   }
 }
 
@@ -40,11 +45,14 @@ export default async function ProjetoPublicoPage({ params }: ProjetoPublicoPageP
     redirect(`/projetos/${project.id}`)
   }
 
+  const projectPosts = await getPublicBlogPostsByProjectId(project.portalProjectId, 3)
+
   return (
     <ImagineSitePage
       page="projeto"
       projects={allProjects}
       activeProject={project}
+      blogPosts={projectPosts}
     />
   )
 }

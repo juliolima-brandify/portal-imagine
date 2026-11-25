@@ -20,11 +20,13 @@ import {
   type ProjectInfo,
   type IRSimulationResult,
 } from '@/lib/imagine-site'
+import { formatBlogDatePTBR, type PublicBlogPostSummary } from '@/lib/blog-posts'
 
 interface ImagineSitePageProps {
   page: PageKey
   projects?: ProjectInfo[]
   activeProject?: ProjectInfo | null
+  blogPosts?: PublicBlogPostSummary[]
 }
 
 const ArrowIcon = () => (
@@ -82,6 +84,7 @@ export default function ImagineSitePage({
   page,
   projects,
   activeProject,
+  blogPosts,
 }: ImagineSitePageProps) {
   const { irAtivo, pixChave, pixNome, pixCidade, whatsapp, prazoIR, arrecadado, meta } = IMAGINE_SITE_CONFIG
   const siteProjects = projects ?? IMAGINE_PROJECTS
@@ -365,6 +368,26 @@ export default function ImagineSitePage({
     </article>
   )
 
+  const renderBlogCard = (post: PublicBlogPostSummary) => (
+    <article className={`proj gb ${post.projectColorClass}`} key={post.id}>
+      <Link href={`/blog/${post.slug}`} className="proj-f" aria-label={post.title}>
+        <img src={post.coverImageUrl} alt={post.coverAlt} loading="lazy" decoding="async" />
+        <div className="proj-tag">
+          <span className={post.postType === 'accountability' ? 'inc' : ''}>{post.postTypeLabel}</span>
+        </div>
+      </Link>
+      <div className="proj-b">
+        <span className="proj-frente"><i />{post.projectTitle || 'Instituto Imagine'}</span>
+        <h3><Link href={`/blog/${post.slug}`}>{post.title}</Link></h3>
+        <p className="proj-r">{post.excerpt}</p>
+        <div className="ii-blog-meta">
+          <span>{formatBlogDatePTBR(post.publishedAt)} · {post.readingTimeMinutes} min</span>
+          <Link className="lnk" href={`/blog/${post.slug}`}>Ler <ArrowIcon /></Link>
+        </div>
+      </div>
+    </article>
+  )
+
   const currentProject = activeProject ?? siteProjects.find((p) => p.id === page)
 
   return (
@@ -377,6 +400,7 @@ export default function ImagineSitePage({
           <nav className="nav-links" aria-label="Principal">
             <Link href={anchor('projetos')} onClick={() => setMenuOpen(false)}>Projetos</Link>
             <Link href={anchor('como-doar')} onClick={() => setMenuOpen(false)}>Como doar</Link>
+            <Link href="/blog" onClick={() => setMenuOpen(false)}>Notícias</Link>
             <Link href={anchor('imposto')} onClick={() => setMenuOpen(false)}>Imposto de Renda</Link>
             <Link href="/empresas" onClick={() => setMenuOpen(false)}>Empresas</Link>
             <Link href={anchor('transparencia')} onClick={() => setMenuOpen(false)}>Transparência</Link>
@@ -695,6 +719,21 @@ export default function ImagineSitePage({
               </div>
             </section>
 
+            {blogPosts && blogPosts.length > 0 && (
+              <section className="sec" id="noticias" style={{ paddingTop: 0 }}>
+                <div className="w">
+                  <div className="cab">
+                    <div>
+                      <span className="k">Notícias e Prestação de Contas</span>
+                      <h2 className="t">Acompanhe os projetos <em>na prática.</em></h2>
+                    </div>
+                    <Link className="lnk" href="/blog">Ver todas as notícias <ArrowIcon /></Link>
+                  </div>
+                  <div className="projs">{blogPosts.slice(0, 3).map(renderBlogCard)}</div>
+                </div>
+              </section>
+            )}
+
             <section className="sec sec-alt" id="faq">
               <div className="w faq">
                 <div>
@@ -983,6 +1022,20 @@ export default function ImagineSitePage({
                 </aside>
               </div>
             </section>
+            {blogPosts && blogPosts.length > 0 && (
+              <section className="sec" id="atualizacoes-projeto" style={{ paddingTop: 0 }}>
+                <div className="w">
+                  <div className="cab">
+                    <div>
+                      <span className="k">Atualizações deste projeto</span>
+                      <h2 className="t">Notícias e prestação de contas</h2>
+                    </div>
+                    <Link className="lnk" href="/blog">Ver todas <ArrowIcon /></Link>
+                  </div>
+                  <div className="projs">{blogPosts.slice(0, 3).map(renderBlogCard)}</div>
+                </div>
+              </section>
+            )}
             {siteProjects.some((p) => p.id !== currentProject.id) && (
               <section className="sec sec-alt" id="projetos">
                 <div className="w">
@@ -1066,6 +1119,7 @@ export default function ImagineSitePage({
               <h4>Instituto</h4>
               <ul>
                 <li><Link href={anchor('projetos')}>Projetos</Link></li>
+                <li><Link href="/blog">Notícias e Prestação de Contas</Link></li>
                 <li><Link href={anchor('historia')}>Nossa história</Link></li>
                 <li><Link href={anchor('transparencia')}>Transparência</Link></li>
                 <li><Link href={anchor('faq')}>Dúvidas</Link></li>

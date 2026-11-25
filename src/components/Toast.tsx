@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 export interface ToastProps {
   id: string
@@ -15,21 +15,21 @@ export function Toast({ id, type, title, message, duration = 4000, onClose }: To
   const [isVisible, setIsVisible] = useState(true)
   const [isLeaving, setIsLeaving] = useState(false)
 
+  const handleClose = useCallback(() => {
+    setIsLeaving(true)
+    setTimeout(() => {
+      setIsVisible(false)
+      onClose?.(id)
+    }, 300)
+  }, [id, onClose])
+
   useEffect(() => {
     const timer = setTimeout(() => {
       handleClose()
     }, duration)
 
     return () => clearTimeout(timer)
-  }, [duration])
-
-  const handleClose = () => {
-    setIsLeaving(true)
-    setTimeout(() => {
-      setIsVisible(false)
-      onClose?.(id)
-    }, 300)
-  }
+  }, [duration, handleClose])
 
   if (!isVisible) return null
 
@@ -107,10 +107,10 @@ export function Toast({ id, type, title, message, duration = 4000, onClose }: To
   )
 }
 
-// Container de Toasts
+// Container de Toasts (acima do backdrop z-50 do Modal)
 export function ToastContainer({ toasts, onRemove }: { toasts: ToastProps[], onRemove: (id: string) => void }) {
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2">
+    <div className="fixed top-4 right-4 z-[60] space-y-2">
       {toasts.map((toast) => (
         <Toast
           key={toast.id}
@@ -122,36 +122,40 @@ export function ToastContainer({ toasts, onRemove }: { toasts: ToastProps[], onR
   )
 }
 
-// Hook para gerenciar toasts
+// Hook para gerenciar toasts com callbacks estáveis
 export function useToast() {
   const [toasts, setToasts] = useState<ToastProps[]>([])
 
-  const addToast = (toast: Omit<ToastProps, 'id'>) => {
-    const id = Math.random().toString(36).substr(2, 9)
+  const addToast = useCallback((toast: Omit<ToastProps, 'id'>) => {
+    const id = Math.random().toString(36).slice(2, 11)
     const newToast: ToastProps = { ...toast, id }
-    setToasts(prev => [...prev, newToast])
+    setToasts((prev) => [...prev, newToast])
     return id
-  }
+  }, [])
 
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id))
-  }
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id))
+  }, [])
 
-  const success = (title: string, message?: string) => {
-    return addToast({ type: 'success', title, message })
-  }
+  const success = useCallback(
+    (title: string, message?: string) => addToast({ type: 'success', title, message }),
+    [addToast]
+  )
 
-  const error = (title: string, message?: string) => {
-    return addToast({ type: 'error', title, message })
-  }
+  const error = useCallback(
+    (title: string, message?: string) => addToast({ type: 'error', title, message }),
+    [addToast]
+  )
 
-  const warning = (title: string, message?: string) => {
-    return addToast({ type: 'warning', title, message })
-  }
+  const warning = useCallback(
+    (title: string, message?: string) => addToast({ type: 'warning', title, message }),
+    [addToast]
+  )
 
-  const info = (title: string, message?: string) => {
-    return addToast({ type: 'info', title, message })
-  }
+  const info = useCallback(
+    (title: string, message?: string) => addToast({ type: 'info', title, message }),
+    [addToast]
+  )
 
   return {
     toasts,
@@ -160,6 +164,6 @@ export function useToast() {
     success,
     error,
     warning,
-    info
+    info,
   }
 }
