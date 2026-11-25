@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const [projects, blogPage] = await Promise.all([
     getPublicSiteProjects(),
-    getPublicBlogPostsPage({ limit: 3, offset: 0 }),
+    getPublicBlogPostsPage({ limit: 3, offset: 0, includeCount: false }),
   ])
   return <ImagineSitePage page="home" projects={projects} blogPosts={blogPage.posts} />
 }

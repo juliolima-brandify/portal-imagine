@@ -2,6 +2,7 @@ import { cache } from 'react'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getPublicSiteProjects } from './site-projects-server'
 import {
+  isValidBlogSlug,
   mapDbBlogPostToPublic,
   mapDbBlogPostsToSummary,
   normalizeBlogSlug,
@@ -47,9 +48,11 @@ export async function getPublicBlogPostsPage(options?: {
   postType?: BlogPostType
   projectId?: string | null
   onlyGeneral?: boolean
+  includeCount?: boolean
 }): Promise<PublicBlogPostsPageResult> {
   const limit = Math.max(1, Math.min(50, options?.limit ?? 12))
   const offset = Math.max(0, options?.offset ?? 0)
+  const includeCount = options?.includeCount ?? true
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), SUPABASE_BLOG_TIMEOUT_MS)
 
@@ -57,7 +60,7 @@ export async function getPublicBlogPostsPage(options?: {
     const client = createPublicBlogClient()
     let query = client
       .from('blog_posts')
-      .select(PUBLIC_BLOG_SUMMARY_COLUMNS, { count: 'exact' })
+      .select(PUBLIC_BLOG_SUMMARY_COLUMNS, includeCount ? { count: 'exact' } : undefined)
       .eq('status', 'published')
 
     if (options?.postType === 'news' || options?.postType === 'accountability') {
@@ -138,6 +141,7 @@ export const getPublicBlogPostBySlug = cache(
           .neq('slug', clean)
           .order('published_at', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
           .limit(3)
           .abortSignal(controller.signal),
       ])
@@ -184,6 +188,7 @@ export async function getPublicBlogPostsByProjectId(
         .eq('project_id', portalProjectId)
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
         .limit(safeLimit)
         .abortSignal(controller.signal),
     ])
@@ -241,7 +246,7 @@ export async function getAllPublishedBlogSlugsForSitemap(): Promise<SitemapBlogE
       }>
 
       for (const row of rows) {
-        if (!row.slug || seenSlugs.has(row.slug)) continue
+        if (!row.slug || !isValidBlogSlug(row.slug) || seenSlugs.has(row.slug)) continue
         seenSlugs.add(row.slug)
         entries.push({
           slug: row.slug,

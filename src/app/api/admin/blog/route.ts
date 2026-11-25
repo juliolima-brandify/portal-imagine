@@ -55,7 +55,7 @@ function sanitizePostgrestSearchTerm(raw: string | null): string {
   return raw
     .trim()
     .slice(0, 80)
-    .replace(/[%_\\(),."']/g, ' ')
+    .replace(/[%_*\\(),."']/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -149,6 +149,16 @@ export async function GET(request: NextRequest) {
     if (listRes.error) {
       console.error('❌ API Blog: Erro ao listar publicações:', listRes.error)
       return mapDbError(listRes.error)
+    }
+
+    if (totalAllRes.error || publishedRes.error || draftRes.error || archivedRes.error) {
+      console.warn(
+        '⚠️ API Blog: Falha parcial nos contadores de status:',
+        totalAllRes.error?.message ||
+          publishedRes.error?.message ||
+          draftRes.error?.message ||
+          archivedRes.error?.message
+      )
     }
 
     return jsonNoStore({
@@ -264,18 +274,20 @@ export async function PUT(request: NextRequest) {
       typeof rawRecord?.expected_updated_at === 'string'
         ? rawRecord.expected_updated_at.trim()
         : ''
-    if (
-      expectedUpdatedAt &&
-      existing.updated_at &&
-      new Date(expectedUpdatedAt).getTime() !== new Date(existing.updated_at).getTime()
-    ) {
-      return jsonNoStore(
-        {
-          error:
-            'Esta publicação foi alterada por outro administrador. Recarregue a lista antes de salvar.',
-        },
-        { status: 409 }
-      )
+    if (expectedUpdatedAt) {
+      const expectedMs = new Date(expectedUpdatedAt).getTime()
+      if (Number.isNaN(expectedMs)) {
+        return jsonNoStore({ error: 'Marcador de atualização esperado inválido.' }, { status: 400 })
+      }
+      if (existing.updated_at && expectedMs !== new Date(existing.updated_at).getTime()) {
+        return jsonNoStore(
+          {
+            error:
+              'Esta publicação foi alterada por outro administrador. Recarregue a lista antes de salvar.',
+          },
+          { status: 409 }
+        )
+      }
     }
 
     const sanitized = sanitizeAdminBlogPostPayload(body, 'update', {

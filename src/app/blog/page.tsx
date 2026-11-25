@@ -41,13 +41,18 @@ export const metadata: Metadata = {
 }
 
 interface BlogIndexSearchParams {
-  page?: string
-  tipo?: string
-  projeto?: string
+  page?: string | string[]
+  tipo?: string | string[]
+  projeto?: string | string[]
 }
 
 interface BlogIndexPageProps {
   searchParams?: BlogIndexSearchParams | Promise<BlogIndexSearchParams>
+}
+
+function pickFirstParam(val: string | string[] | undefined): string {
+  if (Array.isArray(val)) return typeof val[0] === 'string' ? val[0] : ''
+  return typeof val === 'string' ? val : ''
 }
 
 function buildBlogFilterHref(page: number, tipo: 'all' | BlogPostType, projeto: string): string {
@@ -61,17 +66,17 @@ function buildBlogFilterHref(page: number, tipo: 'all' | BlogPostType, projeto: 
 
 export default async function BlogIndexPage({ searchParams }: BlogIndexPageProps) {
   const resolvedParams = await Promise.resolve(searchParams || {})
-  const rawPage = Number.parseInt(resolvedParams?.page || '1', 10)
+  const rawPage = Number.parseInt(pickFirstParam(resolvedParams?.page) || '1', 10)
   const currentPage =
     Number.isFinite(rawPage) && rawPage > 0 ? Math.min(MAX_BLOG_PAGE, rawPage) : 1
   const offset = (currentPage - 1) * BLOG_PAGE_SIZE
 
-  const rawTipo = (resolvedParams?.tipo || '').trim()
+  const rawTipo = pickFirstParam(resolvedParams?.tipo).trim()
   const activeTypeFilter: 'all' | BlogPostType =
     rawTipo === 'news' || rawTipo === 'accountability' ? rawTipo : 'all'
 
   const projects = await getPublicSiteProjects()
-  const rawProjeto = (resolvedParams?.projeto || '').trim()
+  const rawProjeto = pickFirstParam(resolvedParams?.projeto).trim()
   const matchedProject =
     rawProjeto && rawProjeto !== 'geral'
       ? projects.find((p) => p.id === rawProjeto) || null
@@ -80,13 +85,17 @@ export default async function BlogIndexPage({ searchParams }: BlogIndexPageProps
   const activeProjectFilter =
     rawProjeto === 'geral' ? 'geral' : matchedProject ? matchedProject.id : 'all'
 
-  const blogPage = await getPublicBlogPostsPage({
-    limit: BLOG_PAGE_SIZE,
-    offset,
-    postType: activeTypeFilter === 'all' ? undefined : activeTypeFilter,
-    projectId: matchedProject?.portalProjectId ?? null,
-    onlyGeneral: activeProjectFilter === 'geral',
-  })
+  const selectedProjectWithoutId = Boolean(matchedProject && !matchedProject.portalProjectId)
+
+  const blogPage = selectedProjectWithoutId
+    ? { posts: [], total: 0, degraded: false }
+    : await getPublicBlogPostsPage({
+        limit: BLOG_PAGE_SIZE,
+        offset,
+        postType: activeTypeFilter === 'all' ? undefined : activeTypeFilter,
+        projectId: matchedProject?.portalProjectId ?? null,
+        onlyGeneral: activeProjectFilter === 'geral',
+      })
 
   const totalPages = Math.max(1, Math.ceil(blogPage.total / BLOG_PAGE_SIZE))
 

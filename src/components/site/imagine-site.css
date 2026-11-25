@@ -1298,6 +1298,7 @@
   .ii-root .faq-i button { font-size: 18px; }
   .ii-root .modal { padding: 0; align-items: end; }
   .ii-root .modal-c { border-radius: 26px 26px 0 0; max-height: 92svh; }
+  .ii-root .ii-blog-pagination { justify-content: center; }
 }
 
 /* Blog / Notícias e Prestação de Contas */
@@ -1332,6 +1333,10 @@
   font-size: 14px;
   color: var(--tx-3);
 }
+.ii-root .ii-blog-meta .lnk {
+  white-space: nowrap;
+  flex: none;
+}
 .ii-root .ii-blog-empty {
   margin-top: 28px;
   padding: 48px 32px;
@@ -1361,6 +1366,7 @@
   font-size: 14.5px;
   font-weight: 700;
   color: var(--tx-2);
+  font-variant-numeric: tabular-nums;
 }
 .ii-root .ii-blog-post-hero::after {
   background: linear-gradient(180deg, rgba(13, 35, 64, 0.72) 0%, rgba(13, 35, 64, 0.56) 40%, rgba(13, 35, 64, 0.94) 100%), linear-gradient(90deg, rgba(13, 35, 64, 0.85), rgba(13, 35, 64, 0.15) 75%);
@@ -1388,6 +1394,10 @@
   color: var(--tx-2);
   max-width: 66ch;
   overflow-wrap: break-word;
+}
+.ii-root .ii-md .ir-lista li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .ii-root .ii-md-link {
   color: var(--c-txt);

@@ -54,11 +54,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS blog_posts_slug_unique_idx
   ON public.blog_posts (slug);
 
 CREATE INDEX IF NOT EXISTS blog_posts_published_list_idx
-  ON public.blog_posts (published_at DESC NULLS LAST, created_at DESC)
+  ON public.blog_posts (published_at DESC NULLS LAST, created_at DESC, id ASC)
   WHERE status = 'published';
 
 CREATE INDEX IF NOT EXISTS blog_posts_project_published_idx
-  ON public.blog_posts (project_id, published_at DESC NULLS LAST, created_at DESC)
+  ON public.blog_posts (project_id, published_at DESC NULLS LAST, created_at DESC, id ASC)
   WHERE status = 'published' AND project_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS blog_posts_project_id_idx
@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS blog_posts_project_id_idx
   WHERE project_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS blog_posts_updated_at_idx
-  ON public.blog_posts (updated_at DESC);
+  ON public.blog_posts (updated_at DESC, id ASC);
 
 CREATE INDEX IF NOT EXISTS blog_posts_author_id_idx
   ON public.blog_posts (author_id)

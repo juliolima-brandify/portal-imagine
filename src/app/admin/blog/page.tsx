@@ -46,6 +46,7 @@ export default function AdminBlogPage() {
   })
   const [projects, setProjects] = useState<AdminProjectOption[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   const [statusFilter, setStatusFilter] = useState<'all' | BlogPostStatus>('all')
   const [typeFilter, setTypeFilter] = useState<'all' | 'news' | 'accountability'>('all')
@@ -63,13 +64,18 @@ export default function AdminBlogPage() {
   const toastRef = useRef({ success, error, warning })
   toastRef.current = { success, error, warning }
   const loadSeqRef = useRef(0)
+  const operationLockRef = useRef(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setDebouncedSearch(searchTerm.trim())
+      const normalized = searchTerm.trim()
+      if (normalized !== debouncedSearch) {
+        setDebouncedSearch(normalized)
+        setPage(1)
+      }
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [searchTerm])
+  }, [searchTerm, debouncedSearch])
 
   useEffect(() => {
     let active = true
@@ -111,6 +117,7 @@ export default function AdminBlogPage() {
   const loadPosts = useCallback(async () => {
     const seq = ++loadSeqRef.current
     setIsLoading(true)
+    setLoadError('')
     try {
       const params = new URLSearchParams({
         page: String(page),
@@ -145,16 +152,19 @@ export default function AdminBlogPage() {
           setPage(totalPages)
         }
       } else {
+        const msg = String(postsJson.error || 'Tente novamente em alguns instantes.')
         setPosts([])
         setTotal(0)
-        toastRef.current.error(
-          'Erro ao carregar publicações',
-          String(postsJson.error || 'Tente novamente.')
-        )
+        setLoadError(msg)
+        toastRef.current.error('Erro ao carregar publicações', msg)
       }
     } catch {
       if (seq !== loadSeqRef.current) return
-      toastRef.current.error('Erro de conexão', 'Não foi possível carregar as publicações.')
+      const msg = 'Não foi possível carregar as publicações por falha de conexão.'
+      setPosts([])
+      setTotal(0)
+      setLoadError(msg)
+      toastRef.current.error('Erro de conexão', msg)
     } finally {
       if (seq === loadSeqRef.current) {
         setIsLoading(false)
@@ -176,13 +186,14 @@ export default function AdminBlogPage() {
   const hasActiveFilters = statusFilter !== 'all' || typeFilter !== 'all' || debouncedSearch !== ''
 
   const handleOpenNew = () => {
-    if (operationLoading) return
+    if (operationLockRef.current || operationLoading) return
     setEditingPost(undefined)
     setShowForm(true)
   }
 
   const handleOpenEdit = async (post: DbBlogPostRow) => {
-    if (operationLoading) return
+    if (operationLockRef.current || operationLoading) return
+    operationLockRef.current = true
     setOperationLoading(true)
     try {
       const res = await adminFetch(`/api/admin/blog?id=${encodeURIComponent(post.id)}`)
@@ -202,6 +213,7 @@ export default function AdminBlogPage() {
     } catch {
       toastRef.current.error('Erro de conexão', 'Não foi possível carregar o texto da publicação.')
     } finally {
+      operationLockRef.current = false
       setOperationLoading(false)
     }
   }
@@ -247,7 +259,8 @@ export default function AdminBlogPage() {
   }
 
   const applyStatusChange = async (post: DbBlogPostRow, nextStatus: BlogPostStatus) => {
-    if (operationLoading) return
+    if (operationLockRef.current || operationLoading) return
+    operationLockRef.current = true
     setOperationLoading(true)
     try {
       const res = await adminFetch('/api/admin/blog', {
@@ -283,12 +296,14 @@ export default function AdminBlogPage() {
     } catch {
       toastRef.current.error('Erro de conexão', 'Não foi possível alterar o status.')
     } finally {
+      operationLockRef.current = false
       setOperationLoading(false)
     }
   }
 
   const handleConfirmDelete = async () => {
-    if (!postToDelete || operationLoading) return
+    if (!postToDelete || operationLockRef.current || operationLoading) return
+    operationLockRef.current = true
     setOperationLoading(true)
     try {
       const res = await adminFetch(`/api/admin/blog?id=${encodeURIComponent(postToDelete.id)}`, {
@@ -309,6 +324,7 @@ export default function AdminBlogPage() {
     } catch {
       toastRef.current.error('Erro de conexão', 'Não foi possível excluir a publicação.')
     } finally {
+      operationLockRef.current = false
       setOperationLoading(false)
     }
   }
@@ -382,7 +398,7 @@ export default function AdminBlogPage() {
                 setStatusFilter(e.target.value as 'all' | BlogPostStatus)
                 setPage(1)
               }}
-              className="input-modern h-12"
+              className="input-modern h-12 !py-0"
             >
               <option value="all">Todos ({stats.total})</option>
               <option value="published">Publicados ({stats.published})</option>
@@ -402,7 +418,7 @@ export default function AdminBlogPage() {
                 setTypeFilter(e.target.value as 'all' | 'news' | 'accountability')
                 setPage(1)
               }}
-              className="input-modern h-12"
+              className="input-modern h-12 !py-0"
             >
               <option value="all">Todos os Tipos</option>
               <option value="news">Notícias de Ação</option>
@@ -419,11 +435,8 @@ export default function AdminBlogPage() {
               type="text"
               placeholder="Buscar por título ou URL..."
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value)
-                setPage(1)
-              }}
-              className="input-modern h-12"
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input-modern h-12 !py-0"
             />
           </div>
 
@@ -458,6 +471,16 @@ export default function AdminBlogPage() {
                 <div className="h-6 bg-gray-200 rounded-full w-20" />
               </div>
             ))}
+          </div>
+        ) : loadError ? (
+          <div className="p-12 text-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              Não foi possível carregar as publicações
+            </h2>
+            <p className="text-sm text-gray-600 mb-5">{loadError}</p>
+            <button type="button" onClick={() => void loadPosts()} className="btn-secondary">
+              Tentar novamente
+            </button>
           </div>
         ) : posts.length === 0 ? (
           <div className="p-12 text-center">

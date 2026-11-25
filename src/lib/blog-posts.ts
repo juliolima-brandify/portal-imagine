@@ -278,14 +278,18 @@ export function stripMarkdown(content: string | null | undefined): string {
   }
 
   return out
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^>\s?/gm, '')
-    .replace(/^[-*]\s+/gm, '')
+    .replace(/^#{1,6}(?:\s+|$)/gm, '')
+    .replace(/^>(?:\s|$)/gm, '')
+    .replace(/^[-*](?:\s+|$)/gm, '')
     .replace(/\*\*([^*\n]+)\*\*/g, '$1')
     .replace(/\*([^*\n]+)\*/g, '$1')
     .replace(/`([^`\n]+)`/g, '$1')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+export function hasReadableBlogContent(content: string | null | undefined): boolean {
+  return stripMarkdown(content).replace(/[#>*_`[\]()\-.\s]/g, '').length >= 5
 }
 
 export function deriveExcerpt(content: string | null | undefined, maxLen = 155): string {
@@ -301,7 +305,7 @@ export function estimateReadingTimeMinutes(content: string | null | undefined): 
   const plain = stripMarkdown(content)
   if (!plain) return 1
   const words = plain.split(/\s+/).filter(Boolean).length
-  return Math.max(1, Math.ceil(words / 200))
+  return Math.min(120, Math.max(1, Math.ceil(words / 200)))
 }
 
 export function resolveCanonicalUrl(pathname: string): string {
@@ -553,22 +557,6 @@ export function mapDbBlogPostsToSummary(
   return result
 }
 
-export function mapDbBlogPostsToPublic(
-  rows: DbBlogPostRow[] | null | undefined,
-  projects: ProjectInfo[] = []
-): PublicBlogPost[] {
-  if (!Array.isArray(rows)) return []
-  const seen = new Set<string>()
-  const result: PublicBlogPost[] = []
-  for (const row of rows) {
-    const mapped = mapDbBlogPostToPublic(row, projects)
-    if (!mapped || seen.has(mapped.slug)) continue
-    seen.add(mapped.slug)
-    result.push(mapped)
-  }
-  return result
-}
-
 export async function loadPublicBlogPostsWithFallback(
   fetcher: () => Promise<DbBlogPostRow[]>,
   projects: ProjectInfo[] = []
@@ -642,8 +630,15 @@ export function sanitizeAdminBlogPostPayload(
         error: 'O conteúdo deve ter entre 10 e 50.000 caracteres.',
       }
     }
+    if (!hasReadableBlogContent(content)) {
+      return {
+        ok: false,
+        status: 422,
+        error: 'Escreva texto legível no conteúdo da publicação (não apenas marcadores vazios).',
+      }
+    }
     data.content = content
-    data.reading_time_minutes = Math.min(120, estimateReadingTimeMinutes(content))
+    data.reading_time_minutes = estimateReadingTimeMinutes(content)
   }
 
   // Slug (no create deriva do título se omitido; no update só muda se vier explicitamente)
@@ -831,7 +826,7 @@ export function detectImageMimeFromBytes(bytes: Uint8Array): SupportedImageMime 
     return 'image/jpeg'
   }
 
-  // WEBP: "RIFF" .... "WEBP" + chunk "VP8" (VP8 , VP8L ou VP8X em offset 12..14)
+  // WEBP: "RIFF" .... "WEBP" + chunk "VP8" (VP8 , VP8L ou VP8X em offset 12..15)
   if (
     bytes[0] === 0x52 &&
     bytes[1] === 0x49 &&
@@ -843,7 +838,8 @@ export function detectImageMimeFromBytes(bytes: Uint8Array): SupportedImageMime 
     bytes[11] === 0x50 &&
     bytes[12] === 0x56 &&
     bytes[13] === 0x50 &&
-    bytes[14] === 0x38
+    bytes[14] === 0x38 &&
+    (bytes[15] === 0x20 || bytes[15] === 0x4c || bytes[15] === 0x58)
   ) {
     return 'image/webp'
   }
@@ -870,9 +866,11 @@ export function extractBlogStoragePath(
   url: string | null | undefined,
   expectedOrigin?: string | null
 ): string | null {
-  if (typeof url !== 'string' || !url.trim()) return null
+  if (typeof url !== 'string') return null
+  const rawTrimmed = url.trim()
+  if (!rawTrimmed || rawTrimmed.includes('?') || rawTrimmed.includes('#')) return null
   try {
-    const parsed = new URL(url.trim())
+    const parsed = new URL(rawTrimmed)
     if (expectedOrigin) {
       if (parsed.origin !== expectedOrigin) return null
     } else if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith('.supabase.co')) {

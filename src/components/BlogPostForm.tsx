@@ -6,6 +6,7 @@ import { adminFetch } from '@/lib/admin-api'
 import {
   MAX_BLOG_COVER_BYTES,
   deriveExcerpt,
+  hasReadableBlogContent,
   isValidBlogSlug,
   normalizeBlogSlug,
   sanitizeBlogCoverUrl,
@@ -124,6 +125,7 @@ export default function BlogPostForm({
   const uploadAbortRef = useRef<AbortController | null>(null)
   const uploadSeqRef = useRef(0)
   const manualAbortRef = useRef(false)
+  const submitLockRef = useRef(false)
 
   const isBusy = submittingStatus !== null || uploading
 
@@ -177,6 +179,7 @@ export default function BlogPostForm({
     setUploadNote('')
     setUploading(true)
 
+    uploadAbortRef.current?.abort()
     const controller = new AbortController()
     uploadAbortRef.current = controller
     const timeoutId = window.setTimeout(() => controller.abort(), 30000)
@@ -240,7 +243,7 @@ export default function BlogPostForm({
   }
 
   const submitWithStatus = async (targetStatus: BlogPostStatus) => {
-    if (isBusy) return
+    if (submitLockRef.current || isBusy) return
     setError('')
 
     if (title.trim().length < 3) {
@@ -249,6 +252,10 @@ export default function BlogPostForm({
     }
     if (content.trim().length < 10) {
       setError('Escreva pelo menos 10 caracteres no texto da publicação.')
+      return
+    }
+    if (!hasReadableBlogContent(content)) {
+      setError('Escreva texto legível no conteúdo da publicação (não apenas marcadores vazios).')
       return
     }
     if (content.trim().length > 50000) {
@@ -266,6 +273,7 @@ export default function BlogPostForm({
       return
     }
 
+    submitLockRef.current = true
     setSubmittingStatus(targetStatus)
     try {
       const safeCover = coverImageUrl.trim() ? sanitizeBlogCoverUrl(coverImageUrl, '') : ''
@@ -292,12 +300,14 @@ export default function BlogPostForm({
       }
 
       await onSave(payload, targetStatus)
+      submitLockRef.current = false
     } catch (err: unknown) {
       const message =
         err instanceof Error && err.message
           ? err.message
           : 'Não foi possível salvar a publicação. Tente novamente.'
       setError(message)
+      submitLockRef.current = false
       setSubmittingStatus(null)
     }
   }
@@ -393,7 +403,7 @@ export default function BlogPostForm({
             maxLength={160}
           />
           <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
-            <span className="font-mono">
+            <span className="font-mono break-all min-w-0">
               URL: /blog/<strong className="text-gray-900">{effectiveSlug || 'url-automatica'}</strong>
             </span>
             <label className="inline-flex items-center gap-2 cursor-pointer text-gray-700">
@@ -558,32 +568,36 @@ export default function BlogPostForm({
               <button
                 type="button"
                 aria-label="Inserir subtítulo H2"
+                disabled={isBusy}
                 onClick={() => insertMarkdown('\n## ', '\n', 'Subtítulo')}
-                className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-100 text-gray-700"
+                className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-100 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 H2
               </button>
               <button
                 type="button"
                 aria-label="Inserir texto em negrito"
+                disabled={isBusy}
                 onClick={() => insertMarkdown('**', '**', 'destaque')}
-                className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-100 text-gray-700"
+                className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-100 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Negrito
               </button>
               <button
                 type="button"
                 aria-label="Inserir item de lista"
+                disabled={isBusy}
                 onClick={() => insertMarkdown('\n- ', '', 'Item da lista')}
-                className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-100 text-gray-700"
+                className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-100 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Lista
               </button>
               <button
                 type="button"
                 aria-label="Inserir link"
+                disabled={isBusy}
                 onClick={() => insertMarkdown('[', '](https://imagineinstituto.com)', 'texto do link')}
-                className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-100 text-gray-700"
+                className="px-2.5 py-1 text-xs font-semibold rounded border border-gray-300 bg-white hover:bg-gray-100 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Link
               </button>
@@ -657,7 +671,8 @@ export default function BlogPostForm({
             <div className="pt-2 border-t border-gray-200 text-xs text-gray-600">
               <span className="font-semibold text-gray-800">Prévia no WhatsApp / Google: </span>
               <span className="text-gray-900 font-medium">
-                {seoTitle.trim() || title.trim() || 'Título da publicação'}
+                {seoTitle.trim() ||
+                  (title.trim() ? `${title.trim()} | Instituto Imagine` : 'Título da publicação')}
               </span>
               {' — '}
               <span>{seoDescription.trim() || effectiveExcerpt || 'Resumo automático aparecerá aqui.'}</span>

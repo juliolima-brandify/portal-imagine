@@ -119,7 +119,9 @@ test('R5: resolveCanonicalUrl, resolveAbsoluteOgImage e deriveExcerpt geram meta
   assert.equal(resolveAbsoluteOgImage('/\t/evil.com/x.png'), 'https://imagineinstituto.com/img/sobre.webp')
   assert.equal(sanitizeBlogCoverUrl('http://inseguro.com/a.jpg', '/img/sobre.webp'), '/img/sobre.webp')
   assert.equal(deriveExcerpt('## Título\n**Texto** com [link](https://a.com) bem curto.'), 'Título Texto com link bem curto.')
+  assert.equal(deriveExcerpt('##\n>\n-'), '')
   assert.equal(estimateReadingTimeMinutes('palavra '.repeat(450)), 3)
+  assert.equal(estimateReadingTimeMinutes('palavra '.repeat(30000)), 120)
 })
 
 test('R1 & R6 & R8: sanitizeAdminBlogPostPayload faz whitelist, bloqueia coersoes e preserva excerpt no PUT parcial', () => {
@@ -198,6 +200,17 @@ test('R1 & R6 & R8: sanitizeAdminBlogPostPayload faz whitelist, bloqueia coersoe
   assert.equal(badSeoDesc.ok, false)
   if (!badSeoDesc.ok) assert.equal(badSeoDesc.status, 422)
 
+  // Bloqueia conteúdo só de marcadores Markdown vazios
+  const emptyMarkers = sanitizeAdminBlogPostPayload(
+    {
+      title: 'Artigo com título válido',
+      content: '##   \n>   \n-   \n**   **',
+    },
+    'create'
+  )
+  assert.equal(emptyMarkers.ok, false)
+  if (!emptyMarkers.ok) assert.equal(emptyMarkers.status, 422)
+
   const badSlug = sanitizeAdminBlogPostPayload(
     {
       title: 'Admin',
@@ -256,12 +269,14 @@ test('R7: detectImageMimeFromBytes e extractBlogStoragePath validam magic bytes 
   const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0x49, 0x48, 0x44, 0x52])
   const polyglotJpg = new Uint8Array([0xff, 0xd8, 0xff, 0x3c, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x3e, 0, 0, 0, 0, 0])
+  const badWebp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x5a])
   const fakeSvg = new Uint8Array([0x3c, 0x73, 0x76, 0x67, 0x3e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
   assert.equal(detectImageMimeFromBytes(webp), 'image/webp')
   assert.equal(detectImageMimeFromBytes(jpeg), 'image/jpeg')
   assert.equal(detectImageMimeFromBytes(png), 'image/png')
   assert.equal(detectImageMimeFromBytes(polyglotJpg), null)
+  assert.equal(detectImageMimeFromBytes(badWebp), null)
   assert.equal(detectImageMimeFromBytes(fakeSvg), null)
 
   assert.equal(
@@ -270,6 +285,18 @@ test('R7: detectImageMimeFromBytes e extractBlogStoragePath validam magic bytes 
       'https://zzxtethlsdjjfjjrqmlk.supabase.co'
     ),
     'covers/2026/11/dd0107dc-1802-47af-8755-371603acf890.webp'
+  )
+  assert.equal(
+    extractBlogStoragePath(
+      'https://zzxtethlsdjjfjjrqmlk.supabase.co/storage/v1/object/public/blog/covers/2026/11/dd0107dc-1802-47af-8755-371603acf890.webp?'
+    ),
+    null
+  )
+  assert.equal(
+    extractBlogStoragePath(
+      'https://zzxtethlsdjjfjjrqmlk.supabase.co/storage/v1/object/public/blog/covers/2026/11/dd0107dc-1802-47af-8755-371603acf890.webp#'
+    ),
+    null
   )
   assert.equal(
     extractBlogStoragePath(

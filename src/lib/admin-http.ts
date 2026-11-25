@@ -31,8 +31,9 @@ export function verifyAdminMutationOrigin(request: NextRequest): boolean {
 
   const originHeader = request.headers.get('origin')
   if (!originHeader) {
-    // Clientes server-to-server ou curl já dependem do Bearer token validado em requireAdmin()
-    return true
+    // Clientes server-to-server ou curl enviam Authorization: Bearer; navegador same-origin envia Sec-Fetch-Site/Origin
+    const authHeader = request.headers.get('authorization') || ''
+    return secFetchSite === 'same-origin' || authHeader.startsWith('Bearer ')
   }
 
   let parsedOrigin: URL
@@ -72,26 +73,26 @@ export function verifyAdminMutationOrigin(request: NextRequest): boolean {
     }
   }
 
-  const hostHeader = (
-    request.headers.get('x-forwarded-host') ||
-    request.headers.get('host') ||
-    ''
-  )
-    .split(',')[0]
-    .trim()
-    .toLowerCase()
-
-  if (hostHeader && parsedOrigin.host.toLowerCase() === hostHeader) {
-    return true
+  if (!isProd) {
+    const hostHeader = (request.headers.get('host') || '').split(',')[0].trim().toLowerCase()
+    if (hostHeader && parsedOrigin.host.toLowerCase() === hostHeader) {
+      return true
+    }
   }
 
   return false
+}
+
+function formatLimitLabel(maxBytes: number): string {
+  const mb = maxBytes / (1024 * 1024)
+  return mb >= 1 ? `${Math.round(mb)} MB` : `${Math.round(maxBytes / 1024)} KB`
 }
 
 export async function readBoundedFormData(
   request: NextRequest,
   maxBytes: number
 ): Promise<{ ok: true; formData: FormData } | { ok: false; status: number; error: string }> {
+  const sizeExceededError = `Arquivo muito grande. O limite máximo de upload é ${formatLimitLabel(maxBytes)}.`
   const contentLengthHeader = request.headers.get('content-length')
   if (contentLengthHeader !== null) {
     const parsedLength = Number(contentLengthHeader)
@@ -99,12 +100,15 @@ export async function readBoundedFormData(
       return {
         ok: false,
         status: 413,
-        error: 'Arquivo muito grande. O limite máximo de upload é 5 MB.',
+        error: sizeExceededError,
       }
     }
   }
 
   if (!request.body) {
+    if (contentLengthHeader === null) {
+      return { ok: false, status: 400, error: 'Corpo da requisição ausente.' }
+    }
     try {
       const formData = await request.formData()
       return { ok: true, formData }
@@ -129,7 +133,7 @@ export async function readBoundedFormData(
         return {
           ok: false,
           status: 413,
-          error: 'Arquivo muito grande. O limite máximo de upload é 5 MB.',
+          error: sizeExceededError,
         }
       }
       chunks.push(value)
