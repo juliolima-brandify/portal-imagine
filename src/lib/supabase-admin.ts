@@ -29,20 +29,23 @@ function getAdminClient(): SupabaseClient {
 
 // Cliente Supabase com Service Role Key (lazy para compatibilidade com build e Cloudflare Workers)
 export const supabaseAdmin: SupabaseClient = new Proxy({} as SupabaseClient, {
-  get(_target, prop, receiver) {
+  get(_target, prop) {
     const client = getAdminClient()
-    const value = Reflect.get(client, prop, receiver)
+    const value = Reflect.get(client, prop, client)
     return typeof value === 'function' ? value.bind(client) : value
+  },
+  has(_target, prop) {
+    return prop in getAdminClient()
   },
 })
 
-// Verificar se as credenciais são válidas
+// Verificar se as credenciais são válidas (JWT legado `eyJ` ou chave nova `sb_secret_`)
 export const isSupabaseAdminConfigured = () => {
   const { supabaseUrl, supabaseServiceKey } = getSupabaseCredentials()
   return (
     supabaseUrl.startsWith('https://') &&
     supabaseUrl !== 'https://placeholder.supabase.co' &&
     supabaseServiceKey !== 'placeholder-key' &&
-    supabaseServiceKey.startsWith('eyJ')
+    (supabaseServiceKey.startsWith('eyJ') || supabaseServiceKey.startsWith('sb_secret_'))
   )
 }

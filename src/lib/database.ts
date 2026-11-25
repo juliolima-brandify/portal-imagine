@@ -280,67 +280,12 @@ export async function getProject(projectId: string): Promise<Project | null> {
       .single()
 
     if (error) {
-      console.warn('⚠️ Supabase não disponível, buscando nos dados mock:', error.message)
-      console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
-      console.log('🔍 ID sendo buscado:', projectId)
-      console.log('🔍 Tipo do ID:', typeof projectId)
-      // Fallback para dados mock
-      const mockProject = mockProjects.find(p => p.id === projectId)
-      console.log('🔍 Projeto mock encontrado:', mockProject ? mockProject.title : 'Nenhum')
-      
-      // Se não encontrar o projeto específico, usar o primeiro mock como fallback
-      if (!mockProject) {
-        console.log('🔄 Projeto específico não encontrado, usando primeiro mock como fallback')
-        const fallbackProject = mockProjects[0] ? {
-          ...mockProjects[0],
-          id: projectId, // Manter o ID original solicitado
-          title: `Projeto ${projectId}`
-        } : null
-        return fallbackProject
-      }
-      
-      return mockProject
+      console.warn('⚠️ Supabase não disponível ao buscar projeto:', error.message)
+      return null
     }
 
-    if (!data) {
-      console.info('ℹ️ Projeto não encontrado no Supabase, buscando nos dados mock')
-      console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
-      const mockProject = mockProjects.find(p => p.id === projectId)
-      console.log('🔍 Projeto mock encontrado:', mockProject ? mockProject.title : 'Nenhum')
-      
-      // Se não encontrar o projeto específico, usar o primeiro mock como fallback
-      if (!mockProject) {
-        console.log('🔄 Projeto específico não encontrado, usando primeiro mock como fallback')
-        const fallbackProject = mockProjects[0] ? {
-          ...mockProjects[0],
-          id: projectId, // Manter o ID original solicitado
-          title: `Projeto ${projectId}`
-        } : null
-        return fallbackProject
-      }
-      
-      return mockProject
-    }
-
-    // Verificar se o projeto tem a estrutura correta
-    if (!data.title || !data.id) {
-      console.warn('⚠️ Projeto do Supabase com estrutura inválida:', data)
-      console.log('📋 IDs mock disponíveis:', mockProjects.map(p => p.id))
-      const mockProject = mockProjects.find(p => p.id === projectId)
-      console.log('🔍 Projeto mock encontrado:', mockProject ? mockProject.title : 'Nenhum')
-      
-      // Se não encontrar o projeto específico, usar o primeiro mock como fallback
-      if (!mockProject) {
-        console.log('🔄 Projeto específico não encontrado, usando primeiro mock como fallback')
-        const fallbackProject = mockProjects[0] ? {
-          ...mockProjects[0],
-          id: projectId, // Manter o ID original solicitado
-          title: `Projeto ${projectId}`
-        } : null
-        return fallbackProject
-      }
-      
-      return mockProject
+    if (!data || !data.title || !data.id) {
+      return null
     }
 
     console.log(`✅ Projeto ${projectId} carregado do Supabase:`, data.title)

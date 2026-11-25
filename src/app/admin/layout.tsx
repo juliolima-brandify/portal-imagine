@@ -11,47 +11,40 @@ const AdminLayout = memo(function AdminLayout({
   children: React.ReactNode
 }) {
   const [user, setUser] = useState<User | null>(null)
+  const [adminName, setAdminName] = useState<string>('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const getUser = async () => {
+    const verifyAdmin = async () => {
       try {
-        // 1) Priorizar usuário autenticado real
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setUser(user)
-          setLoading(false)
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (!authUser) {
+          window.location.href = '/entrar'
           return
         }
 
-        // 2) Sem sessão real: permitir admin demo via URL
-        const urlParams = new URLSearchParams(window.location.search)
-        const demoEmail = urlParams.get('demo_email')
-        if (demoEmail === 'admin@institutoimagine.org') {
-          setUser({
-            id: 'demo-admin',
-            email: demoEmail,
-            user_metadata: { name: 'Admin Demo' },
-            app_metadata: {},
-            aud: 'authenticated',
-            created_at: new Date().toISOString()
-          } as User)
-          setLoading(false)
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role, name')
+          .eq('id', authUser.id)
+          .single()
+
+        if (profileError || profile?.role !== 'admin') {
+          window.location.href = '/dashboard'
           return
         }
 
-        // 3) Sem sessão e sem demo
-        console.log('Usuário não encontrado, redirecionando para /auth')
-        window.location.href = '/auth'
+        setUser(authUser)
+        setAdminName(profile.name || authUser.user_metadata?.name || authUser.email || 'Admin')
       } catch (error) {
-        console.error('Erro ao obter usuário:', error)
-        window.location.href = '/auth'
+        console.error('Erro ao verificar permissão de administrador:', error)
+        window.location.href = '/entrar'
       } finally {
         setLoading(false)
       }
     }
 
-    getUser()
+    verifyAdmin()
   }, [])
 
   if (loading) {
@@ -67,31 +60,21 @@ const AdminLayout = memo(function AdminLayout({
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Acesso Negado</h1>
-          <p className="text-gray-600 mb-6">Você precisa estar logado para acessar esta página.</p>
+          <p className="text-gray-600 mb-6">Você precisa de permissão de administrador para acessar esta página.</p>
         </div>
       </div>
     )
   }
 
-  // Se houver usuário autenticado real, não propagar demoEmail
-  const demoEmailProp = (() => {
-    if (user) return null
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search)
-      return urlParams.get('demo_email')
-    }
-    return null
-  })()
-
   return (
     <UnifiedLayout
       variant="admin"
       user={{
-        name: user.user_metadata?.name || user.email || 'Admin',
+        name: adminName,
         email: user.email || '',
-        role: 'admin'
+        role: 'admin',
       }}
-      demoEmail={demoEmailProp}
+      demoEmail={null}
     >
       {children}
     </UnifiedLayout>

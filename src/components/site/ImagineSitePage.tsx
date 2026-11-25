@@ -140,17 +140,20 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
   const openWhats = (msg: string) => {
     if (typeof window === 'undefined') return
     const full = indicador ? `${msg}\n\n(Indicação de: ${indicador})` : msg
-    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(full)}`, '_blank', 'noopener')
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(full)}`, '_blank', 'noopener,noreferrer')
   }
 
   useEffect(() => {
+    const sanitizeIndicador = (raw: string | null) =>
+      (raw || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60)
+
     try {
-      const p = new URLSearchParams(window.location.search).get('indicador')
+      const p = sanitizeIndicador(new URLSearchParams(window.location.search).get('indicador'))
       if (p) {
         window.localStorage.setItem('ii-indicador', p)
         setIndicador(p)
       } else {
-        setIndicador(window.localStorage.getItem('ii-indicador') || '')
+        setIndicador(sanitizeIndicador(window.localStorage.getItem('ii-indicador')))
       }
     } catch {}
 
@@ -159,7 +162,10 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
     onScroll()
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setModalOpen(false)
+      if (e.key === 'Escape') {
+        setModalOpen(false)
+        setMenuOpen(false)
+      }
     }
     window.addEventListener('keydown', onKey)
 
@@ -171,6 +177,17 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
   }, [])
 
   useEffect(() => {
+    if (typeof document === 'undefined') return
+    const prev = document.body.style.overflow
+    if (modalOpen) {
+      document.body.style.overflow = 'hidden'
+    }
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [modalOpen])
+
+  useEffect(() => {
     if (page !== 'home') return
     const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (reduced) return
@@ -179,11 +196,11 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
   }, [page])
 
   useEffect(() => {
-    if (!pixCode || !qrRef.current) return
+    if (!pixCode || doarStep !== 2 || !qrRef.current) return
     const alvo = qrRef.current
     const renderQR = () => {
       const w = window as unknown as { qrcode?: (a: number, b: string) => { addData: (s: string) => void; make: () => void; createSvgTag: (o: unknown) => string } }
-      if (!w.qrcode) return
+      if (!w.qrcode || !qrRef.current) return
       const q = w.qrcode(0, 'M')
       q.addData(pixCode)
       q.make()
@@ -193,14 +210,25 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
       renderQR()
       return
     }
+    const existing = document.getElementById('ii-qrcode-lib') as HTMLScriptElement | null
+    if (existing) {
+      existing.addEventListener('load', renderQR, { once: true })
+      return
+    }
     const s = document.createElement('script')
+    s.id = 'ii-qrcode-lib'
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'
+    s.crossOrigin = 'anonymous'
     s.onload = renderQR
+    s.onerror = () => showToast('Use o botão "Copiar código Pix" abaixo')
     document.head.appendChild(s)
-  }, [pixCode])
+  }, [pixCode, doarStep])
 
-  const openDoar = (projId?: string) => {
+  const openDoar = (projId?: string, mensal = false) => {
     setDoarProj(projId || 'geral')
+    setDoarValor(50)
+    setDoarOutro('')
+    setDoarMensal(mensal)
     setDoarStep(1)
     setPixCode('')
     setForcePixFallback(false)
@@ -217,7 +245,7 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
     : ''
 
   const portalDirectPath = selectedProjectInfo?.portalProjectId
-    ? `/doar/${selectedProjectInfo.portalProjectId}`
+    ? `/embed/checkout/checkout-stripe?project=${selectedProjectInfo.portalProjectId}&source=site&utm_campaign=${selectedProjectInfo.portalCampaignSlug || selectedProjectInfo.id}`
     : ''
 
   const projLabelMap: Record<string, string> = {
@@ -233,8 +261,8 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
 
   const handleDoarSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!(doarValor > 0)) {
-      showToast('Escolha um valor')
+    if (Math.round(doarValor * 100) < 1) {
+      showToast('Escolha um valor válido')
       return
     }
     setDoarStep(2)
@@ -552,7 +580,7 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                 </div>
                 <div className="formas">
                   <article className="forma gb"><span className="ico"><IconPix /></span><h3>Doação pelo Pix</h3><p>Escolha o projeto e o valor. Na hora, você recebe o QR Code e o código copia e cola.</p><button type="button" className="btn btn-sm" onClick={() => openDoar('')}><span className="bt">Doar agora</span><PillBtnIcon /></button></article>
-                  <article className="forma gb"><span className="ico"><IconCalendar /></span><h3>Doação mensal</h3><p>Quem doa todo mês mantém as aulas e os atendimentos funcionando o ano inteiro.</p><button type="button" className="btn btn-sm btn-ghost" onClick={() => { setDoarMensal(true); openDoar('') }}><span className="bt">Quero ser mensal</span><PillBtnIcon /></button></article>
+                  <article className="forma gb"><span className="ico"><IconCalendar /></span><h3>Doação mensal</h3><p>Quem doa todo mês mantém as aulas e os atendimentos funcionando o ano inteiro.</p><button type="button" className="btn btn-sm btn-ghost" onClick={() => openDoar('', true)}><span className="bt">Quero ser mensal</span><PillBtnIcon /></button></article>
                   <article className="forma gb"><span className="ico"><IconDoc /></span><span className="selo selo-breve so-off">Em breve</span><h3>Imposto de Renda</h3><p>Destine até 6% do imposto devido aos projetos incentivados e receba o valor de volta na declaração.</p><a className="lnk" href="#imposto">Simular meu potencial <ArrowIcon /></a></article>
                   <article className="forma gb"><span className="ico"><IconReceipt /></span><h3>Nota Fiscal Mineira</h3><p>O Instituto está cadastrado como entidade social no programa Nota Fiscal Mineira, da Secretaria de Fazenda de MG.</p><a className="lnk" href="https://notafiscalmineira.fazenda.mg.gov.br/entidades-sociais/detalhe?cnpj=14351728000172" target="_blank" rel="noopener">Ver cadastro <ArrowIcon /></a></article>
                   <article className="forma gb"><span className="ico"><IconBuilding /></span><h3>Empresas parceiras</h3><p>Patrocínio de projeto, doação de produtos e serviços ou uma campanha de IR com os seus colaboradores.</p><a className="lnk" href="#empresas">Quero ser parceiro <ArrowIcon /></a></article>
@@ -1038,7 +1066,7 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                       src={portalEmbedPath}
                       title={`Checkout ${projLabelMap[doarProj] || 'Instituto Imagine'}`}
                       style={{ width: '100%', height: 520, border: 0, display: 'block' }}
-                      allow="payment *"
+                      allow="payment 'self'"
                     />
                   </div>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1101,16 +1129,16 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                       ) : (
                         <div style={{ width: '100%', display: 'grid', gap: 12 }}>
                           <p className="modal-sub" style={{ margin: 0 }}>A chave Pix chega pelo WhatsApp em instantes.</p>
-                          <button type="button" className="btn btn-full" onClick={() => openWhats(`Olá! Quero doar ${formatBRL(doarValor)}${doarMensal ? ' por mês' : ''} para o projeto "${projLabelMap[doarProj]}" do Instituto Imagine. Pode me passar a chave Pix?${doarNome.trim() ? `\nNome: ${doarNome.trim()}` : ''}`)}>
+                          <button type="button" className="btn btn-full" onClick={() => openWhats(`Olá! Quero doar ${formatBRL(doarValor)}${doarMensal ? ' por mês' : ''} para o projeto "${projLabelMap[doarProj] || doarProj}" do Instituto Imagine. Pode me passar a chave Pix?${doarNome.trim() ? `\nNome: ${doarNome.trim()}` : ''}`)}>
                             <span className="bt">Receber a chave Pix</span><PillBtnIcon />
                           </button>
                         </div>
                       )}
                       <p className="modal-sub" style={{ margin: '4px 0 0' }}>Depois de pagar, envie o comprovante para receber o seu recibo.</p>
-                      <button type="button" className="btn btn-full btn-ghost" onClick={() => openWhats(`Olá! Fiz uma doação de ${formatBRL(doarValor)}${doarMensal ? ' (quero doar todo mês)' : ''} para o projeto "${projLabelMap[doarProj]}" do Instituto Imagine.${doarNome.trim() ? `\nNome: ${doarNome.trim()}` : ''}\nSegue o comprovante:`)}>
+                      <button type="button" className="btn btn-full btn-ghost" onClick={() => openWhats(`Olá! Fiz uma doação de ${formatBRL(doarValor)}${doarMensal ? ' (quero doar todo mês)' : ''} para o projeto "${projLabelMap[doarProj] || doarProj}" do Instituto Imagine.${doarNome.trim() ? `\nNome: ${doarNome.trim()}` : ''}\nSegue o comprovante:`)}>
                         <span className="bt">Enviar comprovante</span><PillBtnIcon />
                       </button>
-                      <button type="button" className="btn-mais" onClick={() => setDoarStep(1)}>Voltar</button>
+                      <button type="button" className="btn-mais" onClick={() => { setPixCode(''); setDoarStep(1) }}>Voltar</button>
                     </div>
                   )}
                 </form>

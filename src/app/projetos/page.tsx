@@ -11,6 +11,7 @@ import type { Project } from '@/lib/database'
 import type { Favorite } from '@/lib/favorites'
 import type { Donation } from '@/lib/database'
 import FavoriteButton from '@/components/FavoriteButton'
+import { getInstitutionalProjectPathByPortalId } from '@/lib/imagine-site'
 
 export default function ProjetosPage() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -220,7 +221,7 @@ export default function ProjetosPage() {
                 <p className="text-gray-600 mb-6">
               Faça sua primeira doação ou favorite um projeto para vê-lo aqui.
                 </p>
-                <a href="https://imagineinstituto.com/projetos" target="_blank" rel="noopener noreferrer" className="btn-primary">
+                <a href="https://imagineinstituto.com/#projetos" target="_blank" rel="noopener noreferrer" className="btn-primary">
                   Explorar projetos no site principal
                 </a>
           </div>
@@ -361,10 +362,8 @@ export default function ProjetosPage() {
                         <div className="space-y-3">
                           {/* Ver Detalhes - Sempre presente */}
                       <Link
-                            href={`https://imagineinstituto.com/projetos/${project.id}`}
+                            href={getInstitutionalProjectPathByPortalId(project.id)}
                             className="w-full btn-secondary text-center block"
-                        target="_blank"
-                        rel="noopener noreferrer"
                       >
                         Ver Detalhes
                       </Link>
@@ -380,10 +379,8 @@ export default function ProjetosPage() {
                           {/* Seja Voluntário - Apenas para doadores (não voluntários) */}
                           {!isVolunteerForProject && (
                             <Link
-                              href={`https://imagineinstituto.com/projetos/${project.id}/voluntario`}
+                              href="/#contato"
                               className="w-full btn-secondary text-center block"
-                              target="_blank"
-                              rel="noopener noreferrer"
                             >
                               Seja Voluntário
                             </Link>

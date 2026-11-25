@@ -68,32 +68,6 @@ export default function AdminDoacoesPage() {
 
   useEffect(() => {
     const getUser = async () => {
-      // Primeiro, verificar se é modo demo via URL
-      const urlParams = new URLSearchParams(window.location.search)
-      const demoEmail = urlParams.get('demo_email')
-      
-      console.log('🔍 [DOAÇÕES] Verificando autenticação...')
-      console.log('📧 Demo Email:', demoEmail)
-      console.log('🌐 URL atual:', window.location.href)
-      
-      if (demoEmail === 'admin@institutoimagine.org') {
-        console.log('✅ [DOAÇÕES] Demo admin detectado, permitindo acesso')
-        setUser({
-          id: 'demo-admin',
-          email: demoEmail,
-          user_metadata: { name: 'Admin Demo' },
-          app_metadata: {},
-          aud: 'authenticated',
-          created_at: new Date().toISOString()
-        } as User)
-        
-        // Carregar doações do Supabase mesmo no modo demo
-        await loadDonationsFromSupabase()
-        // Loading removido
-        return
-      }
-
-      // Se não for demo, tentar com Supabase
       try {
         const { data: { user } } = await supabase.auth.getUser()
         setUser(user)

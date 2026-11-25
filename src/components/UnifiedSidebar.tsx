@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useMemo, memo, useState } from 'react'
 import { Modal } from '@/components/ConfirmDialog'
+import { supabase } from '@/lib/supabase'
 
 interface SidebarItem {
   label: string
@@ -153,8 +154,16 @@ const UnifiedSidebar = memo(function UnifiedSidebar({
     }, {} as Record<string, string>)
   }, [pathname, variant])
 
-  const handleLogout = () => {
-    window.location.href = '/auth'
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      console.error('Erro ao encerrar sessão:', error)
+    }
+    try {
+      localStorage.removeItem('demo-user')
+    } catch {}
+    window.location.href = '/entrar'
   }
 
   const menuItems = getMenuItems()

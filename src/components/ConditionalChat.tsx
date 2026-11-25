@@ -17,36 +17,30 @@ export default function ConditionalChat() {
     '/entrar',
   ]
 
-  // Verificar se a página atual deve ter chat
   const shouldShowChat = !isInstitutionalPath(pathname) && !excludePaths.some(path => pathname.startsWith(path))
 
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // Se não deve mostrar chat, remover se já existir
     if (!shouldShowChat) {
-      // Remover script do Tawk.to se existir
-      const existingScript = document.querySelector('script[src*="embed.tawk.to"]')
-      if (existingScript) {
-        existingScript.remove()
+      if (typeof window.Tawk_API?.hideWidget === 'function') {
+        try {
+          window.Tawk_API.hideWidget()
+        } catch {}
       }
-
-      // Esconder widget se existir
-      const tawkWidget = document.querySelector('#tawk-widget') as HTMLElement
-      if (tawkWidget) {
-        tawkWidget.style.display = 'none'
-      }
-
-      // Parar Tawk.to se estiver rodando
-      if (window.Tawk_API) {
-        window.Tawk_API.hideWidget()
-      }
-
+      document.querySelectorAll<HTMLElement>('[id*="tawk"], .widget-visible').forEach((el) => {
+        el.style.display = 'none'
+      })
       return
     }
 
-    // Se deve mostrar chat, carregar o script
-    if (shouldShowChat && !document.querySelector('script[src*="embed.tawk.to"]')) {
+    if (typeof window.Tawk_API?.showWidget === 'function') {
+      try {
+        window.Tawk_API.showWidget()
+      } catch {}
+    }
+
+    if (!document.querySelector('script[src*="embed.tawk.to"]')) {
       const script = document.createElement('script')
       script.type = 'text/javascript'
       script.innerHTML = `
@@ -64,11 +58,9 @@ export default function ConditionalChat() {
     }
   }, [pathname, shouldShowChat])
 
-  // Este componente não renderiza nada visualmente
   return null
 }
 
-// Declaração global para TypeScript
 declare global {
   interface Window {
     Tawk_API: any

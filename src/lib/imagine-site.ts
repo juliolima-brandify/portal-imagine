@@ -13,8 +13,15 @@ export const SITE_PUBLIC_PATHS = [
 
 export function isInstitutionalPath(pathname: string | null | undefined): boolean {
   if (!pathname) return false
-  const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  const clean = pathname.split(/[?#]/)[0].trim().toLowerCase()
+  if (!clean) return false
+  const normalized = clean.replace(/\/+$/, '') || '/'
   return (SITE_PUBLIC_PATHS as readonly string[]).includes(normalized)
+}
+
+export function getInstitutionalProjectPathByPortalId(portalProjectId: string): string {
+  const match = IMAGINE_PROJECTS.find((p) => p.portalProjectId === portalProjectId)
+  return match ? `/projetos/${match.id}` : '/#projetos'
 }
 
 export const IMAGINE_SITE_CONFIG = {
@@ -293,7 +300,26 @@ export function formatBRLCompact(v: number): string {
 }
 
 export function parseBRNumber(raw: string): number {
-  const v = parseFloat(raw.replace(/\./g, '').replace(',', '.'))
+  if (typeof raw !== 'string') return 0
+  const cleaned = raw.replace(/^R\$\s*/i, '').replace(/\s+/g, '').trim()
+  if (!cleaned) return 0
+
+  let normalized = cleaned
+  if (cleaned.includes(',')) {
+    // Formato brasileiro: 1.250,50 ou 50,50
+    if (!/^\d{1,3}(\.\d{3})*(,\d+)?$|^\d+(,\d+)?$/.test(cleaned)) return 0
+    normalized = cleaned.replace(/\./g, '').replace(',', '.')
+  } else if (/^\d+\.\d{1,2}$/.test(cleaned)) {
+    // Formato decimal com ponto: 50.5 ou 1000.50
+    normalized = cleaned
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) {
+    // Milhar brasileiro sem centavos: 1.000 ou 10.000
+    normalized = cleaned.replace(/\./g, '')
+  } else if (!/^\d+$/.test(cleaned)) {
+    return 0
+  }
+
+  const v = Number(normalized)
   return Number.isFinite(v) && v > 0 ? v : 0
 }
 
@@ -304,24 +330,40 @@ export function generatePixBRCode(
   cidade: string,
   txid: string
 ): string {
-  const semAc = (s: string) =>
-    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+  const cleanKey = (chave || '').trim()
+  if (!cleanKey) return ''
+
+  const sanitizeAscii = (s: string, fallback: string, maxLen: number) => {
+    const clean = (s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E]/g, '')
+      .trim()
+      .toUpperCase()
+      .slice(0, maxLen)
+    return clean || fallback
+  }
+
   const field = (id: string, s: string) => id + String(s.length).padStart(2, '0') + s
+  const cents = Number.isFinite(valor) && valor > 0 ? Math.round(valor * 100) : 0
+  const amountStr = cents >= 1 && cents <= 99999999999 ? (cents / 100).toFixed(2) : ''
+  const cleanTxid = (txid || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 25) || '***'
+
   const payload =
     field('00', '01') +
-    field('26', field('00', 'br.gov.bcb.pix') + field('01', chave)) +
+    field('26', field('00', 'br.gov.bcb.pix') + field('01', cleanKey)) +
     field('52', '0000') +
     field('53', '986') +
-    (valor > 0 ? field('54', valor.toFixed(2)) : '') +
+    (amountStr ? field('54', amountStr) : '') +
     field('58', 'BR') +
-    field('59', semAc(nome).slice(0, 25)) +
-    field('60', semAc(cidade).slice(0, 15)) +
-    field('62', field('05', txid.replace(/[^A-Z0-9]/g, '').slice(0, 25) || '***')) +
+    field('59', sanitizeAscii(nome, 'INSTITUTO IMAGINE', 25)) +
+    field('60', sanitizeAscii(cidade, 'UBERLANDIA', 15)) +
+    field('62', field('05', cleanTxid)) +
     '6304'
 
   let crc = 0xffff
   for (let i = 0; i < payload.length; i++) {
-    crc ^= payload.charCodeAt(i) << 8
+    crc ^= (payload.charCodeAt(i) & 0xff) << 8
     for (let j = 0; j < 8; j++) {
       crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff
     }
@@ -380,26 +422,40 @@ function calcTabelaIR(b: number): number {
 }
 
 export function simulateIR2026(input: IRSimulationInput): IRSimulationResult | null {
-  const rend = input.sal * 12 + input.alu * 12 + input.bon
-  if (!rend) return null
-  const ded =
-    calcINSS(input.sal) * 12 +
-    input.dep * 2275.08 +
-    Math.min(input.edu * 12, 3561.5 * (1 + input.dep)) +
-    input.sau * 12 +
-    Math.min(input.pgbl * 12, rend * 0.12) +
-    input.out * 12
+  const nonNeg = (n: number) => (Number.isFinite(n) && n > 0 ? n : 0)
+  const round2 = (n: number) => Math.round(n * 100) / 100
+
+  const sal = nonNeg(input.sal)
+  const alu = nonNeg(input.alu)
+  const bon = nonNeg(input.bon)
+  const dep = Math.floor(nonNeg(input.dep))
+  const edu = nonNeg(input.edu)
+  const sau = nonNeg(input.sau)
+  const pgbl = nonNeg(input.pgbl)
+  const out = nonNeg(input.out)
+
+  const rend = round2(sal * 12 + alu * 12 + bon)
+  if (rend <= 0) return null
+
+  const ded = round2(
+    calcINSS(sal) * 12 +
+      dep * 2275.08 +
+      Math.min(edu * 12, 3561.5 * (1 + dep)) +
+      sau * 12 +
+      Math.min(pgbl * 12, rend * 0.12) +
+      out * 12
+  )
   const base = Math.max(0, rend - ded)
   let imp = calcTabelaIR(base)
   const red = rend <= 60000 ? imp : rend <= 88200 ? Math.max(0, 8429.73 - 0.095575 * rend) : 0
-  imp = Math.max(0, imp - Math.min(red, imp))
+  imp = round2(Math.max(0, imp - Math.min(red, imp)))
 
   let simpl = calcTabelaIR(Math.max(0, rend - Math.min(rend * 0.2, 16754.34)))
   const redSimpl =
     rend <= 60000 ? simpl : rend <= 88200 ? Math.max(0, 8429.73 - 0.095575 * rend) : 0
-  simpl = Math.max(0, simpl - Math.min(redSimpl, simpl))
+  simpl = round2(Math.max(0, simpl - Math.min(redSimpl, simpl)))
 
-  const pot = imp * 0.06
+  const pot = round2(imp * 0.06)
   let obs = ''
   if (pot < 1) {
     obs = 'Pela estimativa, você não tem imposto devido no ano — então não há valor a destinar. Uma doação pelo Pix continua fazendo diferença.'

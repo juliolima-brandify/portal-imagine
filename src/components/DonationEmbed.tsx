@@ -124,8 +124,12 @@ export default function DonationEmbed({ project }: DonationEmbedProps) {
       const result = await response.json()
 
       if (result.success && result.url) {
-        // Redirecionar para Stripe Checkout
-        window.location.href = result.url
+        // Escapar do iframe ao redirecionar para gateway externo
+        if (window.top && window.top !== window.self) {
+          window.top.location.href = result.url
+        } else {
+          window.location.href = result.url
+        }
       } else {
         setError(result.error || 'Erro ao processar pagamento')
         setProcessing(false)

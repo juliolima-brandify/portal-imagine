@@ -44,33 +44,15 @@ export default function AdminRelatoriosPage() {
   useEffect(() => {
     const getUser = async () => {
       try {
-        // Verificar se é modo demo via URL
-        const urlParams = new URLSearchParams(window.location.search)
-        const demoEmail = urlParams.get('demo_email')
-        
-        if (demoEmail === 'admin@institutoimagine.org') {
-          setUser({
-            id: 'demo-admin',
-            email: demoEmail,
-            user_metadata: { name: 'Admin Demo' },
-            app_metadata: {},
-            aud: 'authenticated',
-            created_at: new Date().toISOString()
-          } as User)
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setUser(user)
         } else {
-          // Usuário real - autenticação com Supabase
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            setUser(user)
-          } else {
-            // Se não conseguir obter usuário, redirecionar para login
-            window.location.href = '/auth'
-            return
-          }
+          window.location.href = '/entrar'
+          return
         }
       } catch (error) {
         console.log('Erro ao obter usuário:', error)
-        // Não redirecionar automaticamente, deixar o layout admin lidar com isso
       }
     }
 

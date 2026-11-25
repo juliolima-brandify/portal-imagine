@@ -14,21 +14,25 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
  */
 async function resolveUser() {
   const authHeader = headers().get('authorization')
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (authHeader?.toLowerCase().startsWith('bearer ')) {
+  if (authHeader?.toLowerCase().startsWith('bearer ') && supabaseUrl && supabaseAnonKey) {
     const token = authHeader.slice(7).trim()
-    const client = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { auth: { persistSession: false, autoRefreshToken: false } }
-    )
+    const client = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
     const { data, error } = await client.auth.getUser(token)
     if (!error && data.user) return data.user
   }
 
-  const supabase = createServerClient()
-  const { data, error } = await supabase.auth.getUser()
-  if (!error && data.user) return data.user
+  try {
+    const supabase = createServerClient()
+    const { data, error } = await supabase.auth.getUser()
+    if (!error && data.user) return data.user
+  } catch {
+    return null
+  }
 
   return null
 }
@@ -36,37 +40,43 @@ async function resolveUser() {
 /**
  * Guard de autorização para rotas /api/admin/*.
  * Exige usuário autenticado com perfil role = 'admin'.
- *
- * Uso no handler:
- *   const auth = await requireAdmin()
- *   if (auth.error) return auth.error
  */
 export async function requireAdmin() {
-  const user = await resolveUser()
+  try {
+    const user = await resolveUser()
 
-  if (!user) {
-    return {
-      error: NextResponse.json({ error: 'Não autenticado' }, { status: 401 }),
-      user: null,
+    if (!user) {
+      return {
+        error: NextResponse.json({ error: 'Não autenticado' }, { status: 401 }),
+        user: null,
+      }
     }
-  }
 
-  // Confere o role no banco (via service role — a identidade já foi validada acima)
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
 
-  if (profileError || profile?.role !== 'admin') {
+    if (profileError || profile?.role !== 'admin') {
+      return {
+        error: NextResponse.json(
+          { error: 'Acesso negado: requer permissão de administrador' },
+          { status: 403 }
+        ),
+        user: null,
+      }
+    }
+
+    return { error: null as null, user }
+  } catch (err) {
+    console.error('Erro interno ao verificar permissão de administrador:', err)
     return {
       error: NextResponse.json(
-        { error: 'Acesso negado: requer permissão de administrador' },
-        { status: 403 }
+        { error: 'Serviço de autenticação indisponível' },
+        { status: 500 }
       ),
       user: null,
     }
   }
-
-  return { error: null as null, user }
 }

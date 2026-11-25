@@ -20,7 +20,10 @@
     "run_worker_first": [
       "/*",
       "!/_next/static/*",
-      "!/*/_next/static/*"
+      "!/*/_next/static/*",
+      "!/img/*",
+      "!/images/*",
+      "!/favicon.ico"
     ]
   }
 }

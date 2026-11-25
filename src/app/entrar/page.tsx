@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { supabase, isSupabaseConfigured, isLocalEnvironment } from '@/lib/supabase'
+import { ZodError } from 'zod'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { loginSchema, createUserSchema } from '@/lib/validations'
+import { Modal } from '@/components/ConfirmDialog'
 
 export default function EntrarPage() {
   const [isLogin, setIsLogin] = useState(true)
@@ -44,7 +45,7 @@ export default function EntrarPage() {
           password: validatedData.password,
         })
 
-        const { error } = (await Promise.race([
+        const { data, error } = (await Promise.race([
           authPromise,
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Timeout na autenticação')), 8000)
@@ -53,15 +54,17 @@ export default function EntrarPage() {
 
         if (error) throw error
         setMessage('Login realizado com sucesso!')
-        setLoading(false)
         clearTimeout(timeoutId)
 
         try {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('email', validatedData.email)
-            .single()
+          const userId = data?.user?.id
+          const { data: profile } = userId
+            ? await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', userId)
+                .single()
+            : { data: null }
 
           if (profile?.role === 'admin') {
             window.location.href = '/admin/dashboard'
@@ -100,32 +103,32 @@ export default function EntrarPage() {
         clearTimeout(timeoutId)
       }
     } catch (error: any) {
-      console.error('Erro de autenticação:', error)
       clearTimeout(timeoutId)
 
-      if (error.message?.includes('Timeout')) {
+      if (error instanceof ZodError) {
+        const firstIssue = error.issues[0]?.message || 'Verifique os dados informados.'
+        setMessage(`❌ ${firstIssue}`)
+      } else if (error?.message?.includes('Timeout')) {
         setMessage('❌ Timeout: A conexão está demorando muito. Verifique sua internet.')
       } else if (
-        error.message?.includes('supabaseUrl is required') ||
-        error.message?.includes('Failed to fetch') ||
-        error.message?.includes('placeholder') ||
-        error.message?.includes('NetworkError')
+        error?.message?.includes('supabaseUrl is required') ||
+        error?.message?.includes('Failed to fetch') ||
+        error?.message?.includes('placeholder') ||
+        error?.message?.includes('NetworkError')
       ) {
         setMessage('⚠️ Problema de conexão. Tente novamente mais tarde.')
-      } else if (error.message?.includes('Invalid login credentials')) {
+      } else if (error?.message?.includes('Invalid login credentials')) {
         setMessage('❌ Email ou senha incorretos. Verifique suas credenciais.')
-      } else if (error.message?.includes('User already registered')) {
+      } else if (error?.message?.includes('User already registered')) {
         setMessage('❌ Este email já está cadastrado. Tente fazer login.')
-      } else if (error.message?.includes('Password should be at least')) {
-        setMessage('❌ A senha deve ter pelo menos 6 caracteres.')
-      } else if (error.message?.includes('Invalid email')) {
+      } else if (error?.message?.includes('Password should be at least')) {
+        setMessage('❌ A senha deve ter pelo menos 8 caracteres.')
+      } else if (error?.message?.includes('Invalid email')) {
         setMessage('❌ Email inválido. Verifique o formato do email.')
       } else {
-        setMessage(`❌ Erro: ${error.message || 'Falha na conexão. Verifique sua internet e tente novamente.'}`)
+        setMessage('❌ Não foi possível concluir a autenticação. Tente novamente.')
       }
-    } finally {
       setLoading(false)
-      clearTimeout(timeoutId)
     }
   }
 
@@ -137,78 +140,38 @@ export default function EntrarPage() {
     try {
       if (!isSupabaseConfigured()) {
         setResetMessage('⚠️ Supabase não configurado. Sistema em manutenção.')
-        setResetLoading(false)
         return
       }
 
       const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/auth?reset=true`,
+        redirectTo: `${window.location.origin}/entrar?reset=true`,
       })
 
       if (error) throw error
       setResetMessage('✅ Email de recuperação enviado! Verifique sua caixa de entrada.')
       setResetEmail('')
     } catch (error: any) {
-      console.error('Erro ao enviar email de recuperação:', error)
-      if (error.message?.includes('Invalid email')) {
+      if (error?.message?.includes('Invalid email')) {
         setResetMessage('❌ Email inválido. Verifique o formato do email.')
       } else {
-        setResetMessage(`❌ Erro: ${error.message || 'Falha ao enviar email de recuperação.'}`)
+        setResetMessage('❌ Falha ao enviar email de recuperação. Tente novamente.')
       }
     } finally {
       setResetLoading(false)
     }
   }
 
-  const handleDemoLogin = async (role: 'admin' | 'donor' | 'volunteer') => {
-    setLoading(true)
-    setMessage('')
-
-    try {
-      if (!isSupabaseConfigured()) {
-        setMessage('⚠️ Supabase não configurado. Sistema em manutenção.')
-        setLoading(false)
-        return
-      }
-
-      const demoCredentials = {
-        admin: { email: 'admin@demo.com', password: 'demo123' },
-        donor: { email: 'doador@demo.com', password: 'demo123' },
-        volunteer: { email: 'voluntario@demo.com', password: 'demo123' },
-      }
-
-      const { email, password } = demoCredentials[role]
-
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-
-      if (error) throw error
-      setMessage('Login demo realizado com sucesso!')
-      setTimeout(() => {
-        window.location.href = '/dashboard'
-      }, 1000)
-    } catch (error: any) {
-      console.error('Erro no login demo:', error)
-      if (error.message?.includes('Invalid login credentials')) {
-        setMessage('❌ Credenciais demo inválidas. Verifique se as contas demo existem no Supabase.')
-      } else {
-        setMessage(`❌ Erro no login demo: ${error.message || 'Tente novamente.'}`)
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
-    <div>
+    <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <Link href="/" className="flex items-center">
+            <a href="https://imagineinstituto.com/" className="flex items-center">
               <img src="/images/logo.png" alt="Instituto Imagine" className="h-10 w-auto" />
-            </Link>
-            <Link href="/" className="text-gray-600 hover:text-gray-900 transition-colors">
+            </a>
+            <a href="https://imagineinstituto.com/" className="text-gray-600 hover:text-gray-900 transition-colors">
               Voltar ao site principal
-            </Link>
+            </a>
           </div>
         </div>
       </header>
@@ -216,9 +179,9 @@ export default function EntrarPage() {
       <div className="flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div>
-            <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
+            <h1 className="mt-6 text-center text-3xl font-bold text-gray-900">
               {isLogin ? 'Fazer Login' : 'Criar Conta'}
-            </h2>
+            </h1>
             <p className="mt-2 text-center text-sm text-gray-600">
               Portal Instituto Imagine - Transformando vidas
             </p>
@@ -236,23 +199,6 @@ export default function EntrarPage() {
             </div>
           )}
 
-          {isLocalEnvironment() && isSupabaseConfigured() && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm font-medium text-blue-700 mb-3">🚀 Modo Demo (Local)</p>
-              <div className="grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => handleDemoLogin('admin')} disabled={loading} className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors disabled:opacity-50">
-                  Admin Demo
-                </button>
-                <button type="button" onClick={() => handleDemoLogin('donor')} disabled={loading} className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors disabled:opacity-50">
-                  Doador Demo
-                </button>
-                <button type="button" onClick={() => handleDemoLogin('volunteer')} disabled={loading} className="px-3 py-2 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors disabled:opacity-50">
-                  Voluntário Demo
-                </button>
-              </div>
-            </div>
-          )}
-
           <form className="mt-8 space-y-6" onSubmit={handleAuth}>
             <div className="space-y-4">
               {!isLogin && (
@@ -267,7 +213,7 @@ export default function EntrarPage() {
               </div>
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
-                <input id="password" name="password" type="password" autoComplete="current-password" required className="input-modern" placeholder="Digite sua senha" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <input id="password" name="password" type="password" autoComplete={isLogin ? 'current-password' : 'new-password'} required className="input-modern" placeholder="Digite sua senha" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
             </div>
 
@@ -296,38 +242,60 @@ export default function EntrarPage() {
             </div>
 
             <div className="text-center">
-              <button type="button" onClick={() => setIsLogin(!isLogin)} className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLogin(!isLogin)
+                  setMessage('')
+                }}
+                className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+              >
                 {isLogin ? 'Não tem conta? Criar uma' : 'Já tem conta? Fazer login'}
               </button>
             </div>
           </form>
 
-          {showForgotPassword && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Recuperar Senha</h3>
-                <form onSubmit={handleForgotPassword} className="space-y-4">
-                  <div>
-                    <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                    <input id="reset-email" type="email" required className="input-modern" placeholder="Digite seu email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} />
-                  </div>
-                  {resetMessage && (
-                    <div className={`text-sm p-3 rounded-lg ${resetMessage.includes('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                      {resetMessage}
-                    </div>
-                  )}
-                  <div className="flex gap-3">
-                    <button type="button" onClick={() => { setShowForgotPassword(false); setResetEmail(''); setResetMessage('') }} className="btn-outline flex-1" disabled={resetLoading}>
-                      Cancelar
-                    </button>
-                    <button type="submit" disabled={resetLoading} className="btn-primary flex-1">
-                      {resetLoading ? 'Enviando...' : 'Enviar'}
-                    </button>
-                  </div>
-                </form>
+          <Modal
+            isOpen={showForgotPassword}
+            onClose={() => {
+              if (!resetLoading) {
+                setShowForgotPassword(false)
+                setResetEmail('')
+                setResetMessage('')
+              }
+            }}
+            title="Recuperar Senha"
+            size="sm"
+          >
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div>
+                <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <input id="reset-email" type="email" required className="input-modern" placeholder="Digite seu email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} />
               </div>
-            </div>
-          )}
+              {resetMessage && (
+                <div className={`text-sm p-3 rounded-lg ${resetMessage.includes('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {resetMessage}
+                </div>
+              )}
+              <div className="flex gap-3 pt-2 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotPassword(false)
+                    setResetEmail('')
+                    setResetMessage('')
+                  }}
+                  className="btn-secondary flex-1"
+                  disabled={resetLoading}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" disabled={resetLoading} className="btn-primary flex-1">
+                  {resetLoading ? 'Enviando...' : 'Enviar'}
+                </button>
+              </div>
+            </form>
+          </Modal>
         </div>
       </div>
     </div>
