@@ -23,6 +23,8 @@ import {
 
 interface ImagineSitePageProps {
   page: PageKey
+  projects?: ProjectInfo[]
+  activeProject?: ProjectInfo | null
 }
 
 const ArrowIcon = () => (
@@ -76,8 +78,13 @@ const IconGift = () => (
   </svg>
 )
 
-export default function ImagineSitePage({ page }: ImagineSitePageProps) {
+export default function ImagineSitePage({
+  page,
+  projects,
+  activeProject,
+}: ImagineSitePageProps) {
   const { irAtivo, pixChave, pixNome, pixCidade, whatsapp, prazoIR, arrecadado, meta } = IMAGINE_SITE_CONFIG
+  const siteProjects = projects ?? IMAGINE_PROJECTS
   const anchor = (id: string) => (page === 'home' ? `#${id}` : `/#${id}`)
 
   const [navSolid, setNavSolid] = useState(false)
@@ -236,8 +243,11 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
   }
 
   const selectedProjectInfo = useMemo(
-    () => IMAGINE_PROJECTS.find((p) => p.id === doarProj),
-    [doarProj]
+    () =>
+      doarProj === 'geral' || doarProj === 'natal'
+        ? undefined
+        : siteProjects.find((p) => p.id === doarProj),
+    [siteProjects, doarProj]
   )
 
   const portalEmbedPath = selectedProjectInfo?.portalProjectId
@@ -248,16 +258,28 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
     ? `/embed/checkout/checkout-stripe?project=${selectedProjectInfo.portalProjectId}&source=site&utm_campaign=${selectedProjectInfo.portalCampaignSlug || selectedProjectInfo.id}`
     : ''
 
-  const projLabelMap: Record<string, string> = {
-    geral: 'Onde for mais necessário',
-    natal: 'Natal Feliz 2026',
-    artes: 'Artes e Expressão',
-    amarelinha: 'Projeto Amarelinha',
-    esporte: 'Esporte e Juventude',
-    social: 'Ação Social e Comunidade',
-    familias: 'Saúde Emocional e Famílias Atípicas',
-    educacao: 'Educação',
-  }
+  const projLabelMap = useMemo(() => {
+    const map: Record<string, string> = {
+      geral: 'Onde for mais necessário',
+      natal: 'Natal Feliz 2026',
+    }
+    for (const p of siteProjects) {
+      if (p.id === 'geral' || p.id === 'natal') continue
+      map[p.id] = p.titulo
+    }
+    return map
+  }, [siteProjects])
+
+  const projectHrefOrHash = (slug: string) =>
+    siteProjects.some((p) => p.id === slug) ? `/projetos/${slug}` : '#projetos'
+
+  const causasDisponiveis = useMemo(() => {
+    const unique = new Set<string>()
+    for (const p of siteProjects) {
+      if (p.causa) unique.add(p.causa)
+    }
+    return ['todos', ...Array.from(unique)]
+  }, [siteProjects])
 
   const handleDoarSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -330,8 +352,8 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
         <h3>{p.titulo}</h3>
         <p className="proj-r">{p.resumo}</p>
         <div className="proj-n">
-          <div>Beneficiários<b><span className="pend">a definir</span></b></div>
-          <div>Meta 2026<b><span className="pend">a definir</span></b></div>
+          <div>Beneficiários<b>{p.beneficiarios || <span className="pend">a definir</span>}</b></div>
+          <div>Meta 2026<b>{p.metaTexto || <span className="pend">a definir</span>}</b></div>
         </div>
         <div className="proj-a">
           <button type="button" className="btn btn-sm" onClick={() => openDoar(p.id)}>
@@ -343,7 +365,7 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
     </article>
   )
 
-  const currentProject = IMAGINE_PROJECTS.find((p) => p.id === page)
+  const currentProject = activeProject ?? siteProjects.find((p) => p.id === page)
 
   return (
     <div className="ii-root" data-ir={irAtivo ? 'on' : 'off'}>
@@ -454,10 +476,10 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                   <p className="lead">E tem gente querendo ajudar que não sabe se a doação chega. As duas coisas se resolvem no mesmo lugar.</p>
                 </div>
                 <div className="dores">
-                  <article className="dor gb cor-verde"><span className="proj-frente"><i />Depois da aula</span><p>Muita criança fica sozinha em casa ou na rua, sem lugar seguro e sem ninguém acompanhando.</p><Link className="lnk" href="/projetos/amarelinha">Projeto Amarelinha <ArrowIcon /></Link></article>
-                  <article className="dor gb cor-laranja"><span className="proj-frente"><i />Na rua</span><p>Tem gente em situação de rua sem ter o que comer e família que chega ao fim do mês sem comida em casa.</p><Link className="lnk" href="/projetos/social">Ação Social <ArrowIcon /></Link></article>
-                  <article className="dor gb cor-magenta"><span className="proj-frente"><i />Em casa</span><p>A família atípica vive uma rotina pesada, muitas vezes sem rede de apoio e sem quem ouça.</p><Link className="lnk" href="/projetos/familias">Famílias Atípicas <ArrowIcon /></Link></article>
-                  <article className="dor gb cor-azul"><span className="proj-frente"><i />No bairro</span><p>Criança que nunca fez uma aula de dança, nunca subiu num palco nem pisou num tatame.</p><Link className="lnk" href="/projetos/artes">Artes e Esporte <ArrowIcon /></Link></article>
+                  <article className="dor gb cor-verde"><span className="proj-frente"><i />Depois da aula</span><p>Muita criança fica sozinha em casa ou na rua, sem lugar seguro e sem ninguém acompanhando.</p><Link className="lnk" href={projectHrefOrHash('amarelinha')}>Projeto Amarelinha <ArrowIcon /></Link></article>
+                  <article className="dor gb cor-laranja"><span className="proj-frente"><i />Na rua</span><p>Tem gente em situação de rua sem ter o que comer e família que chega ao fim do mês sem comida em casa.</p><Link className="lnk" href={projectHrefOrHash('social')}>Ação Social <ArrowIcon /></Link></article>
+                  <article className="dor gb cor-magenta"><span className="proj-frente"><i />Em casa</span><p>A família atípica vive uma rotina pesada, muitas vezes sem rede de apoio e sem quem ouça.</p><Link className="lnk" href={projectHrefOrHash('familias')}>Famílias Atípicas <ArrowIcon /></Link></article>
+                  <article className="dor gb cor-azul"><span className="proj-frente"><i />No bairro</span><p>Criança que nunca fez uma aula de dança, nunca subiu num palco nem pisou num tatame.</p><Link className="lnk" href={projectHrefOrHash('artes')}>Artes e Esporte <ArrowIcon /></Link></article>
                 </div>
                 <div className="dor-doador gb">
                   <div><b>Quem quer ajudar também tem um problema:</b> não saber para onde vai o dinheiro.</div>
@@ -489,14 +511,24 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                   <p className="lead">Seis frentes que já funcionam em Uberlândia. Escolha a que mais fala com você.</p>
                 </div>
                 <div className="filtros gb" role="group" aria-label="Filtrar por causa">
-                  {['todos', 'Cultura e Artes', 'Educação', 'Esporte', 'Assistência Social', 'Saúde'].map((f) => (
+                  {causasDisponiveis.map((f) => (
                     <button key={f} type="button" aria-pressed={causaFiltro === f} onClick={() => setCausaFiltro(f)}>
                       {f === 'todos' ? 'Todos' : f}
                     </button>
                   ))}
                 </div>
                 <div className="projs" style={{ marginTop: 28 }}>
-                  {IMAGINE_PROJECTS.filter((p) => causaFiltro === 'todos' || p.causa === causaFiltro).map(renderProjectCard)}
+                  {(() => {
+                    const visible = siteProjects.filter((p) => causaFiltro === 'todos' || p.causa === causaFiltro)
+                    if (visible.length === 0) {
+                      return (
+                        <p className="lead" style={{ gridColumn: '1 / -1' }}>
+                          Nenhum projeto encontrado para esta causa no momento.
+                        </p>
+                      )
+                    }
+                    return visible.map(renderProjectCard)
+                  })()}
                 </div>
               </div>
             </section>
@@ -807,7 +839,7 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
             <section className="sec sec-alt" id="projetos">
               <div className="w">
                 <div className="cab"><div><span className="k">Projetos para patrocinar</span><h2 className="t">Onde a sua empresa <em>pode estar.</em></h2></div></div>
-                <div className="projs">{IMAGINE_PROJECTS.map(renderProjectCard)}</div>
+                <div className="projs">{siteProjects.map(renderProjectCard)}</div>
               </div>
             </section>
             <section className="sec" style={{ paddingBottom: 0 }}>
@@ -916,10 +948,18 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                 <div className="pp-txt">
                   <h2 className="t">O projeto</h2>
                   <p>{currentProject.intro}</p>
-                  <h3>O desafio</h3>
-                  <p>{currentProject.desafio}</p>
-                  <h3>O que fazemos</h3>
-                  <ul className="ir-lista">{currentProject.fazemos.map((f, i) => <li key={i}>{f}</li>)}</ul>
+                  {currentProject.desafio && (
+                    <>
+                      <h3>O desafio</h3>
+                      <p>{currentProject.desafio}</p>
+                    </>
+                  )}
+                  {currentProject.fazemos.length > 0 && (
+                    <>
+                      <h3>O que fazemos</h3>
+                      <ul className="ir-lista">{currentProject.fazemos.map((f, i) => <li key={i}>{f}</li>)}</ul>
+                    </>
+                  )}
                   {currentProject.incentivoAviso && (
                     <div className="aviso so-off">
                       <b>Imposto de Renda:</b> {currentProject.incentivoAviso}{' '}
@@ -930,8 +970,8 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                 <aside className={`pp-doa gb ${currentProject.corClass}`}>
                   <span className="campanha-k">Apoie este projeto</span>
                   <div className="proj-n">
-                    <div>Beneficiários<b><span className="pend">a definir</span></b></div>
-                    <div>Meta 2026<b><span className="pend">a definir</span></b></div>
+                    <div>Beneficiários<b>{currentProject.beneficiarios || <span className="pend">a definir</span>}</b></div>
+                    <div>Meta 2026<b>{currentProject.metaTexto || <span className="pend">a definir</span>}</b></div>
                   </div>
                   <button type="button" className="btn btn-full" onClick={() => openDoar(currentProject.id)}>
                     <span className="bt">Doar pelo Pix</span><PillBtnIcon />
@@ -943,12 +983,14 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                 </aside>
               </div>
             </section>
-            <section className="sec sec-alt" id="projetos">
-              <div className="w">
-                <div className="cab"><div><span className="k">Outros projetos</span><h2 className="t">Conheça também</h2></div></div>
-                <div className="projs">{IMAGINE_PROJECTS.filter((p) => p.id !== currentProject.id).map(renderProjectCard)}</div>
-              </div>
-            </section>
+            {siteProjects.some((p) => p.id !== currentProject.id) && (
+              <section className="sec sec-alt" id="projetos">
+                <div className="w">
+                  <div className="cab"><div><span className="k">Outros projetos</span><h2 className="t">Conheça também</h2></div></div>
+                  <div className="projs">{siteProjects.filter((p) => p.id !== currentProject.id).map(renderProjectCard)}</div>
+                </div>
+              </section>
+            )}
             <section className="sec" style={{ paddingBottom: 0 }}>
               <div className="w">
                 <div className="cta escuro">
@@ -1065,7 +1107,7 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                     <iframe
                       src={portalEmbedPath}
                       title={`Checkout ${projLabelMap[doarProj] || 'Instituto Imagine'}`}
-                      style={{ width: '100%', height: 520, border: 0, display: 'block' }}
+                      style={{ width: '100%', height: 'min(500px, 60svh)', border: 0, display: 'block' }}
                       allow="payment 'self'"
                     />
                   </div>
@@ -1088,10 +1130,28 @@ export default function ImagineSitePage({ page }: ImagineSitePageProps) {
                       <div style={{ display: 'grid', gap: 16 }}>
                         <div className="campo">
                           <label htmlFor="d-proj">Projeto</label>
-                          <select id="d-proj" value={doarProj} onChange={(e) => setDoarProj(e.target.value)}>
+                          <select
+                            id="d-proj"
+                            value={doarProj}
+                            onChange={(e) => {
+                              setDoarProj(e.target.value)
+                              setForcePixFallback(true)
+                              setPixCode('')
+                            }}
+                          >
                             {Object.entries(projLabelMap).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
                           </select>
                         </div>
+                        {portalEmbedPath && (
+                          <button
+                            type="button"
+                            className="btn-mais"
+                            style={{ justifySelf: 'start' }}
+                            onClick={() => setForcePixFallback(false)}
+                          >
+                            Pagar online pelo Portal
+                          </button>
+                        )}
                         <div className="campo">
                           <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--tx-2)' }}>Valor</span>
                           <div className="valores-d">

@@ -15,6 +15,7 @@ test('isInstitutionalPath normaliza barras, maiúsculas, query strings e separa 
   assert.equal(isInstitutionalPath('/empresas/'), true)
   assert.equal(isInstitutionalPath('/Empresas?utm_source=ig'), true)
   assert.equal(isInstitutionalPath('/projetos/esporte/'), true)
+  assert.equal(isInstitutionalPath('/projetos/novo-projeto-dinamico'), true)
   assert.equal(isInstitutionalPath('/projetos'), false)
   assert.equal(isInstitutionalPath('/projetos/dd0107dc-1802-47af-8755-371603acf890/relatorios'), false)
   assert.equal(isInstitutionalPath('/entrar'), false)
@@ -89,6 +90,14 @@ test('getInstitutionalProjectPathByPortalId mapeia UUID para slug institucional 
   assert.equal(
     getInstitutionalProjectPathByPortalId('dd0107dc-1802-47af-8755-371603acf890'),
     '/projetos/esporte'
+  )
+  assert.equal(
+    getInstitutionalProjectPathByPortalId('uuid-novo', 'musica-jovem'),
+    '/projetos/musica-jovem'
+  )
+  assert.equal(
+    getInstitutionalProjectPathByPortalId('uuid-novo', 'relatorios'),
+    '/#projetos'
   )
   assert.equal(getInstitutionalProjectPathByPortalId('uuid-desconhecido'), '/#projetos')
 })

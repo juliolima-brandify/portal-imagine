@@ -36,6 +36,10 @@ export interface Project {
   has_funding_goal?: boolean
   checkout_tracking_url?: string
   framer_project_url?: string
+  slug?: string | null
+  show_on_site?: boolean
+  site_order?: number
+  site_data?: Record<string, unknown>
   created_at: string
   updated_at: string
 }

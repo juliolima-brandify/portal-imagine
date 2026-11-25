@@ -29,8 +29,8 @@ export function getPortalBaseUrl(): string {
  */
 export function generateCheckoutUrl(projectId: string, projectTitle: string, baseUrl?: string): string {
   const domain = baseUrl || getPortalBaseUrl()
-  const campaign = projectTitle.toLowerCase().replace(/\s+/g, '-')
-  return `${domain}/embed/checkout/checkout-stripe?project=${projectId}&source=portal&utm_campaign=${campaign}`
+  const campaign = encodeURIComponent(titleToSlug(projectTitle) || 'projeto')
+  return `${domain}/embed/checkout/checkout-stripe?project=${encodeURIComponent(projectId)}&source=portal&utm_campaign=${campaign}`
 }
 
 /**
@@ -38,8 +38,8 @@ export function generateCheckoutUrl(projectId: string, projectTitle: string, bas
  */
 export function generateEmbedUrl(projectId: string, projectTitle: string, baseUrl?: string): string {
   const domain = baseUrl || getPortalBaseUrl()
-  const campaign = projectTitle.toLowerCase().replace(/\s+/g, '-')
-  return `${domain}/embed/checkout/checkout-stripe?project=${projectId}&source=embed&utm_campaign=${campaign}`
+  const campaign = encodeURIComponent(titleToSlug(projectTitle) || 'projeto')
+  return `${domain}/embed/checkout/checkout-stripe?project=${encodeURIComponent(projectId)}&source=embed&utm_campaign=${campaign}`
 }
 
 /**

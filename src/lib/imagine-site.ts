@@ -11,15 +11,51 @@ export const SITE_PUBLIC_PATHS = [
   '/projetos/educacao',
 ] as const
 
+const RESERVED_PUBLIC_SLUGS = new Set([
+  'admin',
+  'api',
+  'auth',
+  'novo',
+  'editar',
+  'relatorios',
+  'projetos',
+  'empresas',
+  'natal-feliz',
+  'politica-de-privacidade',
+  'entrar',
+  'geral',
+  'natal',
+])
+
 export function isInstitutionalPath(pathname: string | null | undefined): boolean {
   if (!pathname) return false
-  const clean = pathname.split(/[?#]/)[0].trim().toLowerCase()
+  let clean = pathname.split(/[?#]/)[0].trim()
+  try {
+    clean = decodeURIComponent(clean)
+  } catch {
+    // mantém valor bruto se percent-encoding for malformado
+  }
+  clean = clean.toLowerCase()
   if (!clean) return false
   const normalized = clean.replace(/\/+$/, '') || '/'
-  return (SITE_PUBLIC_PATHS as readonly string[]).includes(normalized)
+  if ((SITE_PUBLIC_PATHS as readonly string[]).includes(normalized)) return true
+  // Qualquer rota pública /projetos/<slug> (exatamente 2 segmentos) é institucional;
+  // /projetos e /projetos/<id>/relatorios pertencem ao Portal autenticado.
+  return /^\/projetos\/[a-z0-9][a-z0-9-]*$/.test(normalized)
 }
 
-export function getInstitutionalProjectPathByPortalId(portalProjectId: string): string {
+export function getInstitutionalProjectPathByPortalId(
+  portalProjectId: string,
+  slug?: string | null
+): string {
+  const cleanSlug = (slug || '').trim().toLowerCase()
+  if (
+    cleanSlug &&
+    !RESERVED_PUBLIC_SLUGS.has(cleanSlug) &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(cleanSlug)
+  ) {
+    return `/projetos/${cleanSlug}`
+  }
   const match = IMAGINE_PROJECTS.find((p) => p.portalProjectId === portalProjectId)
   return match ? `/projetos/${match.id}` : '/#projetos'
 }
@@ -65,10 +101,10 @@ export const IMAGINE_ASSETS = {
 } as const
 
 export type ProjectId = 'artes' | 'amarelinha' | 'esporte' | 'social' | 'familias' | 'educacao'
-export type PageKey = 'home' | 'empresas' | 'natal-feliz' | 'privacidade' | ProjectId
+export type PageKey = 'home' | 'empresas' | 'natal-feliz' | 'privacidade' | 'projeto' | ProjectId
 
 export interface ProjectInfo {
-  id: ProjectId
+  id: string
   titulo: string
   frente: string
   causa: string
@@ -82,6 +118,8 @@ export interface ProjectInfo {
   fazemos: string[]
   incentivoTag?: string
   incentivoAviso?: string
+  beneficiarios?: string
+  metaTexto?: string
   shareUrl: string
   /** ID do projeto cadastrado no Supabase/Portal para checkout nativo (quando disponível) */
   portalProjectId?: string

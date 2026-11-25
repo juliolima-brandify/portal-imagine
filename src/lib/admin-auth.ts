@@ -4,26 +4,33 @@ import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' }
+
 /**
  * Resolve o usuário autenticado da requisição.
  *
  * O app guarda a sessão no cliente (localStorage), então as chamadas das
  * páginas admin enviam o access_token no header `Authorization: Bearer ...`.
- * Também aceitamos sessão via cookie (@supabase/ssr) como fallback, para
- * rotas chamadas em contexto server-side.
+ * Fail-closed: se o header Authorization estiver presente com token inválido,
+ * não faz fallback para cookie.
  */
 async function resolveUser() {
   const authHeader = headers().get('authorization')
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (authHeader?.toLowerCase().startsWith('bearer ') && supabaseUrl && supabaseAnonKey) {
+  if (authHeader) {
+    if (!authHeader.toLowerCase().startsWith('bearer ') || !supabaseUrl || !supabaseAnonKey) {
+      return null
+    }
     const token = authHeader.slice(7).trim()
+    if (!token) return null
     const client = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     })
     const { data, error } = await client.auth.getUser(token)
     if (!error && data.user) return data.user
+    return null
   }
 
   try {
@@ -47,7 +54,10 @@ export async function requireAdmin() {
 
     if (!user) {
       return {
-        error: NextResponse.json({ error: 'Não autenticado' }, { status: 401 }),
+        error: NextResponse.json(
+          { error: 'Não autenticado' },
+          { status: 401, headers: NO_STORE_HEADERS }
+        ),
         user: null,
       }
     }
@@ -62,7 +72,7 @@ export async function requireAdmin() {
       return {
         error: NextResponse.json(
           { error: 'Acesso negado: requer permissão de administrador' },
-          { status: 403 }
+          { status: 403, headers: NO_STORE_HEADERS }
         ),
         user: null,
       }
@@ -74,7 +84,7 @@ export async function requireAdmin() {
     return {
       error: NextResponse.json(
         { error: 'Serviço de autenticação indisponível' },
-        { status: 500 }
+        { status: 500, headers: NO_STORE_HEADERS }
       ),
       user: null,
     }

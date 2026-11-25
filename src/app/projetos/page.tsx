@@ -111,12 +111,13 @@ export default function ProjetosPage() {
     }
   }
 
-  const categoryLabels = {
+  const categoryLabels: Record<string, string> = {
+    cultura: 'Cultura e Artes',
     educacao: 'Educação',
+    esporte: 'Esporte',
     social: 'Social',
-    meio_ambiente: 'Meio Ambiente',
     saude: 'Saúde',
-    tecnologia: 'Tecnologia'
+    'meio-ambiente': 'Meio Ambiente',
   }
 
   const statusLabels = {
@@ -228,7 +229,10 @@ export default function ProjetosPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredProjects.map((project) => {
-              const progress = (project.current_amount / project.target_amount) * 100
+              const hasGoal = Number(project.target_amount) > 0
+              const progress = hasGoal
+                ? Math.min((Number(project.current_amount || 0) / Number(project.target_amount)) * 100, 100)
+                : 0
               const userDonatedToProject = donations.some(d => d.project_id === project.id && d.status === 'completed')
               const totalDonatedToProject = donations
                 .filter(d => d.project_id === project.id && d.status === 'completed')
@@ -290,22 +294,28 @@ export default function ProjetosPage() {
                     </p>
 
                     {/* Progress Bar */}
-                    <div className="mb-4">
-                      <div className="flex justify-between text-sm text-gray-600 mb-1">
-                        <span>Progresso</span>
-                        <span>{progress.toFixed(1)}%</span>
+                    {hasGoal ? (
+                      <div className="mb-4">
+                        <div className="flex justify-between text-sm text-gray-600 mb-1">
+                          <span>Progresso</span>
+                          <span className="tabular-nums">{progress.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(progress, 100)}%` }}
+                          ></div>
+                        </div>
+                        <div className="flex justify-between text-sm text-gray-500 mt-1 tabular-nums">
+                          <span>R$ {Number(project.current_amount || 0).toLocaleString('pt-BR')}</span>
+                          <span>R$ {Number(project.target_amount).toLocaleString('pt-BR')}</span>
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(progress, 100)}%` }}
-                        ></div>
+                    ) : (
+                      <div className="mb-4 text-sm text-gray-500 tabular-nums">
+                        Arrecadado: R$ {Number(project.current_amount || 0).toLocaleString('pt-BR')}
                       </div>
-                      <div className="flex justify-between text-sm text-gray-500 mt-1">
-                        <span>R$ {project.current_amount.toLocaleString('pt-BR')}</span>
-                        <span>R$ {project.target_amount.toLocaleString('pt-BR')}</span>
-                      </div>
-                    </div>
+                    )}
 
                     {/* User Status Info */}
                     {(() => {
@@ -360,13 +370,15 @@ export default function ProjetosPage() {
                       
                       return (
                         <div className="space-y-3">
-                          {/* Ver Detalhes - Sempre presente */}
-                      <Link
-                            href={getInstitutionalProjectPathByPortalId(project.id)}
-                            className="w-full btn-secondary text-center block"
-                      >
-                        Ver Detalhes
-                      </Link>
+                      {/* Ver Detalhes - somente quando publicado no site */}
+                      {project.status === 'active' && project.show_on_site !== false && (
+                        <Link
+                          href={getInstitutionalProjectPathByPortalId(project.id, project.slug)}
+                          className="w-full btn-secondary text-center block"
+                        >
+                          Ver Detalhes
+                        </Link>
+                      )}
 
                       {/* Ver Relatórios - Sempre presente */}
                       <Link
@@ -388,8 +400,8 @@ export default function ProjetosPage() {
 
                           {/* Grupo do Projeto - Sempre presente */}
                           <Link
-                            href={`https://wa.me/5511999999999?text=Olá! Gostaria de saber mais sobre o projeto ${project.title}`}
-                            className="w-full btn-secondary text-center block flex items-center justify-center"
+                            href={`https://wa.me/5534996945150?text=${encodeURIComponent(`Olá! Gostaria de saber mais sobre o projeto ${project.title}`)}`}
+                            className="w-full btn-secondary text-center flex items-center justify-center"
                             target="_blank"
                             rel="noopener noreferrer"
                           >

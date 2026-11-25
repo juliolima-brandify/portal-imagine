@@ -85,13 +85,16 @@ export default function ProjectReportsPage() {
             total_donors: new Set(projectDonationsFiltered.map(d => d.user_id)).size,
             average_donation: projectDonationsFiltered.length > 0 ? 
               projectDonationsFiltered.reduce((sum, d) => sum + d.amount, 0) / projectDonationsFiltered.length : 0,
-            completion_percentage: Math.round((projectData.current_amount / projectData.target_amount) * 100),
+            completion_percentage:
+              Number(projectData.target_amount) > 0
+                ? Math.min(Math.round((Number(projectData.current_amount || 0) / Number(projectData.target_amount)) * 100), 100)
+                : 0,
             start_date: projectData.created_at,
             end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1 ano a partir de agora
             status: projectData.status,
             location: projectData.location || '',
             category: projectData.category,
-            image_url: projectData.image_url || ''
+            image_url: projectData.image_url || '/img/sobre.webp'
           }
 
           // Processar dados de doações por mês
@@ -297,7 +300,9 @@ export default function ProjectReportsPage() {
                 <div className="text-right">
                   <div className="font-semibold text-gray-900">{formatCurrency(data.amount)}</div>
                   <div className="text-sm text-gray-500">
-                    {((data.amount / project.current_amount) * 100).toFixed(1)}% do total
+                    {project.current_amount > 0
+                      ? ((data.amount / project.current_amount) * 100).toFixed(1)
+                      : '0.0'}% do total
                   </div>
                 </div>
               </div>

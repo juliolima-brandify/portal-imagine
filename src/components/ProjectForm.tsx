@@ -1,174 +1,226 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useState } from 'react'
 import { generateCheckoutUrl, generateEmbedUrl } from '@/lib/urls'
+import {
+  normalizeSlug,
+  type ProjectCategory,
+  type ProjectColorClass,
+  type ProjectSiteData,
+  type ProjectStatus,
+} from '@/lib/site-projects'
 import { Modal } from './ConfirmDialog'
 
-interface Project {
+export interface AdminProject {
   id: string
   title: string
   description: string
-  category: 'educacao' | 'saude' | 'meio-ambiente' | 'esporte' | 'social'
+  long_description?: string
+  category: ProjectCategory
   target_amount: number
   current_amount: number
-  status: 'active' | 'paused' | 'completed' | 'cancelled'
+  status: ProjectStatus
   location?: string
   image_url?: string
-  start_date?: string
-  end_date?: string
-  created_at: string
-  updated_at: string
-  framer_project_url?: string
-  checkout_tracking_url?: string
-  has_funding_goal?: boolean
+  slug?: string | null
+  show_on_site?: boolean
+  site_order?: number
+  site_data?: ProjectSiteData
+  created_at?: string
+  updated_at?: string
 }
 
 interface ProjectFormProps {
-  project?: Project
-  onSave: (project: Project) => Promise<void>
+  project?: AdminProject
+  onSave: (project: Partial<AdminProject>) => Promise<void>
   onCancel: () => void
   isEditing?: boolean
 }
 
-export default function ProjectForm({ project, onSave, onCancel, isEditing = false }: ProjectFormProps) {
-  const [formData, setFormData] = useState<Project>({
-    id: '',
-    title: '',
-    description: '',
-    category: 'educacao',
-    target_amount: 0,
-    current_amount: 0,
-    location: '',
-    image_url: '',
-    status: 'active',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    framer_project_url: '',
-    has_funding_goal: true,
-    ...project
-  })
+const CATEGORIES: { value: ProjectCategory; label: string; defaultCausa: string; defaultCor: ProjectColorClass }[] = [
+  { value: 'cultura', label: 'Cultura e Artes', defaultCausa: 'Cultura e Artes', defaultCor: 'cor-magenta' },
+  { value: 'educacao', label: 'Educação', defaultCausa: 'Educação', defaultCor: 'cor-verde' },
+  { value: 'esporte', label: 'Esporte', defaultCausa: 'Esporte', defaultCor: 'cor-azul' },
+  { value: 'social', label: 'Assistência Social', defaultCausa: 'Assistência Social', defaultCor: 'cor-laranja' },
+  { value: 'saude', label: 'Saúde', defaultCausa: 'Saúde', defaultCor: 'cor-magenta' },
+  { value: 'meio-ambiente', label: 'Meio Ambiente', defaultCausa: 'Meio Ambiente', defaultCor: 'cor-verde' },
+]
 
+const STATUSES: { value: ProjectStatus; label: string }[] = [
+  { value: 'active', label: 'Ativo' },
+  { value: 'paused', label: 'Pausado' },
+  { value: 'completed', label: 'Concluído' },
+  { value: 'cancelled', label: 'Cancelado' },
+]
+
+const COLOR_OPTIONS: { value: ProjectColorClass; label: string }[] = [
+  { value: 'cor-magenta', label: 'Magenta (Artes / Saúde)' },
+  { value: 'cor-verde', label: 'Verde (Educação)' },
+  { value: 'cor-azul', label: 'Azul (Esporte)' },
+  { value: 'cor-laranja', label: 'Laranja (Ação Social)' },
+]
+
+export default function ProjectForm({
+  project,
+  onSave,
+  onCancel,
+  isEditing = false,
+}: ProjectFormProps) {
+  const initialSiteData: ProjectSiteData = project?.site_data || {}
+
+  const initialCategory: ProjectCategory = project?.category || 'educacao'
+  const initialCategoryMeta = CATEGORIES.find((c) => c.value === initialCategory)
+
+  const [title, setTitle] = useState(project?.title || '')
+  const [description, setDescription] = useState(project?.description || '')
+  const [category, setCategory] = useState<ProjectCategory>(initialCategory)
+  const [status, setStatus] = useState<ProjectStatus>(project?.status || 'active')
+  const [targetAmount, setTargetAmount] = useState<string>(String(project?.target_amount ?? 0))
+  const [location, setLocation] = useState(project?.location || 'Uberlândia, MG')
+  const [imageUrl, setImageUrl] = useState(project?.image_url || '')
+
+  // Campos do Site Institucional
+  const [showOnSite, setShowOnSite] = useState<boolean>(project?.show_on_site ?? true)
+  const [slug, setSlug] = useState<string>(project?.slug || '')
+  const [slugTouched, setSlugTouched] = useState<boolean>(Boolean(project?.slug))
+  const [siteOrder, setSiteOrder] = useState<string>(String(project?.site_order ?? 100))
+
+  const [frente, setFrente] = useState(initialSiteData.frente || '')
+  const [causa, setCausa] = useState(initialSiteData.causa || initialCategoryMeta?.defaultCausa || '')
+  const [causaTouched, setCausaTouched] = useState<boolean>(Boolean(initialSiteData.causa))
+  const [corClass, setCorClass] = useState<ProjectColorClass>(
+    initialSiteData.corClass || initialCategoryMeta?.defaultCor || 'cor-verde'
+  )
+  const [copiedFeedback, setCopiedFeedback] = useState<string>('')
+  const [heroImg, setHeroImg] = useState(initialSiteData.heroImg || '')
+  const [altText, setAltText] = useState(initialSiteData.alt || '')
+  const [resumo, setResumo] = useState(initialSiteData.resumo || '')
+  const [intro, setIntro] = useState(initialSiteData.intro || project?.long_description || '')
+  const [desafio, setDesafio] = useState(initialSiteData.desafio || '')
+  const [fazemosText, setFazemosText] = useState(
+    Array.isArray(initialSiteData.fazemos) ? initialSiteData.fazemos.join('\n') : ''
+  )
+  const [incentivoTag, setIncentivoTag] = useState(initialSiteData.incentivoTag || '')
+  const [incentivoAviso, setIncentivoAviso] = useState(initialSiteData.incentivoAviso || '')
+
+  const [activeLinksTab, setActiveLinksTab] = useState<'site' | 'checkout' | 'embed'>('site')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const categories = [
-    { value: 'educacao', label: 'Educação' },
-    { value: 'saude', label: 'Saúde' },
-    { value: 'meio-ambiente', label: 'Meio Ambiente' },
-    { value: 'esporte', label: 'Esporte' },
-    { value: 'social', label: 'Social' }
-  ]
+  const normalizedSlugPreview = normalizeSlug(slug)
+  const publicSiteUrl = normalizedSlugPreview
+    ? `https://imagineinstituto.com/projetos/${normalizedSlugPreview}`
+    : ''
 
-  const statuses = [
-    { value: 'active', label: 'Ativo' },
-    { value: 'paused', label: 'Pausado' },
-    { value: 'completed', label: 'Concluído' },
-    { value: 'cancelled', label: 'Cancelado' }
-  ]
+  const handleTitleChange = (val: string) => {
+    setTitle(val)
+    if (!isEditing && !slugTouched) {
+      setSlug(normalizeSlug(val))
+    }
+  }
 
-  const brazilianStates = [
-    'Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal',
-    'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul',
-    'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí',
-    'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia',
-    'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins'
-  ]
+  const handleCategoryChange = (val: ProjectCategory) => {
+    setCategory(val)
+    const found = CATEGORIES.find((c) => c.value === val)
+    if (found && !isEditing) {
+      if (!causaTouched) setCausa(found.defaultCausa)
+      setCorClass(found.defaultCor)
+    }
+  }
 
-  const [locationInput, setLocationInput] = useState(formData.location || '')
-  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
-  const [filteredStates, setFilteredStates] = useState<string[]>([])
-  const [activeLinksTab, setActiveLinksTab] = useState<'framer' | 'checkout' | 'embed'>('framer')
+  const copyWithFeedback = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedFeedback(label)
+      setTimeout(() => setCopiedFeedback(''), 2000)
+    } catch {
+      setCopiedFeedback('Não foi possível copiar')
+      setTimeout(() => setCopiedFeedback(''), 2000)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    // Confirmação antes de salvar
-    if (isEditing) {
-      const confirmed = window.confirm('Tem certeza que deseja salvar as alterações no projeto?')
-      if (!confirmed) {
-        return
-      }
-    }
-    
-    setLoading(true)
+    if (loading) return
+
     setError('')
 
+    const cleanTitle = title.trim()
+    const cleanDescription = description.trim()
+    const parsedTarget = targetAmount === '' ? 0 : Number(targetAmount)
+    const parsedOrder = siteOrder === '' ? 100 : Number(siteOrder)
+    const cleanSlug = normalizeSlug(slug)
+
+    if (!cleanTitle) {
+      setError('Título do projeto é obrigatório.')
+      return
+    }
+    if (!cleanDescription) {
+      setError('Descrição é obrigatória.')
+      return
+    }
+    if (!Number.isFinite(parsedTarget) || parsedTarget < 0) {
+      setError('Meta de arrecadação deve ser um número válido (>= 0).')
+      return
+    }
+    if (!Number.isInteger(parsedOrder) || parsedOrder < 0 || parsedOrder > 9999) {
+      setError('Ordem no site deve ser um número inteiro entre 0 e 9999.')
+      return
+    }
+    if (showOnSite && !cleanSlug) {
+      setError('Informe um slug de URL para exibir o projeto no site institucional.')
+      return
+    }
+
+    const fazemos = fazemosText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    const siteData: ProjectSiteData = {
+      ...(frente.trim() ? { frente: frente.trim() } : {}),
+      ...(causa.trim() ? { causa: causa.trim() } : {}),
+      corClass,
+      ...(heroImg.trim() ? { heroImg: heroImg.trim() } : {}),
+      ...(altText.trim() ? { alt: altText.trim() } : {}),
+      ...(resumo.trim() ? { resumo: resumo.trim() } : {}),
+      ...(intro.trim() ? { intro: intro.trim() } : {}),
+      ...(desafio.trim() ? { desafio: desafio.trim() } : {}),
+      ...(fazemos.length > 0 ? { fazemos } : {}),
+      ...(incentivoTag.trim() ? { incentivoTag: incentivoTag.trim() } : {}),
+      ...(incentivoAviso.trim() ? { incentivoAviso: incentivoAviso.trim() } : {}),
+      ...(initialSiteData.beneficiarios ? { beneficiarios: initialSiteData.beneficiarios } : {}),
+      ...(initialSiteData.metaTexto ? { metaTexto: initialSiteData.metaTexto } : {}),
+      ...(initialSiteData.portalCampaignSlug
+        ? { portalCampaignSlug: initialSiteData.portalCampaignSlug }
+        : cleanSlug
+          ? { portalCampaignSlug: cleanSlug }
+          : {}),
+    }
+
+    const payload: Partial<AdminProject> = {
+      title: cleanTitle,
+      description: cleanDescription,
+      long_description: intro.trim() || cleanDescription,
+      category,
+      status,
+      target_amount: parsedTarget,
+      location: location.trim(),
+      image_url: imageUrl.trim(),
+      slug: cleanSlug || null,
+      show_on_site: showOnSite,
+      site_order: parsedOrder,
+      site_data: siteData,
+    }
+
+    setLoading(true)
     try {
-      // Validações básicas
-      if (!formData.title.trim()) {
-        throw new Error('Título é obrigatório')
-      }
-      if (!formData.description.trim()) {
-        throw new Error('Descrição é obrigatória')
-      }
-      if (formData.has_funding_goal && formData.target_amount <= 0) {
-        throw new Error('Valor da meta deve ser maior que zero quando meta está habilitada')
-      }
-
-      // Preparar dados para salvar
-      const projectId = project?.id || crypto.randomUUID()
-      const projectData = {
-        ...formData,
-        id: projectId,
-        target_amount: Number(formData.target_amount),
-        current_amount: project?.current_amount || 0,
-        checkout_tracking_url: generateCheckoutUrl(projectId, formData.title),
-        created_at: project?.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-
-      onSave(projectData)
+      await onSave(payload)
     } catch (err: any) {
-      setError(err.message)
+      setError(err?.message || 'Erro ao salvar projeto.')
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
-  }
-
-  const handleLocationChange = (value: string) => {
-    setLocationInput(value)
-    setFormData(prev => ({
-      ...prev,
-      location: value
-    }))
-
-    if (value.length > 0) {
-      const filtered = brazilianStates.filter(state =>
-        state.toLowerCase().includes(value.toLowerCase())
-      )
-      setFilteredStates(filtered)
-      setShowLocationSuggestions(filtered.length > 0)
-    } else {
-      setShowLocationSuggestions(false)
-      setFilteredStates([])
-    }
-  }
-
-  const selectState = (state: string) => {
-    setLocationInput(state)
-    setFormData(prev => ({
-      ...prev,
-      location: state
-    }))
-    setShowLocationSuggestions(false)
-  }
-
-  const handleFundingGoalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const hasGoal = e.target.checked
-    setFormData(prev => ({
-      ...prev,
-      has_funding_goal: hasGoal,
-      target_amount: hasGoal ? prev.target_amount : 0
-    }))
   }
 
   return (
@@ -177,398 +229,537 @@ export default function ProjectForm({ project, onSave, onCancel, isEditing = fal
       onClose={onCancel}
       title={isEditing ? 'Editar Projeto' : 'Novo Projeto'}
       size="lg"
+      showCloseButton={!loading}
+      closeOnOverlayClick={!loading}
+      closeOnEscape={!loading}
       footer={
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="btn-secondary"
-            disabled={loading}
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            form="project-form"
-            className="btn-primary"
-            disabled={loading}
-          >
-            {loading ? 'Salvando...' : (isEditing ? 'Salvar' : 'Criar Projeto')}
-          </button>
+        <div className="space-y-3">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="project-form"
+              className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading}
+            >
+              {loading ? 'Salvando...' : isEditing ? 'Salvar Alterações' : 'Criar Projeto'}
+            </button>
+          </div>
         </div>
       }
     >
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
-          {error}
-        </div>
-      )}
 
       <form id="project-form" onSubmit={handleSubmit} className="space-y-6">
-            {/* Título */}
+        {/* Dados básicos */}
+        <div>
+          <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+            Título do Projeto *
+          </label>
+          <input
+            type="text"
+            id="title"
+            value={title}
+            onChange={(e) => handleTitleChange(e.target.value)}
+            className="input-modern"
+            placeholder="Ex.: Artes e Expressão"
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+            Descrição Resumida *
+          </label>
+          <textarea
+            id="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="input-modern"
+            placeholder="Resumo exibido nos cards do portal e como padrão no site"
+            rows={3}
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
+              Categoria *
+            </label>
+            <select
+              id="category"
+              value={category}
+              onChange={(e) => handleCategoryChange(e.target.value as ProjectCategory)}
+              className="input-modern"
+              required
+            >
+              {CATEGORIES.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-2">
+              Status *
+            </label>
+            <select
+              id="status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+              className="input-modern"
+              required
+            >
+              {STATUSES.map((st) => (
+                <option key={st.value} value={st.value}>
+                  {st.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="target_amount" className="block text-sm font-medium text-gray-700 mb-2">
+              Meta de Arrecadação (R$)
+            </label>
+            <input
+              type="number"
+              id="target_amount"
+              value={targetAmount}
+              onChange={(e) => setTargetAmount(e.target.value)}
+              className="input-modern"
+              placeholder="0"
+              min="0"
+              step="0.01"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Use 0 quando ainda não houver meta financeira definida.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
+              Localização
+            </label>
+            <input
+              type="text"
+              id="location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              className="input-modern"
+              placeholder="Uberlândia, MG"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="image_url" className="block text-sm font-medium text-gray-700 mb-2">
+            Imagem do Cartão (caminho /img/... ou URL https://)
+          </label>
+          <input
+            type="text"
+            id="image_url"
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            className="input-modern"
+            placeholder="/img/esporte.webp ou https://..."
+          />
+        </div>
+
+        {/* Seção Site Institucional */}
+        <div className="pt-4 border-t border-gray-200 space-y-4">
+          <div className="flex items-center justify-between">
             <div>
-              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-                Título do Projeto *
-              </label>
-              <input
-                type="text"
-                id="title"
-                name="title"
-                value={formData.title}
-                onChange={handleChange}
-                className="input-modern"
-                placeholder="Digite o título do projeto"
-                required
-              />
-            </div>
-
-
-            {/* Descrição Detalhada */}
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                Descrição Detalhada *
-              </label>
-              <textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                className="input-modern"
-                placeholder="Descrição completa do projeto"
-                rows={5}
-                required
-              />
-            </div>
-
-            {/* Categoria e Status */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
-                  Categoria *
-                </label>
-                <select
-                  id="category"
-                  name="category"
-                  value={formData.category}
-                  onChange={handleChange}
-                  className="input-modern"
-                  required
-                >
-                  {categories.map(cat => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-2">
-                  Status *
-                </label>
-                <select
-                  id="status"
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  className="input-modern"
-                  required
-                >
-                  {statuses.map(status => (
-                    <option key={status.value} value={status.value}>
-                      {status.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Meta de Arrecadação */}
-            <div>
-              <div className="flex items-center mb-3">
-                <input
-                  type="checkbox"
-                  id="has_funding_goal"
-                  checked={formData.has_funding_goal}
-                  onChange={handleFundingGoalChange}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="has_funding_goal" className="ml-2 block text-sm font-medium text-gray-700">
-                  Definir meta de arrecadação
-                </label>
-              </div>
-              <p className="text-xs text-gray-500 mb-3">
-                {formData.has_funding_goal 
-                  ? 'Quando habilitada, a meta será exibida no checkout do projeto'
-                  : 'Quando desabilitada, a meta ficará oculta no checkout do projeto'
-                }
+              <h3 className="text-base font-semibold text-gray-900">Site Institucional</h3>
+              <p className="text-xs text-gray-500">
+                Controla a exibição automática na Home (/) e em /projetos/[slug].
               </p>
-              
-              {formData.has_funding_goal && (
-                <div>
-                  <label htmlFor="target_amount" className="block text-sm font-medium text-gray-700 mb-2">
-                    Meta de Arrecadação (R$) *
-                  </label>
-                  <input
-                    type="number"
-                    id="target_amount"
-                    name="target_amount"
-                    value={formData.target_amount}
-                    onChange={handleChange}
-                    className="input-modern"
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    required
-                  />
-                </div>
-              )}
             </div>
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showOnSite}
+                onChange={(e) => setShowOnSite(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              Exibir no site
+            </label>
+          </div>
 
-            {/* Localização */}
-            <div className="relative">
-              <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
-                Localização
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <label htmlFor="slug" className="block text-sm font-medium text-gray-700 mb-2">
+                Slug da URL {showOnSite ? '*' : ''}
               </label>
               <input
                 type="text"
-                id="location"
-                name="location"
-                value={locationInput}
-                onChange={(e) => handleLocationChange(e.target.value)}
-                onFocus={() => {
-                  if (filteredStates.length > 0) {
-                    setShowLocationSuggestions(true)
+                id="slug"
+                value={slug}
+                onChange={(e) => {
+                  setSlugTouched(true)
+                  setSlug(e.target.value)
+                }}
+                className="input-modern"
+                placeholder="ex.: artes, esporte, musica-jovem"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                URL pública:{' '}
+                <span className="font-mono">
+                  {normalizedSlugPreview ? `/projetos/${normalizedSlugPreview}` : '—'}
+                </span>
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="site_order" className="block text-sm font-medium text-gray-700 mb-2">
+                Ordem no site
+              </label>
+              <input
+                type="number"
+                id="site_order"
+                value={siteOrder}
+                onChange={(e) => setSiteOrder(e.target.value)}
+                className="input-modern"
+                min="0"
+                max="9999"
+                step="1"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label htmlFor="frente" className="block text-sm font-medium text-gray-700 mb-2">
+                Subtítulo / Frente
+              </label>
+              <input
+                type="text"
+                id="frente"
+                value={frente}
+                onChange={(e) => setFrente(e.target.value)}
+                className="input-modern"
+                placeholder="Ex.: Ministério de Artes"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="causa" className="block text-sm font-medium text-gray-700 mb-2">
+                Causa (filtro da Home)
+              </label>
+              <input
+                type="text"
+                id="causa"
+                value={causa}
+                onChange={(e) => {
+                  setCausaTouched(true)
+                  setCausa(e.target.value)
+                }}
+                className="input-modern"
+                placeholder="Ex.: Cultura e Artes"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="corClass" className="block text-sm font-medium text-gray-700 mb-2">
+                Cor do destaque
+              </label>
+              <select
+                id="corClass"
+                value={corClass}
+                onChange={(e) => setCorClass(e.target.value as ProjectColorClass)}
+                className="input-modern"
+              >
+                {COLOR_OPTIONS.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="heroImg" className="block text-sm font-medium text-gray-700 mb-2">
+                Imagem de Capa / Banner (opcional)
+              </label>
+              <input
+                type="text"
+                id="heroImg"
+                value={heroImg}
+                onChange={(e) => setHeroImg(e.target.value)}
+                className="input-modern"
+                placeholder="Se vazio, usa a imagem do cartão"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="altText" className="block text-sm font-medium text-gray-700 mb-2">
+                Texto alternativo da imagem (alt)
+              </label>
+              <input
+                type="text"
+                id="altText"
+                value={altText}
+                onChange={(e) => setAltText(e.target.value)}
+                className="input-modern"
+                placeholder="Descrição acessível da foto"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="resumo" className="block text-sm font-medium text-gray-700 mb-2">
+              Resumo curto no site (opcional)
+            </label>
+            <textarea
+              id="resumo"
+              value={resumo}
+              onChange={(e) => setResumo(e.target.value)}
+              className="input-modern"
+              rows={2}
+              placeholder="Se vazio, usa a Descrição Resumida"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="intro" className="block text-sm font-medium text-gray-700 mb-2">
+              Texto principal ("O projeto")
+            </label>
+            <textarea
+              id="intro"
+              value={intro}
+              onChange={(e) => setIntro(e.target.value)}
+              className="input-modern"
+              rows={3}
+              placeholder="Apresentação completa exibida na página do projeto"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="desafio" className="block text-sm font-medium text-gray-700 mb-2">
+              O desafio (opcional)
+            </label>
+            <textarea
+              id="desafio"
+              value={desafio}
+              onChange={(e) => setDesafio(e.target.value)}
+              className="input-modern"
+              rows={2}
+              placeholder="Contexto do problema que o projeto resolve"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="fazemos" className="block text-sm font-medium text-gray-700 mb-2">
+              O que fazemos (1 item por linha)
+            </label>
+            <textarea
+              id="fazemos"
+              value={fazemosText}
+              onChange={(e) => setFazemosText(e.target.value)}
+              className="input-modern"
+              rows={3}
+              placeholder={'Aulas regulares no tatame\nAcompanhamento das famílias'}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="incentivoTag" className="block text-sm font-medium text-gray-700 mb-2">
+                Tag de lei de incentivo (opcional)
+              </label>
+              <input
+                type="text"
+                id="incentivoTag"
+                value={incentivoTag}
+                onChange={(e) => setIncentivoTag(e.target.value)}
+                className="input-modern"
+                placeholder="Ex.: Pode ser incentivado · Cultura"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="incentivoAviso" className="block text-sm font-medium text-gray-700 mb-2">
+                Aviso de IR na página (opcional)
+              </label>
+              <input
+                type="text"
+                id="incentivoAviso"
+                value={incentivoAviso}
+                onChange={(e) => setIncentivoAviso(e.target.value)}
+                className="input-modern"
+                placeholder="Texto explicativo sobre destinação de IR"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Links e incorporações */}
+        <div className="pt-4 border-t border-gray-200">
+          <div className="border-b border-gray-200 mb-4 overflow-x-auto">
+            <div className="-mb-px flex items-center gap-4" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeLinksTab === 'site'}
+                onClick={() => setActiveLinksTab('site')}
+                className={`py-2 px-1 border-b-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                  activeLinksTab === 'site'
+                    ? 'border-green-600 text-gray-900'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                URL no Site
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeLinksTab === 'checkout'}
+                onClick={() => setActiveLinksTab('checkout')}
+                className={`py-2 px-1 border-b-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                  activeLinksTab === 'checkout'
+                    ? 'border-green-600 text-gray-900'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Checkout URL
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeLinksTab === 'embed'}
+                onClick={() => setActiveLinksTab('embed')}
+                className={`py-2 px-1 border-b-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                  activeLinksTab === 'embed'
+                    ? 'border-green-600 text-gray-900'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Embed do Checkout
+              </button>
+            </div>
+          </div>
+
+          {copiedFeedback && (
+            <p className="text-xs text-green-700 mb-2" role="status">
+              {copiedFeedback}
+            </p>
+          )}
+
+          {activeLinksTab === 'site' && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={publicSiteUrl || 'Defina um slug para gerar a URL pública do projeto'}
+                className="input-modern flex-1 bg-gray-50"
+                readOnly
+              />
+              <button
+                type="button"
+                onClick={() => publicSiteUrl && copyWithFeedback(publicSiteUrl, 'URL do site copiada!')}
+                className="btn-secondary whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!publicSiteUrl}
+              >
+                Copiar
+              </button>
+            </div>
+          )}
+
+          {activeLinksTab === 'checkout' && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={
+                  project?.id
+                    ? generateCheckoutUrl(project.id, title || project.title)
+                    : 'Salve o projeto primeiro para gerar a URL'
+                }
+                className="input-modern flex-1 bg-gray-50"
+                readOnly
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (project?.id) {
+                    copyWithFeedback(
+                      generateCheckoutUrl(project.id, title || project.title),
+                      'URL de checkout copiada!'
+                    )
                   }
                 }}
-                onBlur={() => {
-                  // Delay para permitir clique nas sugestões
-                  setTimeout(() => setShowLocationSuggestions(false), 200)
-                }}
-                className="input-modern"
-                placeholder="Digite o estado (ex: São Paulo)"
-                autoComplete="off"
-              />
-              
-              {/* Sugestões de Estados */}
-              {showLocationSuggestions && filteredStates.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  {filteredStates.map((state, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => selectState(state)}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
-                    >
-                      {state}
-                    </button>
-                  ))}
-                </div>
-              )}
-              
-              <p className="text-xs text-gray-500 mt-1">
-                Digite para buscar estados brasileiros automaticamente
-              </p>
+                className="btn-secondary whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!project?.id}
+              >
+                Copiar
+              </button>
             </div>
+          )}
 
-
-            {/* URL da Imagem */}
-            <div>
-              <label htmlFor="image_url" className="block text-sm font-medium text-gray-700 mb-2">
-                URL da Imagem
-              </label>
-              <input
-                type="url"
-                id="image_url"
-                name="image_url"
-                value={formData.image_url}
-                onChange={handleChange}
-                className="input-modern"
-                placeholder="https://exemplo.com/imagem.jpg"
+          {activeLinksTab === 'embed' && (
+            <div className="space-y-2">
+              <textarea
+                value={
+                  project?.id
+                    ? `<iframe src="${generateEmbedUrl(project.id, title || project.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>`
+                    : 'Salve o projeto primeiro para gerar o código embed'
+                }
+                className="input-modern w-full h-24 bg-gray-50 text-sm font-mono resize-none"
+                readOnly
               />
-            </div>
-
-            {/* Links e incorporações - abas */}
-            <div>
-              <div className="flex items-center gap-2 border-b border-gray-200 mb-4">
+              <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setActiveLinksTab('framer')}
-                  className={`px-3 py-2 text-sm font-medium rounded-t ${activeLinksTab === 'framer' ? 'bg-white border border-gray-200 border-b-white text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+                  onClick={() => {
+                    if (project?.id) {
+                      copyWithFeedback(
+                        `<iframe src="${generateEmbedUrl(project.id, title || project.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>`,
+                        'Código embed copiado!'
+                      )
+                    }
+                  }}
+                  className="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!project?.id}
                 >
-                  Projeto URL
+                  Copiar código
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveLinksTab('checkout')}
-                  className={`px-3 py-2 text-sm font-medium rounded-t ${activeLinksTab === 'checkout' ? 'bg-white border border-gray-200 border-b-white text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+                  onClick={() => {
+                    if (project?.id) {
+                      window.open(
+                        generateEmbedUrl(project.id, title || project.title),
+                        '_blank',
+                        'noopener,noreferrer'
+                      )
+                    }
+                  }}
+                  className="btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!project?.id}
                 >
-                  Checkout URL
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveLinksTab('embed')}
-                  className={`px-3 py-2 text-sm font-medium rounded-t ${activeLinksTab === 'embed' ? 'bg-white border border-gray-200 border-b-white text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
-                >
-                  Embed do Checkout
+                  Visualizar
                 </button>
               </div>
-
-              {activeLinksTab === 'framer' && (
-                <div>
-                  <label htmlFor="framer_project_url" className="block text-sm font-medium text-gray-700 mb-2">
-                    URL do Projeto
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      id="framer_project_url"
-                      name="framer_project_url"
-                      value={formData.framer_project_url}
-                      onChange={handleChange}
-                      className="input-modern flex-1"
-                      placeholder="https://imagineinstituto.com/projetos/SEU-PROJETO"
-                      required
-                    />
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (formData.framer_project_url) {
-                            window.open(formData.framer_project_url, '_blank')
-                          }
-                        }}
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Abrir no navegador"
-                        disabled={!formData.framer_project_url}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (formData.framer_project_url) {
-                            navigator.clipboard.writeText(formData.framer_project_url)
-                          }
-                        }}
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Copiar URL"
-                        disabled={!formData.framer_project_url}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeLinksTab === 'checkout' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    URL do Checkout com Tracking
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={formData.id ? generateCheckoutUrl(formData.id, formData.title) : 'Salve o projeto primeiro para gerar a URL'}
-                      className="input-modern flex-1 bg-gray-50"
-                      readOnly
-                    />
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = formData.id ? generateCheckoutUrl(formData.id, formData.title) : ''
-                          if (url) {
-                            window.open(url, '_blank')
-                          }
-                        }}
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Abrir no navegador"
-                        disabled={!formData.id}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = formData.id ? generateCheckoutUrl(formData.id, formData.title) : ''
-                          if (url) {
-                            navigator.clipboard.writeText(url)
-                          }
-                        }}
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Copiar URL"
-                        disabled={!formData.id}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeLinksTab === 'embed' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Código Embed do Checkout
-                  </label>
-                  <div className="space-y-2">
-                    <textarea
-                      value={formData.id ? `<iframe src="${generateEmbedUrl(formData.id, formData.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : 'Salve o projeto primeiro para gerar o código embed'}
-                      className="input-modern w-full h-24 bg-gray-50 text-sm font-mono resize-none"
-                      readOnly
-                      placeholder="Código embed será gerado automaticamente..."
-                    />
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const embedCode = formData.id ? `<iframe src="${generateEmbedUrl(formData.id, formData.title)}" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);"></iframe>` : ''
-                          if (embedCode) {
-                            navigator.clipboard.writeText(embedCode)
-                          }
-                        }}
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Copiar código"
-                        disabled={!formData.id}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (formData.id) {
-                            const previewUrl = generateEmbedUrl(formData.id, formData.title)
-                            window.open(previewUrl, '_blank')
-                          }
-                        }}
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="Visualizar"
-                        disabled={!formData.id}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
-
-          </form>
+          )}
+        </div>
+      </form>
     </Modal>
   )
 }

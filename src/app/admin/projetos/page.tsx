@@ -2,28 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import ProjectForm from '@/components/ProjectForm'
+import ProjectForm, { type AdminProject } from '@/components/ProjectForm'
 import { adminFetch } from '@/lib/admin-api'
 import ConfirmDialog, { Modal } from '@/components/ConfirmDialog'
 import { generateCheckoutUrl, generateEmbedUrl } from '@/lib/urls'
+import { sanitizeImageUrl } from '@/lib/site-projects'
 import { ToastContainer, useToast } from '@/components/Toast'
 
-interface Project {
-  id: string
-  title: string
-  description: string
-  category: 'educacao' | 'saude' | 'meio-ambiente' | 'esporte' | 'social'
-  target_amount: number
-  current_amount: number
-  status: 'active' | 'paused' | 'completed' | 'cancelled'
-  location: string
-  image_url: string
-  framer_project_url?: string
-  checkout_tracking_url?: string
-  has_funding_goal?: boolean
-  created_at: string
-  updated_at: string
-}
+type Project = AdminProject
 
 export default function AdminProjetosPage() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -118,46 +104,42 @@ export default function AdminProjetosPage() {
   }
 
   const handleDuplicateProject = async (project: Project) => {
+    if (operationLoading) return
     setOperationLoading(true)
     try {
-      const duplicatedProject: Project = {
-        ...project,
-        id: crypto.randomUUID(),
+      const duplicatedProject = {
         title: `${project.title} (Cópia)`,
-        current_amount: 0,
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        description: project.description || '',
+        long_description: project.long_description || '',
+        category: project.category,
+        target_amount: project.target_amount || 0,
+        status: 'paused' as const,
+        location: project.location || '',
+        image_url: project.image_url || '',
+        slug: null,
+        show_on_site: false,
+        site_order: Math.min((project.site_order ?? 100) + 1, 9999),
+        site_data: project.site_data || {},
       }
-      
-      // Salvar no Supabase
-      try {
-        console.log('📡 Salvando projeto duplicado via API...')
-        const response = await adminFetch('/api/admin/projects', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(duplicatedProject),
-        })
 
-        const result = await response.json()
+      const response = await adminFetch('/api/admin/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(duplicatedProject),
+      })
 
-        if (!response.ok) {
-          console.error('❌ Erro ao salvar projeto duplicado:', result.error)
-          error('Erro ao Duplicar', result.error)
-          return
-        }
+      const result = await response.json()
 
-        console.log('✅ Projeto duplicado salvo com sucesso')
-        success('Projeto Duplicado', 'Projeto duplicado com sucesso!')
-        
-        // Recarregar lista
-        await reloadProjectsFromSupabase()
-      } catch (apiError) {
-        console.error('❌ Erro ao salvar projeto duplicado no Supabase:', apiError)
-        error('Erro ao Duplicar', 'Erro ao salvar projeto duplicado')
+      if (!response.ok) {
+        console.error('❌ Erro ao salvar projeto duplicado:', result.error)
+        error('Erro ao Duplicar', result.error || 'Erro ao duplicar projeto')
+        return
       }
+
+      success('Projeto Duplicado', 'Cópia criada como pausada e oculta do site!')
+      await reloadProjectsFromSupabase()
     } catch (err) {
       console.error('❌ Erro ao duplicar projeto:', err)
       error('Erro ao Duplicar', 'Erro inesperado ao duplicar projeto')
@@ -166,84 +148,50 @@ export default function AdminProjetosPage() {
     }
   }
 
-  const handleSaveProject = async (projectData: any) => {
+  const handleSaveProject = async (projectData: Partial<Project>) => {
     setOperationLoading(true)
     try {
       if (editingProject) {
-        // Atualizar projeto existente
-        const updatedProject = { ...projectData, id: editingProject.id }
-        
-        try {
-          console.log('📡 Atualizando projeto via API...')
-          const response = await adminFetch('/api/admin/projects', {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(updatedProject),
-          })
+        const response = await adminFetch('/api/admin/projects', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ...projectData, id: editingProject.id }),
+        })
 
-          const result = await response.json()
+        const result = await response.json()
 
-          if (!response.ok) {
-            console.error('❌ Erro ao atualizar projeto:', result.error)
-            error('Erro ao Atualizar', result.error)
-            return
-          }
-
-          console.log('✅ Projeto atualizado com sucesso')
-          success('Projeto Atualizado', 'Projeto atualizado com sucesso!')
-          
-          // Recarregar lista
-          await reloadProjectsFromSupabase()
-          setShowProjectForm(false)
-          setEditingProject(undefined)
-        } catch (apiError) {
-          console.error('❌ Erro ao atualizar projeto no Supabase:', apiError)
-          error('Erro ao Atualizar', 'Erro ao atualizar projeto')
+        if (!response.ok) {
+          error('Erro ao Atualizar', result.error || 'Erro ao atualizar projeto')
+          throw new Error(result.error || 'Erro ao atualizar projeto')
         }
+
+        success('Projeto Atualizado', 'Projeto atualizado com sucesso!')
+        await reloadProjectsFromSupabase()
+        setShowProjectForm(false)
+        setEditingProject(undefined)
       } else {
-        // Criar novo projeto
-        const newProject = {
-          ...projectData,
-          id: crypto.randomUUID(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+        const response = await adminFetch('/api/admin/projects', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(projectData),
+        })
+
+        const result = await response.json()
+
+        if (!response.ok) {
+          error('Erro ao Criar', result.error || 'Erro ao criar projeto')
+          throw new Error(result.error || 'Erro ao criar projeto')
         }
-        
-        try {
-          console.log('📡 Criando projeto via API...')
-          const response = await adminFetch('/api/admin/projects', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(newProject),
-          })
 
-          const result = await response.json()
-
-          if (!response.ok) {
-            console.error('❌ Erro ao criar projeto:', result.error)
-            error('Erro ao Criar', result.error)
-            return
-          }
-
-          console.log('✅ Projeto criado com sucesso')
-          success('Projeto Criado', 'Projeto criado com sucesso!')
-          
-          // Recarregar lista
-          await reloadProjectsFromSupabase()
-          setShowProjectForm(false)
-          setEditingProject(undefined)
-        } catch (apiError) {
-          console.error('❌ Erro ao criar projeto no Supabase:', apiError)
-          error('Erro ao Criar', 'Erro ao criar projeto')
-        }
+        success('Projeto Criado', 'Projeto criado com sucesso!')
+        await reloadProjectsFromSupabase()
+        setShowProjectForm(false)
+        setEditingProject(undefined)
       }
-    } catch (err) {
-      console.error('❌ Erro ao salvar projeto:', err)
-      error('Erro ao Salvar', 'Erro inesperado ao salvar projeto')
     } finally {
       setOperationLoading(false)
     }
@@ -255,7 +203,7 @@ export default function AdminProjetosPage() {
   }
 
   const handleConfirmDelete = async () => {
-    if (!projectToDelete) return
+    if (!projectToDelete || operationLoading) return
     
     setOperationLoading(true)
     try {
@@ -294,6 +242,7 @@ export default function AdminProjetosPage() {
   }
 
   const handleToggleStatus = async (project: Project) => {
+    if (operationLoading) return
     setOperationLoading(true)
     try {
       const newStatus = project.status === 'active' ? 'paused' : 'active'
@@ -340,17 +289,11 @@ export default function AdminProjetosPage() {
   // Filtros
   const filteredProjects = projects.filter(project => {
     const matchesFilter = filter === 'all' || project.status === filter
-    const matchesSearch = project.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         project.description.toLowerCase().includes(searchTerm.toLowerCase())
+    const query = searchTerm.toLowerCase()
+    const matchesSearch =
+      (project.title || '').toLowerCase().includes(query) ||
+      (project.description || '').toLowerCase().includes(query)
     return matchesFilter && matchesSearch
-  })
-
-  // Debug: Log do estado dos projetos
-  console.log('📊 [PROJETOS] Estado atual:', { 
-    projects: projects.length, 
-    filtered: filteredProjects.length, 
-    filter, 
-    searchTerm 
   })
 
   const getStatusBadge = (status: string) => {
@@ -385,6 +328,8 @@ export default function AdminProjetosPage() {
 
   const getCategoryText = (category: string) => {
     switch (category) {
+      case 'cultura':
+        return 'Cultura e Artes'
       case 'educacao':
         return 'Educação'
       case 'saude':
@@ -394,7 +339,7 @@ export default function AdminProjetosPage() {
       case 'esporte':
         return 'Esporte'
       case 'social':
-        return 'Social'
+        return 'Assistência Social'
       default:
         return 'Outro'
     }
@@ -495,14 +440,17 @@ export default function AdminProjetosPage() {
       ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredProjects.map((project) => (
-          <div key={project.id} className="card p-6">
+          <div key={project.id} className="card p-6 flex flex-col">
             {/* Header do Card */}
-            <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start justify-between gap-2 flex-wrap mb-4">
               <div className="flex items-center space-x-3">
                 {/* Toggle de Status */}
                 <button
+                  type="button"
                   onClick={() => handleToggleStatus(project)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ${
+                  disabled={operationLoading}
+                  aria-label={project.status === 'active' ? 'Pausar projeto' : 'Ativar projeto'}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
                     project.status === 'active' 
                       ? 'bg-green-500' 
                       : 'bg-orange-500'
@@ -518,14 +466,28 @@ export default function AdminProjetosPage() {
                   {getStatusText(project.status)}
                 </span>
               </div>
+              {project.show_on_site && project.status === 'active' && project.slug ? (
+                <Link
+                  href={`/projetos/${project.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2 py-1 text-xs rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 whitespace-nowrap"
+                >
+                  No site (#{project.site_order ?? 100})
+                </Link>
+              ) : (
+                <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700 whitespace-nowrap">
+                  Oculto no site
+                </span>
+              )}
             </div>
 
             {/* Imagem do Projeto */}
             <div className="mb-4">
               <img
-                src={project.image_url}
+                src={sanitizeImageUrl(project.image_url, '/img/sobre.webp')}
                 alt={project.title}
-                className="w-full h-48 object-cover rounded-lg"
+                className="w-full h-48 object-cover rounded-lg bg-gray-100"
               />
             </div>
 
@@ -535,38 +497,39 @@ export default function AdminProjetosPage() {
                 {project.title}
               </h3>
               <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                {project.description}
+                {project.description || 'Sem descrição'}
               </p>
               <div className="flex items-center justify-between text-sm text-gray-500 mb-2">
                 <span>{getCategoryText(project.category)}</span>
                 <span>{project.location}</span>
               </div>
-              <div className="flex items-center justify-between text-sm text-gray-500">
-                <span>Meta: {formatCurrency(project.target_amount)}</span>
-                <span>Arrecadado: {formatCurrency(project.current_amount)}</span>
+              <div className="flex items-center justify-between text-sm text-gray-500 tabular-nums">
+                <span>Meta: {project.target_amount > 0 ? formatCurrency(project.target_amount) : 'Sem meta'}</span>
+                <span>Arrecadado: {formatCurrency(project.current_amount || 0)}</span>
               </div>
             </div>
 
             {/* Barra de Progresso - apenas quando há meta */}
-            {project.has_funding_goal !== false && (
+            {project.target_amount > 0 && (
               <div className="mb-4">
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <div className="flex justify-between text-sm text-gray-600 mb-1 tabular-nums">
                   <span>Progresso</span>
-                  <span>{Math.round((project.current_amount / (project.target_amount || 1)) * 100)}%</span>
+                  <span>{Math.round(((project.current_amount || 0) / project.target_amount) * 100)}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min((project.current_amount / (project.target_amount || 1)) * 100, 100)}%` }}
+                    style={{ width: `${Math.min(((project.current_amount || 0) / project.target_amount) * 100, 100)}%` }}
                   />
                 </div>
               </div>
             )}
 
             {/* Ações do Projeto */}
-            <div className="space-y-2">
+            <div className="space-y-2 mt-auto pt-2">
               {/* Primeira linha - Ver/Editar */}
               <button
+                type="button"
                 onClick={() => handleEditProject(project)}
                 className="w-full btn-primary text-sm"
               >
@@ -576,8 +539,11 @@ export default function AdminProjetosPage() {
               {/* Segunda linha - Ações com ícones monocromáticos */}
               <div className="flex space-x-2">
                 <button
+                  type="button"
                   onClick={() => handleDuplicateProject(project)}
-                  className="flex-1 flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                  disabled={operationLoading}
+                  aria-label="Duplicar Projeto"
+                  className="flex-1 flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Duplicar Projeto"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -653,21 +619,25 @@ export default function AdminProjetosPage() {
           <div className="space-y-4 p-1">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Projeto URL
+                URL no Site Institucional
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  value={shareProject.framer_project_url || ''}
+                  value={shareProject.slug ? `https://imagineinstituto.com/projetos/${shareProject.slug}` : ''}
+                  placeholder="Defina um slug no projeto para publicar no site"
                   className="input-modern flex-1 bg-gray-50"
                   readOnly
                 />
                 <button
                   type="button"
-                  onClick={() => shareProject.framer_project_url && window.open(shareProject.framer_project_url, '_blank')}
+                  onClick={() =>
+                    shareProject.slug &&
+                    window.open(`https://imagineinstituto.com/projetos/${shareProject.slug}`, '_blank')
+                  }
                   className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                   title="Abrir no navegador"
-                  disabled={!shareProject.framer_project_url}
+                  disabled={!shareProject.slug}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -675,10 +645,13 @@ export default function AdminProjetosPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => shareProject.framer_project_url && navigator.clipboard.writeText(shareProject.framer_project_url)}
+                  onClick={() =>
+                    shareProject.slug &&
+                    navigator.clipboard.writeText(`https://imagineinstituto.com/projetos/${shareProject.slug}`)
+                  }
                   className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                   title="Copiar URL"
-                  disabled={!shareProject.framer_project_url}
+                  disabled={!shareProject.slug}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -755,6 +728,7 @@ export default function AdminProjetosPage() {
       {showProjectForm && (
         <ProjectForm
           project={editingProject}
+          isEditing={Boolean(editingProject)}
           onSave={handleSaveProject}
           onCancel={() => {
             setShowProjectForm(false)
@@ -766,13 +740,14 @@ export default function AdminProjetosPage() {
       {showDeleteDialog && projectToDelete && (
         <ConfirmDialog
           isOpen={showDeleteDialog}
+          isLoading={operationLoading}
           onCancel={() => {
             setShowDeleteDialog(false)
             setProjectToDelete(undefined)
           }}
           onConfirm={handleConfirmDelete}
           title="Confirmar Exclusão"
-          message={`Tem certeza que deseja excluir o projeto "${projectToDelete.title}"? Esta ação não pode ser desfeita.`}
+          message={`Tem certeza que deseja excluir o projeto "${projectToDelete.title}"? Status: ${getStatusText(projectToDelete.status)}${projectToDelete.slug && projectToDelete.show_on_site ? ` · Publicado em /projetos/${projectToDelete.slug}` : ' · Oculto no site'} · Arrecadado: ${formatCurrency(projectToDelete.current_amount || 0)}. Esta ação não pode ser desfeita.`}
         />
       )}
     </div>

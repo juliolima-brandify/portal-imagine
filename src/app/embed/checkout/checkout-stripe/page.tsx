@@ -75,10 +75,10 @@ function EmbedCheckoutContent() {
         id: project.id,
         title: project.title,
         description: project.description || project.long_description || 'Projeto do Instituto Imagine',
-        targetAmount: project.target_amount || 10000,
-        currentAmount: project.current_amount || 0,
+        targetAmount: Number(project.target_amount) || 0,
+        currentAmount: Number(project.current_amount) || 0,
         imageUrl: project.image_url,
-        hasFundingGoal: project.has_funding_goal !== false // Default true se não especificado
+        hasFundingGoal: project.has_funding_goal !== false && Number(project.target_amount) > 0
       }} />
 
     </div>

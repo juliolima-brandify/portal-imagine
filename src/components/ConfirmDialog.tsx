@@ -23,6 +23,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void
   onCancel: () => void
   type?: 'danger' | 'warning' | 'info'
+  isLoading?: boolean
 }
 
 export function Modal({
@@ -99,6 +100,7 @@ export function Modal({
             </h2>
             {showCloseButton && (
               <button
+                type="button"
                 onClick={onClose}
                 className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-md hover:bg-gray-100"
                 aria-label="Fechar modal"
@@ -135,7 +137,8 @@ export default function ConfirmDialog({
   cancelText = 'Cancelar',
   onConfirm,
   onCancel,
-  type = 'danger'
+  type = 'danger',
+  isLoading = false,
 }: ConfirmDialogProps) {
   if (!isOpen) return null
 
@@ -171,19 +174,26 @@ export default function ConfirmDialog({
       onClose={onCancel}
       title={title}
       size="sm"
+      showCloseButton={!isLoading}
+      closeOnOverlayClick={!isLoading}
+      closeOnEscape={!isLoading}
       footer={
         <div className="flex justify-end gap-3">
           <button
+            type="button"
             onClick={onCancel}
-            className="btn-secondary"
+            disabled={isLoading}
+            className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {cancelText}
           </button>
           <button
+            type="button"
             onClick={onConfirm}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${getButtonStyles()}`}
+            disabled={isLoading}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${getButtonStyles()}`}
           >
-            {confirmText}
+            {isLoading ? 'Processando...' : confirmText}
           </button>
         </div>
       }
