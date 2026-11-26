@@ -108,12 +108,13 @@ Esta seção complementa as duas listas acima com as regras e decisões que a `/
 | **D2** | Reembolso parcial | **Estorno parcial real** com `refunded_amount` + status `partially_refunded`; o trigger desconta só o delta. |
 | **D3** | Conta automática para e-mail de terceiro | **Mantida a regra 3A** (cria conta e envia link de senha), registrada como pendência de produto para revisão de anti-phishing. |
 | **D4** | Checkbox "Lembrar-me" | **Implementada a persistência**: o checkbox grava a preferência e o storage do Supabase alterna entre `localStorage` (lembrar) e `sessionStorage` (não lembrar). Padrão: lembrar. |
+| **D5** | E-mail do doador é obrigatório? | **Não é obrigatório** (Julio, 26/11/2026). Sem e-mail, a doação é registrada e o recibo não é enviado; o admin vê "Não informado". |
+| **D6** | Doação anônima | **Mantida como flag de exibição** (Julio, 26/11/2026): oculta o nome em relatórios e dashboard, mas o admin continua vendo o nome real em `/admin/doacoes` para conciliar o pagamento. |
 
 ### Pendências que continuam abertas (não bloqueiam este commit)
 
 | # | Pergunta | Comportamento até a resposta |
 |---|---|---|
-| **P1** | O e-mail do doador é obrigatório para concluir a doação? | Sem e-mail, a doação é registrada e o recibo não é enviado; o admin vê "Não informado". |
 | **P2** | Política de retenção de `webhook_events.payload` (contém dados do pagador) | Sem expurgo automático; RLS e `REVOKE` já bloqueiam `anon`/`authenticated`. |
 | **P3** | Formato de `subscription.nextDueDate` aceito pelo Asaas | Passa a enviar `YYYY-MM-DD` (formato documentado); validar no sandbox antes do go-live. |
 | **P4** | Lista de eventos assinados no painel do Asaas | Eventos sem `targetStatus` são ignorados (não criam linha `pending`). |
