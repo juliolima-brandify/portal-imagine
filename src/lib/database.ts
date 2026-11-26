@@ -51,9 +51,8 @@ export interface Donation {
   campaign_slug?: string | null
   amount: number
   currency: string
-  status: 'pending' | 'completed' | 'failed' | 'refunded'
+  status: 'pending' | 'completed' | 'failed' | 'refunded' | 'partially_refunded'
   payment_method?: string
-  stripe_payment_intent_id?: string | null
   asaas_checkout_id?: string | null
   asaas_payment_id?: string | null
   asaas_subscription_id?: string | null
@@ -62,6 +61,7 @@ export interface Donation {
   message?: string | null
   anonymous: boolean
   receipt_sent_at?: string | null
+  refunded_amount?: number | null
   projects?: {
     title?: string
     image_url?: string
@@ -70,6 +70,31 @@ export interface Donation {
   created_at: string
   updated_at: string
 }
+
+// Colunas liberadas para `authenticated` (GRANT SELECT por coluna na migração).
+// `select('*')` falha porque o GRANT não cobre donor_name/donor_email/provider.
+const DONATION_SELECT_COLUMNS = [
+  'id',
+  'user_id',
+  'project_id',
+  'campaign_slug',
+  'amount',
+  'currency',
+  'status',
+  'payment_method',
+  'asaas_checkout_id',
+  'asaas_payment_id',
+  'asaas_subscription_id',
+  'is_recurring',
+  'recurring_frequency',
+  'message',
+  'anonymous',
+  'receipt_sent_at',
+  'refunded_amount',
+  'created_at',
+  'updated_at',
+  'projects:project_id (title, image_url, slug)',
+].join(', ')
 
 export interface Favorite {
   id: string
@@ -203,14 +228,7 @@ export async function getDonations(userId?: string): Promise<Donation[]> {
   try {
     let query = supabase
       .from('donations')
-      .select(`
-        *,
-        projects:project_id (
-          title,
-          image_url,
-          slug
-        )
-      `)
+      .select(DONATION_SELECT_COLUMNS)
       .order('created_at', { ascending: false })
 
     if (userId) {
@@ -224,7 +242,7 @@ export async function getDonations(userId?: string): Promise<Donation[]> {
       return []
     }
 
-    return (data as Donation[]) || []
+    return (data as unknown as Donation[]) || []
   } catch (error) {
     console.error('Erro ao buscar doações:', error)
     return []
@@ -239,20 +257,13 @@ export async function getUserDonationById(
   try {
     const { data, error } = await supabase
       .from('donations')
-      .select(`
-        *,
-        projects:project_id (
-          title,
-          image_url,
-          slug
-        )
-      `)
+      .select(DONATION_SELECT_COLUMNS)
       .eq('id', donationId)
       .eq('user_id', userId)
       .maybeSingle()
 
     if (error || !data) return null
-    return data as Donation
+    return data as unknown as Donation
   } catch {
     return null
   }

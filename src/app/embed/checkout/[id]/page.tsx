@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { getProject } from '@/lib/database'
-import { SPECIAL_CAMPAIGNS } from '@/lib/payments'
+import { resolveSpecialCampaign } from '@/lib/payments'
 import DonationEmbed from '@/components/DonationEmbed'
 
 interface EmbedProjectView {
@@ -29,11 +29,12 @@ export default function EmbedCheckoutByIdPage() {
       const rawId = typeof params?.id === 'string' ? params.id.trim() : ''
       const lower = rawId.toLowerCase()
 
-      if (SPECIAL_CAMPAIGNS[lower]) {
+      const special = resolveSpecialCampaign(lower)
+      if (special) {
         if (!active) return
         setProject({
-          id: SPECIAL_CAMPAIGNS[lower].slug,
-          title: SPECIAL_CAMPAIGNS[lower].title,
+          id: special.slug,
+          title: special.title,
           description: 'Doação direta para o Instituto Imagine.',
           targetAmount: 0,
           currentAmount: 0,

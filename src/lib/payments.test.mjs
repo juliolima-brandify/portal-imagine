@@ -93,8 +93,9 @@ test('R4: buildAsaasCheckoutPayload respeita limite rígido de 30 chars no name,
   assert.equal(detached.customerData?.cpfCnpj, '12345678909')
 
   // Virada de dia no fuso de São Paulo (2026-11-30T01:30:00Z = 2026-11-29 22:30 BRT -> próximo dia = 2026-11-30)
+  // O Asaas documenta subscription.nextDueDate no formato YYYY-MM-DD.
   const fixedNow = new Date('2026-11-30T01:30:00.000Z')
-  assert.equal(calculateNextDueDateSaoPaulo(fixedNow), '2026-11-30 12:00:00')
+  assert.equal(calculateNextDueDateSaoPaulo(fixedNow), '2026-11-30')
 
   const recurrent = buildAsaasCheckoutPayload({
     donationId: '6e302335-89a9-4336-9160-70c038576a97',
@@ -109,7 +110,7 @@ test('R4: buildAsaasCheckoutPayload respeita limite rígido de 30 chars no name,
   assert.deepEqual(recurrent.billingTypes, ['CREDIT_CARD'])
   assert.deepEqual(recurrent.chargeTypes, ['RECURRENT'])
   assert.equal(recurrent.subscription?.cycle, 'MONTHLY')
-  assert.equal(recurrent.subscription?.nextDueDate, '2026-11-30 12:00:00')
+  assert.equal(recurrent.subscription?.nextDueDate, '2026-11-30')
 })
 
 test('R3: classifyAsaasWebhookEvent e resolveNextDonationStatus lidam com eventos fora de ordem, renovação e estorno', () => {
@@ -252,9 +253,10 @@ test('R1, R2, R6, R7 e R8: auditoria arquitetural de pacotes, módulos server-on
   assert.equal(/handleApproveDonation/.test(adminDoacoesSource), false)
 })
 
-test('R1: se dist/client existir, garante zero vazamento de segredos ou endpoints privados no bundle do navegador', () => {
+test('R1: se dist/client existir, garante zero vazamento de segredos ou endpoints privados no bundle do navegador', (t) => {
   const distClientDir = path.join(repoRoot, 'dist/client')
   if (!fs.existsSync(distClientDir)) {
+    t.skip('dist/client ausente: rode o build para validar o bundle. Teste marcado como SKIP, não como aprovado.')
     return
   }
 
@@ -296,4 +298,71 @@ test('R1: se dist/client existir, garante zero vazamento de segredos ou endpoint
       )
     }
   }
+})
+
+test('R9-R17: correções da banca (webhook 503, estorno parcial, e-mail exato, colunas, ASAAS_ENV, allowlist, zero Stripe, totais, lock)', () => {
+  const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8')
+
+  // R9: sem fallback de insert; usa RPC e responde 503 quando ela falta
+  const webhookSource = read('src/app/api/webhooks/asaas/route.ts')
+  assert.ok(webhookSource.includes("rpc('apply_asaas_webhook_event'"), 'webhook deve chamar a RPC idempotente')
+  assert.ok(webhookSource.includes('isMissingRpcError'), 'webhook deve detectar RPC ausente')
+  assert.ok(webhookSource.includes('status: 503'), 'webhook deve responder 503 sem a RPC')
+  assert.equal(/from\('donations'\)\s*\.insert/.test(webhookSource), false, 'webhook não pode ter fallback de insert')
+
+  // R10: estorno parcial real
+  const paymentsSource = read('src/lib/payments.ts')
+  assert.ok(paymentsSource.includes('partially_refunded'))
+  assert.ok(paymentsSource.includes('refundedAmountBrl'))
+  const migrationSource = read('supabase/migrations/20261127_banca_fixes.sql')
+  assert.ok(migrationSource.includes('refunded_amount'))
+  assert.ok(migrationSource.includes('partially_refunded'))
+
+  // R11: e-mail exato com curingas escapados
+  const provisionSource = read('src/lib/server/donor-provision.ts')
+  assert.ok(provisionSource.includes('escapeLikePattern'))
+  assert.equal(/\.ilike\(\s*['"]email['"]\s*,\s*cleanEmail\s*\)/.test(provisionSource), false, 'não pode usar ilike com e-mail cru')
+
+  // R12: colunas explícitas no leitor do doador
+  const dbSource = read('src/lib/database.ts')
+  assert.ok(dbSource.includes('DONATION_SELECT_COLUMNS'))
+  assert.equal(/\.from\('donations'\)\s*\.select\(\s*['"]\*/s.test(dbSource), false, 'getDonations não pode usar select(*)')
+
+  // R13: ASAAS_ENV explícito, sem fallback por NODE_ENV
+  const asaasSource = read('src/lib/server/asaas.ts')
+  assert.ok(asaasSource.includes('ASAAS_ENV'))
+  assert.equal(/NODE_ENV\s*===\s*['"]production['"]/.test(asaasSource), false, 'asaas.ts não pode decidir ambiente por NODE_ENV')
+
+  // R14: callback com allowlist
+  assert.ok(paymentsSource.includes('parseAllowedCallbackHosts'))
+  assert.ok(paymentsSource.includes('DEFAULT_PUBLIC_CALLBACK_HOSTS'))
+  const createSessionSource = read('src/app/api/checkout/create-session/route.ts')
+  assert.ok(createSessionSource.includes('ALLOWED_CALLBACK_HOSTS'))
+
+  // R15: zero Stripe na árvore ativa (src sem testes)
+  const walk = (dir) => {
+    const out = []
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) out.push(...walk(full))
+      else if (/\.(ts|tsx|mjs|js)$/.test(entry.name) && !entry.name.endsWith('.test.mjs')) out.push(full)
+    }
+    return out
+  }
+  for (const file of walk(path.join(repoRoot, 'src'))) {
+    const text = fs.readFileSync(file, 'utf8')
+    assert.equal(/stripe/i.test(text), false, `Stripe residual em ${path.relative(repoRoot, file)}`)
+  }
+  assert.equal(fs.existsSync(path.join(repoRoot, 'src/app/embed/checkout/checkout-stripe')), false, 'rota checkout-stripe deve ser removida')
+
+  // R16: totais do admin sem truncamento silencioso
+  const adminRouteSource = read('src/app/api/admin/donations/route.ts')
+  assert.equal(/\.limit\(\s*(1000|5000)\s*\)/.test(adminRouteSource), false, 'admin/donations não pode truncar em 1.000/5.000')
+  assert.ok(adminRouteSource.includes('loadAllStatsRows'))
+
+  // R17: reenvio de recibo com lock no servidor e confirmação no admin
+  const resendSource = read('src/app/api/admin/donations/[id]/resend-receipt/route.ts')
+  assert.ok(resendSource.includes('receipt_lock_at'))
+  const adminPageSource = read('src/app/admin/doacoes/page.tsx')
+  assert.ok(adminPageSource.includes('ConfirmDialog'))
 })

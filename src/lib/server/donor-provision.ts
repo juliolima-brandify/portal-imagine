@@ -1,5 +1,6 @@
 import 'server-only'
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase-admin'
+import { escapeLikePattern } from '@/lib/payments'
 import { getPortalOrigin } from './email'
 
 export interface DonorProvisionResult {
@@ -32,12 +33,24 @@ export async function ensureDonorAccountAndAccessLink(input: {
   const cleanName = (input.name || '').trim().slice(0, 100) || cleanEmail.split('@')[0]
 
   try {
-    // 1) Checar se já existe perfil para este e-mail
-    const { data: existingProfile } = await supabaseAdmin
+    // 1) Checar se já existe perfil para este e-mail.
+    // `ilike` com curingas escapados: `_` e `%` digitados pelo pagador não podem
+    // virar padrão de busca (risco de vincular a doação à conta errada).
+    const { data: matches, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('id, email, name, role')
-      .ilike('email', cleanEmail)
-      .maybeSingle()
+      .ilike('email', escapeLikePattern(cleanEmail))
+      .limit(2)
+
+    if (profileError) {
+      console.error('[DonorProvision] Erro ao buscar perfil por e-mail:', profileError)
+    }
+
+    const existingProfile = matches?.[0]
+    if (matches && matches.length > 1) {
+      // Ambiguidade: não escolhe conta no escuro. Cria/segue sem vínculo.
+      console.error('[DonorProvision] Mais de um perfil casou com o e-mail; vínculo ignorado.')
+    }
 
     if (existingProfile?.id) {
       await linkOrphanDonationsByEmail(cleanEmail, existingProfile.id)
@@ -121,7 +134,7 @@ async function linkOrphanDonationsByEmail(email: string, userId: string): Promis
     await supabaseAdmin
       .from('donations')
       .update({ user_id: userId })
-      .ilike('donor_email', email)
+      .ilike('donor_email', escapeLikePattern(email))
       .is('user_id', null)
   } catch {
     // Caso a migração ainda não tenha sido aplicada no ambiente local, ignora sem falhar

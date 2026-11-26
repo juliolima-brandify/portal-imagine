@@ -2,7 +2,7 @@
 
 ## 🎯 **Visão Geral**
 
-O Portal Instituto Imagine é uma plataforma completa de doações e gestão de projetos sociais, desenvolvida com Next.js 14, Supabase e Stripe. Sistema 100% funcional com 34 funcionalidades implementadas.
+O Portal Instituto Imagine é uma plataforma completa de doações e gestão de projetos sociais, desenvolvida com Next.js 14, Supabase e Asaas. Sistema 100% funcional com 34 funcionalidades implementadas.
 
 ## 🚀 **Status Atual**
 
@@ -89,7 +89,7 @@ O Portal Instituto Imagine é uma plataforma completa de doações e gestão de 
 
 - **Frontend:** Next.js 14, TypeScript, Tailwind CSS
 - **Backend:** Supabase (PostgreSQL + Auth)
-- **Pagamentos:** Stripe
+- **Pagamentos:** Asaas (Pix, cartão e assinatura recorrente)
 - **Emails:** Resend
 - **Deploy:** Vercel
 - **Chat:** Tawk.to
@@ -106,7 +106,7 @@ O Portal Instituto Imagine é uma plataforma completa de doações e gestão de 
 ### **⚙️ Configuração**
 - **[🌍 Ambientes](./docs/AMBIENTES.md)** - Setup de desenvolvimento
 - **[🔧 Supabase](./docs/guias/CONFIGURACAO_SUPABASE.md)** - Configuração do banco
-- **[💳 Stripe](./docs/guias/CONFIGURACAO_STRIPE_COMPLETA.md)** - Setup de pagamentos
+- **[💳 Asaas](./docs/PAGAMENTOS_ASAAS_RESEND.md)** - Setup de pagamentos
 - **[📧 Emails](./docs/guias/CONFIGURACAO_RESEND.md)** - Sistema de emails
 
 ### **🏗️ Arquitetura**
@@ -119,7 +119,7 @@ O Portal Instituto Imagine é uma plataforma completa de doações e gestão de 
 ### **🚀 Produção**
 - **Site:** https://portal.imagineinstituto.com/
 - **Login:** https://portal.imagineinstituto.com/auth
-- **Checkout:** https://portal.imagineinstituto.com/embed/checkout/checkout-stripe?project=mock-1
+- **Checkout:** https://portal.imagineinstituto.com/embed/checkout?project=mock-1
 - **Admin:** https://portal.imagineinstituto.com/admin/dashboard
 
 ### **💻 Desenvolvimento**

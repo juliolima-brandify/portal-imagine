@@ -60,7 +60,7 @@ export default function DoacoesPage() {
     })
 
   const getTxId = (d: Donation) =>
-    d.asaas_payment_id || d.asaas_checkout_id || d.stripe_payment_intent_id || ''
+    d.asaas_payment_id || d.asaas_checkout_id || ''
 
   const filteredDonations = donations.filter((donation) => {
     let matchesFilter = true

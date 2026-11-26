@@ -16,13 +16,48 @@ export const MIN_DONATION_BRL = MIN_DONATION_CENTS / 100
 export const ASAAS_ITEM_NAME_MAX_LEN = 30
 export const ASAAS_ITEM_DESC_MAX_LEN = 100
 
-export type DonationStatus = 'pending' | 'completed' | 'failed' | 'refunded'
+export type DonationStatus =
+  | 'pending'
+  | 'completed'
+  | 'failed'
+  | 'refunded'
+  | 'partially_refunded'
 export type RecurringFrequency = 'monthly' | 'quarterly' | 'yearly'
 export type AsaasCycle = 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
 
 export const SPECIAL_CAMPAIGNS: Record<string, { slug: string; title: string }> = {
   geral: { slug: 'geral', title: 'Onde for mais necessário' },
   natal: { slug: 'natal', title: 'Natal Feliz 2026' },
+}
+
+/**
+ * Acesso seguro a campanhas especiais. Evita que chaves de protótipo
+ * (`constructor`, `__proto__`, `toString`) sejam tratadas como campanha válida.
+ */
+export function resolveSpecialCampaign(
+  key: string | null | undefined
+): { slug: string; title: string } | null {
+  const normalized = String(key ?? '').trim().toLowerCase()
+  if (!normalized) return null
+  if (!Object.prototype.hasOwnProperty.call(SPECIAL_CAMPAIGNS, normalized)) return null
+  return SPECIAL_CAMPAIGNS[normalized] ?? null
+}
+
+/**
+ * Escapa curingas do `LIKE`/`ILIKE` do Postgres (`\`, `%`, `_`) para que um e-mail
+ * digitado por terceiro não vire padrão de busca amplo.
+ */
+export function escapeLikePattern(value: string | null | undefined): string {
+  return String(value ?? '').replace(/[\\%_]/g, (char) => `\\${char}`)
+}
+
+/**
+ * Trunca por code points (nunca parte pares substitutos/emoji) e sem cortar no meio.
+ */
+export function truncateGraphemes(value: string, maxLength: number): string {
+  const codePoints = Array.from(value)
+  if (codePoints.length <= maxLength) return value
+  return codePoints.slice(0, maxLength).join('').trimEnd()
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -98,6 +133,8 @@ export function getDonationStatusLabelPTBR(status?: string | null): string {
       return 'Não concluída'
     case 'refunded':
       return 'Estornada'
+    case 'partially_refunded':
+      return 'Estornada parcialmente'
     default:
       return 'Em processamento'
   }
@@ -123,11 +160,13 @@ export function getDonationDestinationLabel(input: {
     return input.projectTitle.trim()
   }
   const slug = (input.campaignSlug || '').trim().toLowerCase()
-  if (slug && SPECIAL_CAMPAIGNS[slug]) {
-    return SPECIAL_CAMPAIGNS[slug].title
+  const campaign = resolveSpecialCampaign(slug)
+  if (campaign) {
+    return campaign.title
   }
-  if (input.projectId && SPECIAL_CAMPAIGNS[input.projectId.toLowerCase()]) {
-    return SPECIAL_CAMPAIGNS[input.projectId.toLowerCase()].title
+  const byProjectId = resolveSpecialCampaign(input.projectId)
+  if (byProjectId) {
+    return byProjectId.title
   }
   return 'Instituto Imagine — Geral'
 }
@@ -147,7 +186,11 @@ export function escapeHtml(raw: string | null | undefined): string {
  */
 export function sanitizeSpreadsheetCell(value: unknown): string {
   if (value === null || value === undefined) return ''
-  const str = String(value).replace(/\r?\n/g, ' ').trim()
+  // Remove caracteres invisíveis de largura zero/BOM que podem esconder uma fórmula.
+  const str = String(value)
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\r?\n/g, ' ')
+    .trim()
   if (!str) return ''
   if (/^[=+\-@\t\r]/.test(str)) {
     return `'${str}`
@@ -204,10 +247,10 @@ export function buildAsaasItemName(destinationTitle: string, isRecurring: boolea
 
   const prefix = isRecurring ? 'Mensal - ' : 'Doacao - '
   const full = `${prefix}${cleanTitle}`
-  if (full.length <= ASAAS_ITEM_NAME_MAX_LEN) {
+  if (Array.from(full).length <= ASAAS_ITEM_NAME_MAX_LEN) {
     return full
   }
-  return full.slice(0, ASAAS_ITEM_NAME_MAX_LEN).trimEnd()
+  return truncateGraphemes(full, ASAAS_ITEM_NAME_MAX_LEN)
 }
 
 export function buildAsaasItemDescription(
@@ -221,22 +264,54 @@ export function buildAsaasItemDescription(
     .trim()
 
   const kind = isRecurring ? `Doação ${getFrequencyLabelPTBR(frequency).toLowerCase()}` : 'Doação única'
-  const full = `${kind} — ${cleanTitle} (${INSTITUTE_NAME})`
-  if (full.length <= ASAAS_ITEM_DESC_MAX_LEN) {
+  const suffix = ` (${INSTITUTE_NAME})`
+  const titleWithPrefix = `${kind} — ${cleanTitle}`
+  const full = `${titleWithPrefix}${suffix}`
+
+  // Prioridade: manter o título completo do projeto. Se não couber, remove o sufixo
+  // e, por último, trunca o título por code points (nunca parte emoji).
+  if (Array.from(full).length <= ASAAS_ITEM_DESC_MAX_LEN) {
     return full
   }
-  return full.slice(0, ASAAS_ITEM_DESC_MAX_LEN).trimEnd()
+  if (Array.from(titleWithPrefix).length <= ASAAS_ITEM_DESC_MAX_LEN) {
+    return titleWithPrefix
+  }
+  return truncateGraphemes(titleWithPrefix, ASAAS_ITEM_DESC_MAX_LEN)
 }
 
 /**
  * O Asaas rejeita URLs http://localhost no campo callback (HTTP 400).
  * Garante sempre uma origem HTTPS pública válida para os callbacks do Asaas.
  */
+export const DEFAULT_PUBLIC_CALLBACK_HOSTS = [
+  'imagineinstituto.com',
+  'portal.imagineinstituto.com',
+]
+
+/**
+ * Allowlist de hosts aceitos para o callback pós-pagamento do Asaas.
+ * Um `Origin` arbitrário nunca deve virar URL de retorno.
+ */
+export function parseAllowedCallbackHosts(raw?: string | null): string[] {
+  const fromEnv = String(raw ?? '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean)
+  return fromEnv.length > 0 ? fromEnv : DEFAULT_PUBLIC_CALLBACK_HOSTS
+}
+
 export function resolvePublicCallbackBaseUrl(
   candidateOrigin?: string | null,
-  configuredBaseUrl?: string | null
+  configuredBaseUrl?: string | null,
+  allowedHosts: string[] = DEFAULT_PUBLIC_CALLBACK_HOSTS
 ): string {
   const DEFAULT_PUBLIC = 'https://imagineinstituto.com'
+  const allowed = allowedHosts.map((host) => host.toLowerCase())
+
+  const isAllowedHost = (hostname: string): boolean => {
+    const host = hostname.toLowerCase()
+    return allowed.some((domain) => host === domain || host.endsWith(`.${domain}`))
+  }
 
   const tryParsePublicHttps = (raw?: string | null): string | null => {
     if (!raw) return null
@@ -245,6 +320,7 @@ export function resolvePublicCallbackBaseUrl(
       if (parsed.protocol !== 'https:') return null
       const host = parsed.hostname.toLowerCase()
       if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')) return null
+      if (!isAllowedHost(host)) return null
       return parsed.origin
     } catch {
       return null
@@ -259,7 +335,8 @@ export function resolvePublicCallbackBaseUrl(
 }
 
 /**
- * Calcula a data da primeira cobrança de assinatura no fuso America/Sao_Paulo (formato YYYY-MM-DD HH:mm:ss aceito pelo Asaas).
+ * Calcula a data da primeira cobrança de assinatura no fuso America/Sao_Paulo.
+ * O Asaas documenta `subscription.nextDueDate` no formato `YYYY-MM-DD`.
  */
 export function calculateNextDueDateSaoPaulo(now: Date = new Date()): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -277,7 +354,7 @@ export function calculateNextDueDateSaoPaulo(now: Date = new Date()): string {
   const yyyy = utcDate.getUTCFullYear()
   const mm = String(utcDate.getUTCMonth() + 1).padStart(2, '0')
   const dd = String(utcDate.getUTCDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd} 12:00:00`
+  return `${yyyy}-${mm}-${dd}`
 }
 
 export interface AsaasCustomerDataInput {
@@ -294,6 +371,7 @@ export interface BuildAsaasCheckoutParams {
   isRecurring: boolean
   recurringFrequency?: RecurringFrequency | string | null
   callbackBaseUrl: string
+  callbackAllowedHosts?: string[]
   cancelPath?: string
   allowPix?: boolean
   customerData?: AsaasCustomerDataInput | null
@@ -329,7 +407,11 @@ export interface AsaasCheckoutPayload {
 }
 
 export function buildAsaasCheckoutPayload(params: BuildAsaasCheckoutParams): AsaasCheckoutPayload {
-  const safeBase = resolvePublicCallbackBaseUrl(params.callbackBaseUrl)
+  const safeBase = resolvePublicCallbackBaseUrl(
+    params.callbackBaseUrl,
+    null,
+    params.callbackAllowedHosts
+  )
   const safeCancelPath =
     params.cancelPath && params.cancelPath.startsWith('/') && !params.cancelPath.startsWith('//')
       ? params.cancelPath
@@ -411,6 +493,7 @@ export interface ClassifiedAsaasWebhook {
   customerId: string | null
   billingType: string | null
   valueBrl: number | null
+  refundedAmountBrl: number | null
   donorName: string | null
   donorEmail: string | null
 }
@@ -447,10 +530,13 @@ export function classifyAsaasWebhookEvent(rawPayload: unknown): ClassifiedAsaasW
       shouldNotifyDonorSuccess = true
       break
     case 'PAYMENT_REFUNDED':
-    case 'PAYMENT_PARTIALLY_REFUNDED':
     case 'PAYMENT_CHARGEBACK_REQUESTED':
     case 'PAYMENT_CHARGEBACK_DISPUTE':
       targetStatus = 'refunded'
+      shouldNotifyFailureOrRefund = true
+      break
+    case 'PAYMENT_PARTIALLY_REFUNDED':
+      targetStatus = 'partially_refunded'
       shouldNotifyFailureOrRefund = true
       break
     case 'CHECKOUT_EXPIRED':
@@ -497,6 +583,23 @@ export function classifyAsaasWebhookEvent(rawPayload: unknown): ClassifiedAsaasW
         ? checkout.items[0].value
         : null
 
+  // O Asaas informa o valor estornado em `refundedValue` (estornos parciais).
+  // Para estorno total, o valor estornado é o próprio valor da cobrança.
+  const rawRefundedValue =
+    typeof payment?.refundedValue === 'number'
+      ? payment.refundedValue
+      : typeof payment?.refundValue === 'number'
+        ? payment.refundValue
+        : null
+  const refundedAmountBrl =
+    eventType === 'PAYMENT_REFUNDED'
+      ? rawValue !== null && Number.isFinite(rawValue)
+        ? centsToBrl(brlToCents(rawValue))
+        : null
+      : rawRefundedValue !== null && Number.isFinite(rawRefundedValue)
+        ? centsToBrl(brlToCents(rawRefundedValue))
+        : null
+
   const customerData =
     checkout?.customerData && typeof checkout.customerData === 'object'
       ? checkout.customerData
@@ -519,6 +622,7 @@ export function classifyAsaasWebhookEvent(rawPayload: unknown): ClassifiedAsaasW
     customerId,
     billingType,
     valueBrl: rawValue !== null && Number.isFinite(rawValue) && rawValue > 0 ? centsToBrl(brlToCents(rawValue)) : null,
+    refundedAmountBrl,
     donorName,
     donorEmail,
   }
@@ -532,9 +636,19 @@ export function resolveNextDonationStatus(
   targetStatus: DonationStatus | null
 ): DonationStatus {
   if (!targetStatus) return currentStatus
+  // Estorno total é terminal.
   if (currentStatus === 'refunded') return 'refunded'
+  // Estorno parcial é terminal para novos eventos de pagamento, mas pode evoluir para total.
+  if (currentStatus === 'partially_refunded') {
+    return targetStatus === 'refunded' ? 'refunded' : 'partially_refunded'
+  }
+  // Eventos atrasados nunca rebaixam uma doação já confirmada.
   if (currentStatus === 'completed' && (targetStatus === 'pending' || targetStatus === 'failed')) {
     return 'completed'
+  }
+  // Estorno parcial só faz sentido sobre doação confirmada.
+  if (targetStatus === 'partially_refunded' && currentStatus !== 'completed') {
+    return currentStatus
   }
   return targetStatus
 }
@@ -552,10 +666,14 @@ export function sanitizePublicSessionResponse(row: {
   payment_method?: string | null
   is_recurring?: boolean | null
   recurring_frequency?: string | null
+  receipt_sent_at?: string | null
 }) {
   const numAmount = typeof row.amount === 'string' ? Number(row.amount) : row.amount
   const safeStatus: DonationStatus =
-    row.status === 'completed' || row.status === 'failed' || row.status === 'refunded'
+    row.status === 'completed' ||
+    row.status === 'failed' ||
+    row.status === 'refunded' ||
+    row.status === 'partially_refunded'
       ? row.status
       : 'pending'
 
@@ -574,6 +692,7 @@ export function sanitizePublicSessionResponse(row: {
     paymentMethod: normalizePaymentMethodLabel(row.payment_method),
     isRecurring: Boolean(row.is_recurring),
     recurringFrequency: row.is_recurring ? getFrequencyLabelPTBR(row.recurring_frequency) : null,
+    receiptSentAt: row.receipt_sent_at ? String(row.receipt_sent_at) : null,
   }
 }
 

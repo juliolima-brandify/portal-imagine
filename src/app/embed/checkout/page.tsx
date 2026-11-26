@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getProject } from '@/lib/database'
-import { SPECIAL_CAMPAIGNS } from '@/lib/payments'
+import { resolveSpecialCampaign } from '@/lib/payments'
 import DonationEmbed from '@/components/DonationEmbed'
 
 interface EmbedProjectView {
@@ -33,13 +33,14 @@ function EmbedCheckoutContent() {
       const requestedId = (searchParams.get('project') || 'geral').trim()
       const lower = requestedId.toLowerCase()
 
-      if (SPECIAL_CAMPAIGNS[lower]) {
+      const special = resolveSpecialCampaign(lower)
+      if (special) {
         if (!active) return
         setProject({
-          id: SPECIAL_CAMPAIGNS[lower].slug,
-          title: SPECIAL_CAMPAIGNS[lower].title,
+          id: special.slug,
+          title: special.title,
           description:
-            lower === 'natal'
+            special.slug === 'natal'
               ? 'Campanha anual de arrecadação de brinquedos novos para crianças atendidas pelo Instituto Imagine.'
               : 'Sua contribuição é direcionada pelo Instituto Imagine para a frente social com maior necessidade imediata.',
           targetAmount: 0,

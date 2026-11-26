@@ -11,7 +11,43 @@ export const isSupabaseConfigured = () => {
          (supabaseAnonKey.startsWith('eyJ') || supabaseAnonKey.startsWith('sb_publishable_'))
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+const REMEMBER_KEY = 'imagine.rememberMe'
+
+function createRememberAwareStorage() {
+  const safe = () => typeof window !== 'undefined'
+  return {
+    getItem(key: string) {
+      if (!safe()) return null
+      const remember = window.localStorage.getItem(REMEMBER_KEY)
+      if (remember === 'false') return window.sessionStorage.getItem(key)
+      return window.localStorage.getItem(key)
+    },
+    setItem(key: string, value: string) {
+      if (!safe()) return
+      const remember = window.localStorage.getItem(REMEMBER_KEY)
+      if (remember === 'false') {
+        window.sessionStorage.setItem(key, value)
+        window.localStorage.removeItem(key)
+      } else {
+        window.localStorage.setItem(key, value)
+        window.sessionStorage.removeItem(key)
+      }
+    },
+    removeItem(key: string) {
+      if (!safe()) return
+      window.localStorage.removeItem(key)
+      window.sessionStorage.removeItem(key)
+    },
+  }
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    // "Lembrar-me": quando ativo, a sessão fica no localStorage (padrão).
+    // Quando desativado, fica só no sessionStorage e some ao fechar a aba.
+    storage: createRememberAwareStorage(),
+  },
+})
 
 export const isLocalEnvironment = () => {
   if (typeof window === 'undefined') return false

@@ -21,6 +21,8 @@ export function resolveAsaasConfig(): AsaasConfig | null {
   const prodKey = (process.env.ASAAS_API_KEY || '').trim()
   const sandboxKey = (process.env.ASAAS_API_KEY_SANDBOX || '').trim()
 
+  // ASAAS_ENV é obrigatório. Sem ele, o sistema falha fechado em vez de
+  // escolher sandbox/produção por NODE_ENV.
   if (rawEnv === 'sandbox') {
     if (!sandboxKey) return null
     return {
@@ -39,29 +41,8 @@ export function resolveAsaasConfig(): AsaasConfig | null {
     }
   }
 
-  // Fallback seguro: usa produção apenas quando NODE_ENV === 'production' e a chave existe
-  if (process.env.NODE_ENV === 'production' && prodKey) {
-    return {
-      env: 'production',
-      baseUrl: ASAAS_PROD_BASE_URL,
-      apiKey: prodKey,
-    }
-  }
-
-  if (sandboxKey) {
-    return {
-      env: 'sandbox',
-      baseUrl: ASAAS_SANDBOX_BASE_URL,
-      apiKey: sandboxKey,
-    }
-  }
-
-  if (prodKey) {
-    return {
-      env: 'production',
-      baseUrl: ASAAS_PROD_BASE_URL,
-      apiKey: prodKey,
-    }
+  if (rawEnv) {
+    console.error(`[Asaas] ASAAS_ENV inválido: "${rawEnv}". Use "production" ou "sandbox".`)
   }
 
   return null

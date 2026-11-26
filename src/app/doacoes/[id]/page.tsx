@@ -113,7 +113,6 @@ export default function DoacaoDetailPage() {
   const txId =
     donation.asaas_payment_id ||
     donation.asaas_checkout_id ||
-    donation.stripe_payment_intent_id ||
     donation.id
 
   const handleDownloadReceipt = () => {

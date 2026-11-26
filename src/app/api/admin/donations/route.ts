@@ -26,21 +26,12 @@ export async function GET(request: NextRequest) {
     const methodFilter = (searchParams.get('method') || 'all').trim().toLowerCase()
     const searchQuery = (searchParams.get('q') || '').trim().toLowerCase()
 
-    // Carregar métricas globais exatas em centavos + projetos em paralelo
-    const [allStatsRes, projectsRes] = await Promise.all([
-      supabaseAdmin
-        .from('donations')
-        .select('id, amount, status, payment_method, is_recurring')
-        .limit(5000),
+    // Carregar métricas globais exatas, paginando para não bater no teto de 1.000 do PostgREST
+    const [statsRows, projectsRes] = await Promise.all([
+      loadAllStatsRows(),
       supabaseAdmin.from('projects').select('id, title, slug'),
     ])
 
-    if (allStatsRes.error) {
-      console.error('[AdminDonations] Erro ao carregar estatísticas:', allStatsRes.error)
-      return jsonNoStore({ error: 'Erro ao carregar doações.' }, { status: 500 })
-    }
-
-    const statsRows = allStatsRes.data || []
     const stats = {
       total: statsRows.length,
       completedCount: statsRows.filter((r) => r.status === 'completed').length,
@@ -59,60 +50,34 @@ export async function GET(request: NextRequest) {
       projectMap.set(p.id, { title: p.title, slug: p.slug || null })
     }
 
-    // Buscar linhas para filtragem/paginação
-    let listQuery = supabaseAdmin
-      .from('donations')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: true })
+    const from = (page - 1) * pageSize
+    const to = from + pageSize - 1
 
-    if (statusFilter !== 'all') {
-      if (statusFilter === 'failed') {
-        listQuery = listQuery.in('status', ['failed', 'refunded'])
-      } else if (['completed', 'pending', 'refunded'].includes(statusFilter)) {
-        listQuery = listQuery.eq('status', statusFilter)
-      }
-    }
-
-    if (methodFilter === 'recurring') {
-      listQuery = listQuery.eq('is_recurring', true)
-    } else if (methodFilter === 'pix') {
-      listQuery = listQuery.ilike('payment_method', '%pix%')
-    } else if (methodFilter === 'card') {
-      listQuery = listQuery.or('payment_method.ilike.%credit%,payment_method.ilike.%cart%')
-    }
-
-    // Se não houver busca textual livre, pagina direto no banco; com busca textual, filtra com segurança no lote recente
+    // Sem busca textual: aplica filtros direto no banco, com paginação exata.
     if (!searchQuery) {
-      const from = (page - 1) * pageSize
-      const to = from + pageSize - 1
-      const { data: pageRows, count, error: pageErr } = await supabaseAdmin
+      let pageQuery = supabaseAdmin
         .from('donations')
         .select('*', { count: 'exact' })
-        .match(
-          statusFilter !== 'all' && statusFilter !== 'failed'
-            ? { status: statusFilter }
-            : {}
-        )
         .order('created_at', { ascending: false })
         .order('id', { ascending: true })
-        .range(from, to)
 
-      // Se houver filtro composto (failed+refunded ou methodFilter), usa listQuery com count
-      if (statusFilter === 'failed' || methodFilter !== 'all' || pageErr) {
-        const { data: filteredRows, error: fErr } = await listQuery.limit(1000)
-        if (fErr) {
-          return jsonNoStore({ error: 'Erro ao filtrar doações.' }, { status: 500 })
-        }
-        const allItems = await hydrateDonations(filteredRows || [], projectMap)
-        const slice = allItems.slice(from, from + pageSize)
-        return jsonNoStore({
-          data: slice,
-          total: allItems.length,
-          page,
-          pageSize,
-          stats,
-        })
+      if (statusFilter === 'failed') {
+        pageQuery = pageQuery.in('status', ['failed', 'refunded'])
+      } else if (['completed', 'pending', 'refunded', 'partially_refunded'].includes(statusFilter)) {
+        pageQuery = pageQuery.eq('status', statusFilter)
+      }
+
+      if (methodFilter === 'recurring') {
+        pageQuery = pageQuery.eq('is_recurring', true)
+      } else if (methodFilter === 'pix') {
+        pageQuery = pageQuery.ilike('payment_method', '%pix%')
+      } else if (methodFilter === 'card') {
+        pageQuery = pageQuery.ilike('payment_method', '%credit%')
+      }
+
+      const { data: pageRows, count, error: pageErr } = await pageQuery.range(from, to)
+      if (pageErr) {
+        return jsonNoStore({ error: 'Erro ao listar doações.' }, { status: 500 })
       }
 
       const items = await hydrateDonations(pageRows || [], projectMap)
@@ -125,26 +90,54 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const { data: candidateRows, error: searchErr } = await listQuery.limit(1000)
+    // Busca textual: filtra no servidor (sem cortar no lote de 1.000).
+    const safeTerm = sanitizeSearchTerm(searchQuery)
+    if (!safeTerm) {
+      return jsonNoStore({ data: [], total: 0, page, pageSize, stats })
+    }
+    const matchedProjectIds = await findProjectIdsByQuery(safeTerm)
+    const searchPattern = `%${safeTerm}%`
+    const orFilters = [
+      `donor_name.ilike.${searchPattern}`,
+      `donor_email.ilike.${searchPattern}`,
+      `id.ilike.${searchPattern}`,
+      `asaas_payment_id.ilike.${searchPattern}`,
+      `asaas_checkout_id.ilike.${searchPattern}`,
+    ]
+    if (matchedProjectIds.length > 0) {
+      orFilters.push(`project_id.in.(${matchedProjectIds.join(',')})`)
+    }
+
+    let searchQueryBuilder = supabaseAdmin
+      .from('donations')
+      .select('*', { count: 'exact' })
+      .or(orFilters.join(','))
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+
+    if (statusFilter === 'failed') {
+      searchQueryBuilder = searchQueryBuilder.in('status', ['failed', 'refunded'])
+    } else if (['completed', 'pending', 'refunded', 'partially_refunded'].includes(statusFilter)) {
+      searchQueryBuilder = searchQueryBuilder.eq('status', statusFilter)
+    }
+
+    if (methodFilter === 'recurring') {
+      searchQueryBuilder = searchQueryBuilder.eq('is_recurring', true)
+    } else if (methodFilter === 'pix') {
+      searchQueryBuilder = searchQueryBuilder.ilike('payment_method', '%pix%')
+    } else if (methodFilter === 'card') {
+      searchQueryBuilder = searchQueryBuilder.ilike('payment_method', '%credit%')
+    }
+
+    const { data: searchRows, count: searchCount, error: searchErr } = await searchQueryBuilder.range(from, to)
     if (searchErr) {
       return jsonNoStore({ error: 'Erro ao buscar doações.' }, { status: 500 })
     }
 
-    const hydrated = await hydrateDonations(candidateRows || [], projectMap)
-    const matched = hydrated.filter((item) => {
-      return (
-        item.donorName.toLowerCase().includes(searchQuery) ||
-        item.donorEmail.toLowerCase().includes(searchQuery) ||
-        item.projectTitle.toLowerCase().includes(searchQuery) ||
-        item.id.toLowerCase().includes(searchQuery) ||
-        item.transactionId.toLowerCase().includes(searchQuery)
-      )
-    })
-
-    const from = (page - 1) * pageSize
+    const hydrated = await hydrateDonations(searchRows || [], projectMap)
     return jsonNoStore({
-      data: matched.slice(from, from + pageSize),
-      total: matched.length,
+      data: hydrated,
+      total: typeof searchCount === 'number' ? searchCount : hydrated.length,
       page,
       pageSize,
       stats,
@@ -153,6 +146,48 @@ export async function GET(request: NextRequest) {
     console.error('[AdminDonations] Exceção inesperada:', err)
     return jsonNoStore({ error: 'Erro interno ao listar doações.' }, { status: 500 })
   }
+}
+
+async function loadAllStatsRows(): Promise<
+  Array<{ amount: any; status: string; payment_method: string | null; is_recurring: boolean }>
+> {
+  const rows: Array<{ amount: any; status: string; payment_method: string | null; is_recurring: boolean }> = []
+  const pageSize = 1000
+  let from = 0
+  for (;;) {
+    const { data, error } = await supabaseAdmin
+      .from('donations')
+      .select('amount, status, payment_method, is_recurring')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    const batch = data || []
+    rows.push(...batch)
+    if (batch.length < pageSize) break
+    from += pageSize
+  }
+  return rows
+}
+
+function sanitizeSearchTerm(value: string): string {
+  // Remove curingas e caracteres que quebram a sintaxe do filtro `.or()` do PostgREST.
+  return value.replace(/[%_(),"\\'*]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+async function findProjectIdsByQuery(query: string): Promise<string[]> {
+  const safe = sanitizeSearchTerm(query)
+  if (!safe) return []
+  const { data, error } = await supabaseAdmin
+    .from('projects')
+    .select('id')
+    .ilike('title', `%${safe}%`)
+    .limit(200)
+  if (error) {
+    console.error('[AdminDonations] Erro ao buscar projetos:', error)
+    return []
+  }
+  return (data || []).map((p) => p.id)
 }
 
 async function hydrateDonations(
@@ -189,7 +224,6 @@ async function hydrateDonations(
     const transactionId =
       row.asaas_payment_id ||
       row.asaas_checkout_id ||
-      row.stripe_payment_intent_id ||
       '—'
 
     return {

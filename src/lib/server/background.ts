@@ -1,28 +1,44 @@
 import 'server-only'
+import { getRequestExecutionContext } from 'vinext/shims/request-context'
 
 /**
- * Agenda tarefa assíncrona pós-resposta compatível com Cloudflare Workers (waitUntil)
- * e com ambiente local Node/Vite sem derrubar a resposta HTTP principal.
+ * Agenda uma tarefa pós-resposta sem derrubar a resposta HTTP principal.
+ *
+ * Ordem de resolução:
+ * 1. ExecutionContext do vinext/Cloudflare Workers (`ctx.waitUntil`).
+ * 2. `globalThis.waitUntil` quando o runtime o expõe.
+ * 3. Execução normal da Promise (Node local), com erro sempre capturado.
+ *
+ * Qualquer falha de resolução é tratada: o webhook nunca deve responder 500
+ * depois de já ter gravado no banco.
  */
-export function runInBackground(taskFactory: () => Promise<unknown>): void {
+export function runInBackground(taskFactory: () => Promise<unknown>): Promise<void> {
   const promise = Promise.resolve()
     .then(() => taskFactory())
+    .then(() => undefined)
     .catch((err) => {
-      console.error('[BackgroundTask] Falha tratada em tarefa assíncrona:', err)
+      console.error('[BackgroundTask] Falha tratada em tarefa de fundo', err)
     })
 
-  // Em Cloudflare Workers com nodejs_compat/vinext, tenta registrar no ciclo de vida da isolate
-  const dynamicImport = new Function('specifier', 'return import(specifier)') as (
-    specifier: string
-  ) => Promise<any>
+  try {
+    const ctx = getRequestExecutionContext()
+    if (ctx && typeof ctx.waitUntil === 'function') {
+      ctx.waitUntil(promise)
+      return promise
+    }
+  } catch (err) {
+    console.error('[BackgroundTask] Falha ao obter ExecutionContext', err)
+  }
 
-  dynamicImport('cloudflare:workers')
-    .then((mod) => {
-      if (mod && typeof mod.waitUntil === 'function') {
-        mod.waitUntil(promise)
-      }
-    })
-    .catch(() => {
-      // Ambiente Node local fora do workerd: a promise já está em execução com .catch()
-    })
+  try {
+    const globalWaitUntil = (globalThis as { waitUntil?: (p: Promise<unknown>) => void }).waitUntil
+    if (typeof globalWaitUntil === 'function') {
+      globalWaitUntil(promise)
+      return promise
+    }
+  } catch (err) {
+    console.error('[BackgroundTask] Falha ao registrar waitUntil global', err)
+  }
+
+  return promise
 }

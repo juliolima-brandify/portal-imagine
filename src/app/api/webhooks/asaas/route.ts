@@ -4,8 +4,6 @@ import { jsonNoStore } from '@/lib/admin-http'
 import {
   classifyAsaasWebhookEvent,
   getDonationDestinationLabel,
-  isValidUuid,
-  resolveNextDonationStatus,
   type DonationStatus,
 } from '@/lib/payments'
 import {
@@ -32,14 +30,51 @@ interface AppliedWebhookOutcome {
   statusChanged: boolean
 }
 
+const VALID_STATUSES = new Set<DonationStatus>([
+  'pending',
+  'completed',
+  'failed',
+  'refunded',
+  'partially_refunded',
+])
+
+function parseRpcOutcome(data: unknown): AppliedWebhookOutcome {
+  const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  const asStatus = (value: unknown): DonationStatus | null =>
+    typeof value === 'string' && VALID_STATUSES.has(value as DonationStatus)
+      ? (value as DonationStatus)
+      : null
+
+  return {
+    duplicate: Boolean(d.duplicate),
+    matched: Boolean(d.matched),
+    createdRenewal: Boolean(d.created_renewal),
+    donationId: typeof d.donation_id === 'string' ? d.donation_id : null,
+    previousStatus: asStatus(d.previous_status),
+    currentStatus: asStatus(d.current_status),
+    statusChanged: Boolean(d.status_changed),
+  }
+}
+
+function isMissingRpcError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: string }).code
+  const message = String((error as { message?: string }).message ?? '')
+  return (
+    code === 'PGRST202' ||
+    code === '42883' ||
+    /could not find the function|function .* does not exist/i.test(message)
+  )
+}
+
 export async function POST(request: NextRequest) {
-  const tokenHeader = request.headers.get('asaas-access-token')
-  if (!verifyAsaasWebhookToken(tokenHeader)) {
+  const token = request.headers.get('asaas-access-token')
+  if (!verifyAsaasWebhookToken(token)) {
     return jsonNoStore({ error: 'Não autorizado' }, { status: 401 })
   }
 
   if (!isSupabaseAdminConfigured()) {
-    return jsonNoStore({ error: 'Banco indisponível' }, { status: 503 })
+    return jsonNoStore({ error: 'Webhook temporariamente indisponível' }, { status: 503 })
   }
 
   const parsed = await readBoundedJson(request, 256 * 1024)
@@ -52,52 +87,20 @@ export async function POST(request: NextRequest) {
     return jsonNoStore({ error: 'Evento de webhook inválido' }, { status: 400 })
   }
 
-  let paymentId = classified.paymentId
-  let subscriptionId = classified.subscriptionId
-  let customerId = classified.customerId
-  let billingType = classified.billingType
-  let valueBrl = classified.valueBrl
-  let donorName = classified.donorName
-  let donorEmail = classified.donorEmail
-
-  // Quando chega CHECKOUT_PAID, busca resumo da cobrança para capturar paymentId / billingType / customerId
-  if (classified.checkoutId && (!paymentId || !customerId || !billingType)) {
-    const paymentSummary = await getAsaasPaymentByCheckoutSession(classified.checkoutId)
-    if (paymentSummary) {
-      paymentId = paymentId || paymentSummary.id
-      customerId = customerId || paymentSummary.customerId
-      subscriptionId = subscriptionId || paymentSummary.subscriptionId
-      billingType = billingType || paymentSummary.billingType
-      valueBrl = valueBrl ?? paymentSummary.value
-    }
-  }
-
-  // Enriquecer nome e e-mail do doador digitados na tela segura do Asaas
-  if (customerId && (!donorEmail || !donorName)) {
-    const customer = await getAsaasCustomer(customerId)
-    if (customer) {
-      donorName = donorName || customer.name
-      donorEmail = donorEmail || customer.email
-    }
-  }
-
   let outcome: AppliedWebhookOutcome
-
   try {
-    outcome = await applyWebhookToDatabase({
-      classified,
-      paymentId,
-      subscriptionId,
-      customerId,
-      billingType,
-      valueBrl,
-      donorName,
-      donorEmail,
-      rawPayload: parsed.data,
-    })
-  } catch (err) {
-    console.error('[WebhookAsaas] Erro ao persistir evento no banco:', err)
-    return jsonNoStore({ error: 'Erro interno ao persistir evento' }, { status: 500 })
+    outcome = await applyAsaasWebhookEvent({ classified, rawPayload: parsed.data })
+  } catch (error) {
+    if (isMissingRpcError(error)) {
+      // Sem a migração, o fallback perdia a 2ª parcela e não deduplicava.
+      // 503 faz o Asaas reenviar quando a RPC estiver disponível.
+      console.error(
+        '[WebhookAsaas] RPC apply_asaas_webhook_event ausente. Migração não aplicada; respondendo 503.'
+      )
+      return jsonNoStore({ error: 'Webhook temporariamente indisponível' }, { status: 503 })
+    }
+    console.error('[WebhookAsaas] Erro ao persistir evento', error)
+    return jsonNoStore({ error: 'Erro interno ao processar evento' }, { status: 500 })
   }
 
   if (outcome.duplicate) {
@@ -108,43 +111,37 @@ export async function POST(request: NextRequest) {
     return jsonNoStore({ received: true, matched: false })
   }
 
-  const finalDonationId = outcome.donationId
   const becameCompleted =
     outcome.currentStatus === 'completed' && (outcome.statusChanged || outcome.createdRenewal)
-  const becameAlertState =
-    classified.shouldNotifyFailureOrRefund && outcome.statusChanged
+  const becameAlertState = classified.shouldNotifyFailureOrRefund && outcome.statusChanged
 
   if (becameCompleted || becameAlertState) {
-    runInBackground(async () => {
-      await handlePostWebhookSideEffects({
-        donationId: finalDonationId,
+    const donationId = outcome.donationId
+    runInBackground(() =>
+      handlePostWebhookSideEffects({
+        donationId,
         eventType: classified.eventType,
         becameCompleted,
         becameAlertState,
-        fallbackDonorName: donorName,
-        fallbackDonorEmail: donorEmail,
-        fallbackPaymentId: paymentId,
-        fallbackBillingType: billingType,
+        checkoutId: classified.checkoutId,
+        customerId: classified.customerId,
+        paymentId: classified.paymentId,
+        billingType: classified.billingType,
+        donorName: classified.donorName,
+        donorEmail: classified.donorEmail,
       })
-    })
+    )
   }
 
   return jsonNoStore({
     received: true,
-    donationId: finalDonationId,
+    donationId: outcome.donationId,
     status: outcome.currentStatus,
   })
 }
 
-async function applyWebhookToDatabase(params: {
+async function applyAsaasWebhookEvent(params: {
   classified: NonNullable<ReturnType<typeof classifyAsaasWebhookEvent>>
-  paymentId: string | null
-  subscriptionId: string | null
-  customerId: string | null
-  billingType: string | null
-  valueBrl: number | null
-  donorName: string | null
-  donorEmail: string | null
   rawPayload: unknown
 }): Promise<AppliedWebhookOutcome> {
   const { classified } = params
@@ -154,89 +151,20 @@ async function applyWebhookToDatabase(params: {
     p_event_type: classified.eventType,
     p_external_reference: classified.externalReference,
     p_asaas_checkout_id: classified.checkoutId,
-    p_asaas_payment_id: params.paymentId,
-    p_asaas_subscription_id: params.subscriptionId,
-    p_asaas_customer_id: params.customerId,
+    p_asaas_payment_id: classified.paymentId,
+    p_asaas_subscription_id: classified.subscriptionId,
+    p_asaas_customer_id: classified.customerId,
     p_target_status: classified.targetStatus,
-    p_payment_method: params.billingType,
-    p_amount: params.valueBrl,
-    p_donor_name: params.donorName,
-    p_donor_email: params.donorEmail,
-    p_payload: params.rawPayload ?? {},
+    p_payment_method: classified.billingType,
+    p_amount: classified.valueBrl,
+    p_donor_name: classified.donorName,
+    p_donor_email: classified.donorEmail,
+    p_payload: params.rawPayload,
+    p_refunded_amount: classified.refundedAmountBrl,
   })
 
-  if (!rpcRes.error && rpcRes.data && typeof rpcRes.data === 'object') {
-    const d = rpcRes.data as Record<string, any>
-    return {
-      duplicate: Boolean(d.duplicate),
-      matched: Boolean(d.matched),
-      createdRenewal: Boolean(d.created_renewal),
-      donationId: typeof d.donation_id === 'string' ? d.donation_id : null,
-      previousStatus: (d.previous_status as DonationStatus) || null,
-      currentStatus: (d.current_status as DonationStatus) || null,
-      statusChanged: Boolean(d.status_changed),
-    }
-  }
-
-  // Fallback seguro apenas caso a migração SQL ainda não tenha sido aplicada em ambiente dev
-  if (rpcRes.error && rpcRes.error.code !== 'PGRST202' && rpcRes.error.code !== '42883') {
-    throw rpcRes.error
-  }
-
-  if (!classified.externalReference || !isValidUuid(classified.externalReference)) {
-    return {
-      duplicate: false,
-      matched: false,
-      createdRenewal: false,
-      donationId: null,
-      previousStatus: null,
-      currentStatus: null,
-      statusChanged: false,
-    }
-  }
-
-  const { data: existing, error: fetchErr } = await supabaseAdmin
-    .from('donations')
-    .select('id, status')
-    .eq('id', classified.externalReference)
-    .maybeSingle()
-
-  if (fetchErr) throw fetchErr
-  if (!existing) {
-    return {
-      duplicate: false,
-      matched: false,
-      createdRenewal: false,
-      donationId: null,
-      previousStatus: null,
-      currentStatus: null,
-      statusChanged: false,
-    }
-  }
-
-  const prevStatus = (existing.status as DonationStatus) || 'pending'
-  const nextStatus = resolveNextDonationStatus(prevStatus, classified.targetStatus)
-
-  const updates: Record<string, unknown> = { status: nextStatus }
-  if (params.billingType) updates.payment_method = params.billingType
-  if (params.paymentId) updates.stripe_payment_intent_id = params.paymentId
-
-  const { error: updErr } = await supabaseAdmin
-    .from('donations')
-    .update(updates)
-    .eq('id', existing.id)
-
-  if (updErr) throw updErr
-
-  return {
-    duplicate: false,
-    matched: true,
-    createdRenewal: false,
-    donationId: existing.id,
-    previousStatus: prevStatus,
-    currentStatus: nextStatus,
-    statusChanged: prevStatus !== nextStatus,
-  }
+  if (rpcRes.error) throw rpcRes.error
+  return parseRpcOutcome(rpcRes.data)
 }
 
 async function handlePostWebhookSideEffects(params: {
@@ -244,134 +172,131 @@ async function handlePostWebhookSideEffects(params: {
   eventType: string
   becameCompleted: boolean
   becameAlertState: boolean
-  fallbackDonorName: string | null
-  fallbackDonorEmail: string | null
-  fallbackPaymentId: string | null
-  fallbackBillingType: string | null
+  checkoutId: string | null
+  customerId: string | null
+  paymentId: string | null
+  billingType: string | null
+  donorName: string | null
+  donorEmail: string | null
 }): Promise<void> {
-  const { data: row } = await supabaseAdmin
+  let paymentId = params.paymentId
+  let customerId = params.customerId
+  let billingType = params.billingType
+  let donorName = params.donorName
+  let donorEmail = params.donorEmail
+
+  // Enriquecimento fora do caminho crítico do webhook (R3: responder 200 rápido).
+  if (params.checkoutId && (!paymentId || !customerId || !billingType)) {
+    const summary = await getAsaasPaymentByCheckoutSession(params.checkoutId)
+    if (summary) {
+      paymentId = paymentId ?? summary.id
+      customerId = customerId ?? summary.customerId
+      billingType = billingType ?? summary.billingType
+    }
+  }
+
+  if (customerId && (!donorEmail || !donorName)) {
+    const customer = await getAsaasCustomer(customerId)
+    if (customer) {
+      donorName = donorName ?? customer.name
+      donorEmail = donorEmail ?? customer.email
+    }
+  }
+
+  const rowRes = await supabaseAdmin
     .from('donations')
     .select('*, projects:project_id(title)')
     .eq('id', params.donationId)
     .maybeSingle()
 
+  const row = rowRes.data
   if (!row) return
+
+  const enrichUpdates: Record<string, unknown> = {}
+  if (paymentId && !row.asaas_payment_id) enrichUpdates.asaas_payment_id = paymentId
+  if (customerId && !row.asaas_customer_id) enrichUpdates.asaas_customer_id = customerId
+  if (billingType && !row.payment_method) enrichUpdates.payment_method = billingType
+  if (donorName && !row.donor_name) enrichUpdates.donor_name = donorName
+  if (donorEmail && !row.donor_email) enrichUpdates.donor_email = donorEmail.toLowerCase()
+
+  if (Object.keys(enrichUpdates).length > 0) {
+    await supabaseAdmin.from('donations').update(enrichUpdates).eq('id', params.donationId)
+  }
 
   const projectObj =
     row.projects && typeof row.projects === 'object' && !Array.isArray(row.projects)
-      ? (row.projects as { title?: string })
+      ? (row.projects as { title: string })
       : null
-
   const projectTitle = getDonationDestinationLabel({
-    projectTitle: projectObj?.title || null,
-    campaignSlug: (row as any).campaign_slug || null,
-    projectId: row.project_id,
+    projectTitle: projectObj?.title,
+    campaignSlug: row.campaign_slug,
   })
 
-  let donorEmail: string | null =
-    (row as any).donor_email || params.fallbackDonorEmail || null
-  let donorName: string | null =
-    (row as any).donor_name || params.fallbackDonorName || null
-
-  if (row.user_id && (!donorEmail || !donorName)) {
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('email, name')
-      .eq('id', row.user_id)
-      .maybeSingle()
-    if (profile) {
-      donorEmail = donorEmail || profile.email || null
-      donorName = donorName || profile.name || null
-    }
-  }
-
-  const amountNum = Number(row.amount) || 0
-  const txId =
-    (row as any).asaas_payment_id ||
-    params.fallbackPaymentId ||
-    row.stripe_payment_intent_id ||
-    null
-  const method = row.payment_method || params.fallbackBillingType || 'PIX'
+  const effectiveDonorEmail = row.donor_email || (donorEmail ? donorEmail.toLowerCase() : null)
+  const effectiveDonorName = row.donor_name || donorName
+  const amount = Number(row.amount)
+  const txId = row.asaas_payment_id || paymentId || null
+  const method = row.payment_method || billingType || 'PIX'
 
   if (params.becameCompleted) {
-    // 1) Decisão 3A: criar/vincular conta automática no Portal sem senha em texto plano
     const provision = await ensureDonorAccountAndAccessLink({
-      email: donorEmail,
-      name: donorName,
+      email: effectiveDonorEmail,
+      name: effectiveDonorName,
     })
 
     if (provision.userId && !row.user_id) {
       await supabaseAdmin
         .from('donations')
         .update({ user_id: provision.userId })
-        .eq('id', row.id)
+        .eq('id', params.donationId)
     }
 
-    // 2) Enviar recibo transacional ao doador (evitando duplicidade se receipt_sent_at já estiver preenchido)
-    const alreadySentReceipt = Boolean((row as any).receipt_sent_at)
-    if (donorEmail && !alreadySentReceipt) {
-      const receiptRes = await sendDonorReceiptEmail({
-        to: donorEmail,
-        donorName,
+    if (effectiveDonorEmail && !row.receipt_sent_at) {
+      const receipt = await sendDonorReceiptEmail({
+        to: effectiveDonorEmail,
+        donorName: effectiveDonorName,
         anonymous: Boolean(row.anonymous),
-        amount: amountNum,
+        amount,
         projectTitle,
-        donationId: row.id,
+        donationId: params.donationId,
         transactionId: txId,
         paymentMethod: method,
         isRecurring: Boolean(row.is_recurring),
         recurringFrequency: row.recurring_frequency,
         message: row.message,
         createdAt: row.created_at,
-        portalAccessUrl: provision.portalAccessUrl,
         isNewAccount: provision.isNewAccount,
+        portalAccessUrl: provision.portalAccessUrl,
       })
 
-      if (receiptRes.sent) {
+      if (receipt.sent) {
         await supabaseAdmin
           .from('donations')
           .update({ receipt_sent_at: new Date().toISOString() })
-          .eq('id', row.id)
-          .then(() => undefined, () => undefined)
+          .eq('id', params.donationId)
       }
     }
 
-    // 3) Notificar administrador e registrar notificação interna no Portal (se user_id existir)
     await sendAdminNewDonationEmail({
-      donorName,
-      donorEmail,
+      donorName: effectiveDonorName,
+      donorEmail: effectiveDonorEmail,
       anonymous: Boolean(row.anonymous),
-      amount: amountNum,
+      amount,
       projectTitle,
-      donationId: row.id,
+      donationId: params.donationId,
       transactionId: txId,
       paymentMethod: method,
       isRecurring: Boolean(row.is_recurring),
       recurringFrequency: row.recurring_frequency,
       message: row.message,
     })
-
-    const targetUserId = provision.userId || row.user_id
-    if (targetUserId) {
-      await supabaseAdmin
-        .from('notifications')
-        .insert({
-          user_id: targetUserId,
-          type: 'donation',
-          title: 'Doação Confirmada!',
-          message: `Recebemos sua doação de R$ ${amountNum.toFixed(2).replace('.', ',')} para "${projectTitle}". Obrigado!`,
-          read: false,
-          data: { donationId: row.id, projectId: row.project_id, amount: amountNum },
-        })
-        .then(() => undefined, () => undefined)
-    }
   } else if (params.becameAlertState) {
     await sendAdminPaymentAlertEmail({
       eventType: params.eventType,
-      amount: amountNum,
+      amount,
       projectTitle,
-      donationId: row.id,
-      donorEmail,
+      donationId: params.donationId,
+      donorEmail: effectiveDonorEmail,
     })
   }
 }

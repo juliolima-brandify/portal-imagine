@@ -4,14 +4,48 @@ import { createClient as createServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase-admin'
 import { jsonNoStore } from '@/lib/admin-http'
 import {
-  SPECIAL_CAMPAIGNS,
   buildAsaasCheckoutPayload,
   checkoutRequestSchema,
   isValidUuid,
+  parseAllowedCallbackHosts,
   resolvePublicCallbackBaseUrl,
+  resolveSpecialCampaign,
   validateCheckoutAmountBrl,
 } from '@/lib/payments'
 import { createAsaasCheckoutSession, readBoundedJson } from '@/lib/server/asaas'
+
+// Rate limit best-effort por isolate. Em produção, a borda (Cloudflare) deve
+// aplicar o limite real; este contador evita rajadas dentro do mesmo isolate.
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX_REQUESTS = 10
+const rateBuckets = new Map<string, { count: number; resetAt: number }>()
+
+function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for')
+  if (forwarded) return forwarded.split(',')[0].trim()
+  return request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || 'unknown'
+}
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now()
+  const bucket = rateBuckets.get(ip)
+  if (!bucket || now >= bucket.resetAt) {
+    rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return false
+  }
+  bucket.count += 1
+  return bucket.count > RATE_LIMIT_MAX_REQUESTS
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const code = String((error as { code?: string })?.code || '')
+  const message = String((error as { message?: string })?.message || '')
+  return (
+    code === 'PGRST204' ||
+    code === '42703' ||
+    /column .* does not exist|could not find the '.*' column/i.test(message)
+  )
+}
 
 async function resolveOptionalUser(request: NextRequest): Promise<{
   id: string
@@ -78,6 +112,13 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  if (isRateLimited(getClientIp(request))) {
+    return jsonNoStore(
+      { success: false, error: 'Muitas tentativas. Aguarde um minuto e tente novamente.' },
+      { status: 429 }
+    )
+  }
+
   const parsedBody = await readBoundedJson(request, 32 * 1024)
   if (!parsedBody.ok) {
     return jsonNoStore({ success: false, error: parsedBody.error }, { status: parsedBody.status })
@@ -104,10 +145,11 @@ export async function POST(request: NextRequest) {
   let destinationTitle = clientTitle?.trim() || 'Instituto Imagine'
   let cancelPath = '/'
 
-  if (SPECIAL_CAMPAIGNS[lowerTarget]) {
+  const specialCampaign = resolveSpecialCampaign(lowerTarget)
+  if (specialCampaign) {
     resolvedProjectId = null
-    campaignSlug = SPECIAL_CAMPAIGNS[lowerTarget].slug
-    destinationTitle = SPECIAL_CAMPAIGNS[lowerTarget].title
+    campaignSlug = specialCampaign.slug
+    destinationTitle = specialCampaign.title
     cancelPath = lowerTarget === 'natal' ? '/natal-feliz' : '/'
   } else {
     const query = supabaseAdmin.from('projects').select('id, title, slug, status')
@@ -169,6 +211,13 @@ export async function POST(request: NextRequest) {
 
   if (!fullInsert.error && fullInsert.data?.id) {
     donationId = fullInsert.data.id
+  } else if (fullInsert.error && !isMissingColumnError(fullInsert.error)) {
+    // Erro real de banco: não esconder atrás do fallback.
+    console.error('[Checkout] Erro ao gravar intenção de doação:', fullInsert.error)
+    return jsonNoStore(
+      { success: false, error: 'Não foi possível registrar sua doação. Tente novamente.' },
+      { status: 500 }
+    )
   } else {
     const legacyInsert = await supabaseAdmin
       .from('donations')
@@ -206,9 +255,11 @@ export async function POST(request: NextRequest) {
 
   // 2) Criar sessão segura no Asaas Checkout (POST /v3/checkouts)
   const requestOrigin = request.headers.get('origin') || new URL(request.url).origin
+  const allowedCallbackHosts = parseAllowedCallbackHosts(process.env.ALLOWED_CALLBACK_HOSTS)
   const callbackBaseUrl = resolvePublicCallbackBaseUrl(
     requestOrigin,
-    process.env.NEXT_PUBLIC_BASE_URL
+    process.env.NEXT_PUBLIC_BASE_URL,
+    allowedCallbackHosts
   )
 
   const asaasPayload = buildAsaasCheckoutPayload({
@@ -218,6 +269,7 @@ export async function POST(request: NextRequest) {
     isRecurring,
     recurringFrequency: frequency,
     callbackBaseUrl,
+    callbackAllowedHosts: allowedCallbackHosts,
     cancelPath,
     customerData:
       currentUser || donorNameHint
@@ -247,10 +299,14 @@ export async function POST(request: NextRequest) {
     .eq('id', donationId)
 
   if (updateCheckoutId.error) {
-    await supabaseAdmin
-      .from('donations')
-      .update({ stripe_payment_intent_id: `asaas_chk_${checkoutResult.checkoutId}` })
-      .eq('id', donationId)
+    // Fallback apenas para banco dev sem a coluna nova. Nunca gravar em coluna legada.
+    if (isMissingColumnError(updateCheckoutId.error)) {
+      console.warn(
+        '[Checkout] Coluna asaas_checkout_id ausente; vínculo será feito por externalReference.'
+      )
+    } else {
+      console.error('[Checkout] Erro ao vincular checkout_id:', updateCheckoutId.error)
+    }
   }
 
   return jsonNoStore({

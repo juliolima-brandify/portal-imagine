@@ -16,7 +16,13 @@ function EntrarContent() {
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [rememberMe, setRememberMe] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem('imagine.rememberMe')
+    if (stored === 'false') setRememberMe(false)
+  }, [])
 
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
@@ -384,9 +390,9 @@ function EntrarContent() {
                 <div className="card p-4 bg-yellow-50 border-yellow-200">
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                    <p className="text-sm font-medium text-yellow-700">Sistema em manutenção</p>
+                    <p className="text-sm font-medium text-yellow-800">Sistema em manutenção</p>
                   </div>
-                  <p className="text-xs mt-1 text-yellow-600">
+                  <p className="text-xs mt-1 text-yellow-800">
                     Sistema temporariamente indisponível — tente novamente mais tarde
                   </p>
                 </div>
@@ -456,7 +462,13 @@ function EntrarContent() {
                         name="remember-me"
                         type="checkbox"
                         checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                          setRememberMe(next)
+                          if (typeof window !== 'undefined') {
+                            window.localStorage.setItem('imagine.rememberMe', next ? 'true' : 'false')
+                          }
+                        }}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">

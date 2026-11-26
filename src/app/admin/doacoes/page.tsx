@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { adminFetch } from '@/lib/admin-api'
-import { Modal } from '@/components/ConfirmDialog'
+import ConfirmDialog, { Modal } from '@/components/ConfirmDialog'
 import { ToastContainer, useToast } from '@/components/Toast'
-import { exportToCSV } from '@/lib/export'
+import { exportToCSV, todayInSaoPaulo } from '@/lib/export'
 import {
   formatCurrencyBRL,
   getDonationStatusLabelPTBR,
@@ -25,7 +25,7 @@ interface AdminDonationRow {
   hasValidEmail: boolean
   amount: number
   currency: string
-  status: 'pending' | 'completed' | 'failed' | 'refunded'
+  status: 'pending' | 'completed' | 'failed' | 'refunded' | 'partially_refunded'
   method: string
   rawMethod: string | null
   isRecurring: boolean
@@ -81,6 +81,7 @@ export default function AdminDoacoesPage() {
 
   const [selectedDonation, setSelectedDonation] = useState<AdminDonationRow | null>(null)
   const [resendingId, setResendingId] = useState<string | null>(null)
+  const [pendingResend, setPendingResend] = useState<AdminDonationRow | null>(null)
 
   const { toasts, removeToast, success, error, warning } = useToast()
   const toastRef = useRef({ success, error, warning })
@@ -242,7 +243,7 @@ export default function AdminDoacoesPage() {
       'Mensagem': sanitizeSpreadsheetCell(d.message || ''),
     }))
 
-    exportToCSV(rows, `doacoes_imagine_${new Date().toISOString().split('T')[0]}`)
+    exportToCSV(rows, `doacoes_imagine_${todayInSaoPaulo()}`)
   }
 
   const clearFilters = () => {
@@ -261,6 +262,8 @@ export default function AdminDoacoesPage() {
         return { label: 'Em processamento', cls: 'bg-yellow-100 text-yellow-800' }
       case 'refunded':
         return { label: 'Estornada', cls: 'bg-gray-200 text-gray-700' }
+      case 'partially_refunded':
+        return { label: 'Estornada parcialmente', cls: 'bg-amber-100 text-amber-800' }
       case 'failed':
         return { label: 'Não concluída', cls: 'bg-red-100 text-red-700' }
       default:
@@ -547,7 +550,7 @@ export default function AdminDoacoesPage() {
                             {row.status === 'completed' && row.hasValidEmail && (
                               <button
                                 type="button"
-                                onClick={() => void handleResendReceipt(row)}
+                                onClick={() => setPendingResend(row)}
                                 disabled={Boolean(resendingId)}
                                 className="inline-flex items-center text-xs font-medium text-blue-700 hover:bg-blue-50 rounded-md px-2.5 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
@@ -616,7 +619,7 @@ export default function AdminDoacoesPage() {
               selectedDonation.hasValidEmail && (
                 <button
                   type="button"
-                  onClick={() => void handleResendReceipt(selectedDonation)}
+                  onClick={() => setPendingResend(selectedDonation)}
                   disabled={Boolean(resendingId)}
                   className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -715,6 +718,30 @@ export default function AdminDoacoesPage() {
           </dl>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={Boolean(pendingResend)}
+        title="Reenviar recibo por e-mail?"
+        message={
+          pendingResend
+            ? `O recibo e o link de acesso ao Portal do Doador serão enviados para ${pendingResend.donorEmail}. Confirme que o endereço está correto.`
+            : ''
+        }
+        confirmText="Sim, reenviar recibo"
+        cancelText="Cancelar"
+        type="warning"
+        isLoading={Boolean(resendingId)}
+        onCancel={() => {
+          if (!resendingId) setPendingResend(null)
+        }}
+        onConfirm={() => {
+          if (pendingResend && !resendingId) {
+            const target = pendingResend
+            setPendingResend(null)
+            void handleResendReceipt(target)
+          }
+        }}
+      />
     </div>
   )
 }

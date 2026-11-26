@@ -79,3 +79,41 @@
   - Auditoria automatizada de código/bundle: verifica ausência de dependências Stripe em `package.json`, ausência de imports proibidos em `src/lib/database.ts` e zero segredos/SDKs de servidor em `dist/client`.
 - **O que o teste unitário não cobre sozinho (e como validamos)**:
   - Aplicação da migração SQL `20261126_asaas_payments_and_webhooks.sql` no banco de produção `zzxtethlsdjjfjjrqmlk` (fica pendente para pós-`/banca`, conforme regra de Mudança Crítica; o servidor tem fallback gracioso caso a RPC ainda não exista em dev).
+
+---
+
+## Correções da Banca de Revisão (26/11/2026)
+
+Esta seção complementa as duas listas acima com as regras e decisões que a `/banca` do commit `7fef677` levantou. **Nenhuma migração nova vai a produção antes da `/banca` aprovar este commit.**
+
+### Regras adicionais (não podem quebrar)
+
+| # | Regra (e quem decidiu) | Formas de falha que precisa suportar | Teste que prova |
+|---|---|---|---|
+| **R9** | **Fallback do webhook não existe em produção**: sem a RPC `apply_asaas_webhook_event`, a rota responde `503` e o Asaas reenvia; nunca processa o evento por caminho alternativo (Julio Lima — banca 26/11/2026) | Migração não aplicada; `PGRST202`/`42883`; evento repetido sem `webhook_events` | `payments.test.mjs` (varredura da rota); contrato de rota contra banco real pendente |
+| **R10** | **Reembolso parcial é parcial**: `PAYMENT_PARTIALLY_REFUNDED` grava `refunded_amount` e status `partially_refunded`, sem estorno total e sem subtrair o valor inteiro de `projects.current_amount` (Julio Lima — banca 26/11/2026) | Estorno de R$ 10 numa doação de R$ 100; estorno total depois de parcial; evento fora de ordem | `payments.test.mjs` (máquina de estados) + trigger `update_project_amount` na migração |
+| **R11** | **Vínculo de doação por e-mail é exato**: `donor-provision` compara e-mail normalizado por igualdade, nunca por `ilike` com curingas (`_`, `%`) (Julio Lima — banca 26/11/2026) | `joao_silva@x.com` casando com `joao.silva@x.com`; e-mail com `%`; e-mail de terceiro | `payments.test.mjs` (`escapeLikePattern`) |
+| **R12** | **Leitura do doador usa colunas concedidas**: `getDonations`/`getUserDonationById` listam colunas explícitas e nunca `select('*')` sob `GRANT` por coluna (Julio Lima — banca 26/11/2026) | `SELECT *` exigindo `donor_email`/`donor_name` sem `GRANT`; lista vazia silenciosa | `payments.test.mjs` (varredura de `database.ts`) + `SET ROLE authenticated` no banco |
+| **R13** | **`ASAAS_ENV` é explícito**: sem `ASAAS_ENV`, o sistema falha fechado e não escolhe sandbox/produção por `NODE_ENV` (Julio Lima — banca 26/11/2026) | `NODE_ENV` diferente de `production` com chave de produção; chave sandbox com produção | `payments.test.mjs` (varredura de `asaas.ts`) |
+| **R14** | **Callback do checkout é allowlist**: `successUrl`/`cancelUrl` só apontam para hosts aprovados; `Origin` do request não é autoridade (Julio Lima — banca 26/11/2026) | `Origin: https://atacante.example`; host com subdomínio parecido; `localhost` em dev | `payments.test.mjs` (`resolvePublicCallbackBaseUrl`) |
+| **R15** | **Zero Stripe na árvore ativa**: sem coluna, rota, guia, env ou texto Stripe em `src/`, `supabase/` e `config/`; a coluna legada é migrada para `asaas_payment_id` e removida (Julio Lima — banca 26/11/2026) | Coluna `stripe_payment_intent_id`; `/embed/checkout/checkout-stripe`; guias `docs/guias/STRIPE_*` | `payments.test.mjs` (varredura de `src/`, `supabase/`, `config/`) |
+| **R16** | **Totais do admin não são truncados**: métricas e busca percorrem todas as páginas do PostgREST (ou agregam no Postgres), nunca `limit(5000)`/`limit(1000)` silencioso (Julio Lima — banca 26/11/2026) | Mais de 1.000 doações; busca fora do lote recente; KPI subestimada | `payments.test.mjs` (varredura de `admin/donations/route.ts`) |
+| **R17** | **Reenvio de recibo é idempotente no servidor**: `receipt_lock_at`/`receipt_sent_at` impedem dois envios simultâneos e o modal Admin pede confirmação com status e data do último envio (Julio Lima — banca 26/11/2026) | Duplo clique; duas abas; clique sem confirmação | `payments.test.mjs` (varredura da rota); teste manual de concorrência pendente |
+
+### Decisões tomadas no interrogatório (26/11/2026)
+
+| # | Pergunta | Decisão |
+|---|---|---|
+| **D1** | Coluna `stripe_payment_intent_id` | Migrar os valores para `asaas_payment_id` onde estiver vazio e **dropar a coluna**; remover do `GRANT` e do CHECK `stripe_legacy`. |
+| **D2** | Reembolso parcial | **Estorno parcial real** com `refunded_amount` + status `partially_refunded`; o trigger desconta só o delta. |
+| **D3** | Conta automática para e-mail de terceiro | **Mantida a regra 3A** (cria conta e envia link de senha), registrada como pendência de produto para revisão de anti-phishing. |
+| **D4** | Checkbox "Lembrar-me" | **Implementada a persistência**: o checkbox grava a preferência e o storage do Supabase alterna entre `localStorage` (lembrar) e `sessionStorage` (não lembrar). Padrão: lembrar. |
+
+### Pendências que continuam abertas (não bloqueiam este commit)
+
+| # | Pergunta | Comportamento até a resposta |
+|---|---|---|
+| **P1** | O e-mail do doador é obrigatório para concluir a doação? | Sem e-mail, a doação é registrada e o recibo não é enviado; o admin vê "Não informado". |
+| **P2** | Política de retenção de `webhook_events.payload` (contém dados do pagador) | Sem expurgo automático; RLS e `REVOKE` já bloqueiam `anon`/`authenticated`. |
+| **P3** | Formato de `subscription.nextDueDate` aceito pelo Asaas | Passa a enviar `YYYY-MM-DD` (formato documentado); validar no sandbox antes do go-live. |
+| **P4** | Lista de eventos assinados no painel do Asaas | Eventos sem `targetStatus` são ignorados (não criam linha `pending`). |

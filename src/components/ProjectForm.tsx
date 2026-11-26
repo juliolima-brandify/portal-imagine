@@ -540,7 +540,7 @@ export default function ProjectForm({
 
           <div>
             <label htmlFor="intro" className="block text-sm font-medium text-gray-700 mb-2">
-              Texto principal ("O projeto")
+              Texto principal (&quot;O projeto&quot;)
             </label>
             <textarea
               id="intro"

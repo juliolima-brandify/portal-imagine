@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import {
   MIN_DONATION_BRL,
   formatCurrencyBRL,
+  getFrequencyLabelPTBR,
   validateCheckoutAmountBrl,
   type RecurringFrequency,
 } from '@/lib/payments'
@@ -345,7 +346,7 @@ export default function DonationEmbed({ project, source = 'embed' }: DonationEmb
           type="button"
           onClick={() => void handleContinue()}
           disabled={processing}
-          className="w-full mb-4 px-6 py-3.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full mb-4 px-6 py-3.5 bg-green-700 text-white font-semibold rounded-lg hover:bg-green-800 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {processing ? (
             <span className="inline-flex items-center justify-center">
@@ -353,7 +354,9 @@ export default function DonationEmbed({ project, source = 'embed' }: DonationEmb
               Redirecionando ao ambiente seguro...
             </span>
           ) : (
-            `Continuar para pagamento · ${formatCurrencyBRL(activeAmount > 0 ? activeAmount : 0)}`
+            `Continuar para pagamento · ${formatCurrencyBRL(activeAmount > 0 ? activeAmount : 0)}${
+              isRecurring ? `/${getFrequencyLabelPTBR(frequency).toLowerCase()}` : ''
+            }`
           )}
         </button>
 

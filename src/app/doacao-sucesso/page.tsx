@@ -21,6 +21,7 @@ interface PublicSessionState {
   paymentMethod: string
   isRecurring: boolean
   recurringFrequency: string | null
+  receiptSentAt: string | null
 }
 
 function DoacaoSucessoContent() {
@@ -37,6 +38,7 @@ function DoacaoSucessoContent() {
     paymentMethod: 'Pix / Cartão',
     isRecurring: false,
     recurringFrequency: null,
+    receiptSentAt: null,
   })
 
   useEffect(() => {
@@ -52,12 +54,11 @@ function DoacaoSucessoContent() {
     ).trim()
 
     if (!rawId) {
-      const rawAmount = Number(searchParams.get('amount') || '0')
+      // Sem ID de doação não há como confirmar nada. Não confiar em ?amount= da URL.
       setState((prev) => ({
         ...prev,
         loaded: true,
-        notFound: false,
-        amountFormatted: rawAmount > 0 ? formatCurrencyBRL(rawAmount) : '',
+        notFound: true,
       }))
       return
     }
@@ -75,7 +76,8 @@ function DoacaoSucessoContent() {
           const nextStatus: DonationStatus =
             data.paymentStatus === 'completed' ||
             data.paymentStatus === 'failed' ||
-            data.paymentStatus === 'refunded'
+            data.paymentStatus === 'refunded' ||
+            data.paymentStatus === 'partially_refunded'
               ? data.paymentStatus
               : 'pending'
 
@@ -90,6 +92,7 @@ function DoacaoSucessoContent() {
             paymentMethod: data.paymentMethod || 'Pix / Cartão',
             isRecurring: Boolean(data.isRecurring),
             recurringFrequency: data.recurringFrequency || null,
+            receiptSentAt: typeof data.receiptSentAt === 'string' ? data.receiptSentAt : null,
           })
 
           if (nextStatus === 'pending' && attempts < 6) {
@@ -125,7 +128,9 @@ function DoacaoSucessoContent() {
 
   const isCompleted = state.paymentStatus === 'completed'
   const isFailedOrRefunded =
-    state.paymentStatus === 'failed' || state.paymentStatus === 'refunded'
+    state.paymentStatus === 'failed' ||
+    state.paymentStatus === 'refunded' ||
+    state.paymentStatus === 'partially_refunded'
 
   const shareText = `Acabei de apoiar o projeto "${state.projectTitle}" do Instituto Imagine em Uberlândia! Conheça e apoie também: https://imagineinstituto.com/#projetos`
 
@@ -201,7 +206,9 @@ function DoacaoSucessoContent() {
                         com <strong>{state.amountFormatted}</strong>
                       </>
                     ) : null}
-                    ! Seu recibo oficial e o link de acesso ao Portal do Doador já foram enviados para o seu e-mail.
+                    {state.receiptSentAt
+                      ? '! Seu recibo oficial e o link de acesso ao Portal do Doador já foram enviados para o seu e-mail.'
+                      : '! Assim que o recibo for processado, ele e o link de acesso ao Portal do Doador chegarão no seu e-mail.'}
                   </>
                 ) : isFailedOrRefunded ? (
                   <>
@@ -300,7 +307,7 @@ function DoacaoSucessoContent() {
                       href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                      className="inline-flex items-center px-4 py-2 bg-green-700 text-white text-sm font-medium rounded-lg hover:bg-green-800 transition-colors"
                     >
                       Compartilhar no WhatsApp
                     </a>

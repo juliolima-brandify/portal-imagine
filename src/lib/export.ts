@@ -11,6 +11,16 @@ import {
   sanitizeSpreadsheetCell,
 } from './payments'
 
+// Data de hoje no fuso de São Paulo (evita nome de arquivo com dia errado por UTC).
+export function todayInSaoPaulo(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
 export interface ExportOptions {
   format: 'csv' | 'pdf' | 'excel'
   dateRange?: {
@@ -198,7 +208,7 @@ export function exportToExcel(data: any[], filename: string): void {
 // =============================================
 
 export function exportDonations(donations: any[], options: ExportOptions): void {
-  const filename = `doacoes_${new Date().toISOString().split('T')[0]}`
+  const filename = `doacoes_${todayInSaoPaulo()}`
 
   let filteredData = donations
 
@@ -242,7 +252,6 @@ export function exportDonations(donations: any[], options: ExportOptions): void 
     'ID Transação': sanitizeSpreadsheetCell(
       donation.asaas_payment_id ||
         donation.asaas_checkout_id ||
-        donation.stripe_payment_intent_id ||
         ''
     ),
     'Mensagem': sanitizeSpreadsheetCell(donation.message || ''),

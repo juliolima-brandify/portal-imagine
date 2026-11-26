@@ -22,6 +22,7 @@ import {
 import { formatBlogDatePTBR, type PublicBlogPostSummary } from '@/lib/blog-posts'
 import {
   MIN_DONATION_BRL,
+  getFrequencyLabelPTBR,
   validateCheckoutAmountBrl,
   type RecurringFrequency,
 } from '@/lib/payments'
@@ -444,7 +445,7 @@ export default function ImagineSitePage({
                 <div>
                   <span className="k">Instituto Imagine · organização social em Uberlândia-MG</span>
                   <h1>Projetos sociais em Uberlândia: <em>você escolhe</em> para onde vai a sua doação.</h1>
-                  <p className="hero-p">Para quem quer ajudar crianças e famílias da cidade e quer ter certeza de onde o dinheiro chega. Seis projetos que já funcionam — arte, esporte, contraturno escolar e ação social. Em vez de doar sem saber o destino, você escolhe o projeto, paga pelo Pix direto na conta do Instituto e recebe o recibo.</p>
+                  <p className="hero-p">Para quem quer ajudar crianças e famílias da cidade e quer ter certeza de onde o dinheiro chega. Seis projetos que já funcionam — arte, esporte, contraturno escolar e ação social. Em vez de doar sem saber o destino, você escolhe o projeto, paga com Pix ou Cartão na página segura do Asaas e recebe o recibo.</p>
                   <div className="hero-act">
                     <a className="btn" href="#projetos"><span className="bt">Escolher um projeto</span><PillBtnIcon /></a>
                     <button type="button" className="btn btn-ghost" onClick={() => openDoar('')}><span className="bt">Doar pelo Pix</span><PillBtnIcon /></button>
@@ -520,7 +521,7 @@ export default function ImagineSitePage({
                 </div>
                 <div className="dor-doador gb">
                   <div><b>Quem quer ajudar também tem um problema:</b> não saber para onde vai o dinheiro.</div>
-                  <p>Aqui você escolhe o projeto, paga pelo Pix direto na conta do Instituto (CNPJ 14.351.728/0001-72) e recebe o recibo.</p>
+                  <p>Aqui você escolhe o projeto, paga com Pix ou Cartão na página segura do Asaas (CNPJ 14.351.728/0001-72) e recebe o recibo.</p>
                   <a className="lnk" href="#como-doar">Ver como funciona <ArrowIcon /></a>
                 </div>
               </div>
@@ -535,8 +536,8 @@ export default function ImagineSitePage({
                 <div className="passos">
                   <div className="passo gb"><h3>Escolha o projeto</h3><p>Arte, esporte, educação, saúde emocional ou ação social. Ou deixe o Instituto direcionar para onde for mais necessário.</p></div>
                   <div className="passo gb"><h3>Defina o valor</h3><p>Qualquer valor ajuda. Se preferir, marque a doação mensal.</p></div>
-                  <div className="passo gb"><h3>Pague pelo Pix</h3><p>QR Code ou código copia e cola, direto na conta do Instituto Imagine (CNPJ 14.351.728/0001-72).</p></div>
-                  <div className="passo gb"><h3>Receba o recibo</h3><p>Envie o comprovante pelo WhatsApp e receba o recibo e as notícias do projeto que você apoiou.</p></div>
+                  <div className="passo gb"><h3>Pague com Pix ou Cartão</h3><p>Na página segura do Asaas, com QR Code Pix ou cartão de crédito. O valor vai para a conta do Instituto Imagine (CNPJ 14.351.728/0001-72).</p></div>
+                  <div className="passo gb"><h3>Receba o recibo</h3><p>O recibo e o acesso ao Portal do Doador chegam automaticamente no seu e-mail.</p></div>
                 </div>
               </div>
             </section>
@@ -648,7 +649,7 @@ export default function ImagineSitePage({
                   <p className="lead">Doação mensal, Imposto de Renda, Nota Fiscal Mineira, empresa, tempo ou a sua rede de contatos.</p>
                 </div>
                 <div className="formas">
-                  <article className="forma gb"><span className="ico"><IconPix /></span><h3>Doação pelo Pix</h3><p>Escolha o projeto e o valor. Na hora, você recebe o QR Code e o código copia e cola.</p><button type="button" className="btn btn-sm" onClick={() => openDoar('')}><span className="bt">Doar agora</span><PillBtnIcon /></button></article>
+                  <article className="forma gb"><span className="ico"><IconPix /></span><h3>Doação com Pix ou Cartão</h3><p>Escolha o projeto e o valor. Você paga na página segura do Asaas, com Pix (QR Code) ou cartão de crédito.</p><button type="button" className="btn btn-sm" onClick={() => openDoar('')}><span className="bt">Doar agora</span><PillBtnIcon /></button></article>
                   <article className="forma gb"><span className="ico"><IconCalendar /></span><h3>Doação mensal</h3><p>Quem doa todo mês mantém as aulas e os atendimentos funcionando o ano inteiro.</p><button type="button" className="btn btn-sm btn-ghost" onClick={() => openDoar('', true)}><span className="bt">Quero ser mensal</span><PillBtnIcon /></button></article>
                   <article className="forma gb"><span className="ico"><IconDoc /></span><span className="selo selo-breve so-off">Em breve</span><h3>Imposto de Renda</h3><p>Destine até 6% do imposto devido aos projetos incentivados e receba o valor de volta na declaração.</p><a className="lnk" href="#imposto">Simular meu potencial <ArrowIcon /></a></article>
                   <article className="forma gb"><span className="ico"><IconReceipt /></span><h3>Nota Fiscal Mineira</h3><p>O Instituto está cadastrado como entidade social no programa Nota Fiscal Mineira, da Secretaria de Fazenda de MG.</p><a className="lnk" href="https://notafiscalmineira.fazenda.mg.gov.br/entidades-sociais/detalhe?cnpj=14351728000172" target="_blank" rel="noopener">Ver cadastro <ArrowIcon /></a></article>
@@ -817,7 +818,7 @@ export default function ImagineSitePage({
                 <div className="cta escuro">
                   <Pecas />
                   <h2>Escolha um projeto. <em style={{ fontStyle: 'normal', color: 'var(--c)' }}>Doe em dois minutos.</em></h2>
-                  <p>Pix direto na conta do Instituto Imagine, recibo com CNPJ e notícias do projeto que você apoiou.</p>
+                  <p>Pix ou Cartão na página segura do Asaas, recibo com CNPJ e notícias do projeto que você apoiou.</p>
                   <div className="hero-act">
                     <a className="btn" href="#projetos"><span className="bt">Escolher um projeto</span><PillBtnIcon /></a>
                     <button type="button" className="btn btn-ghost" onClick={() => openDoar('')}><span className="bt">Doar pelo Pix</span><PillBtnIcon /></button>
@@ -969,7 +970,7 @@ export default function ImagineSitePage({
                 <div className="cta escuro">
                   <Pecas />
                   <h2>Escolha um projeto. <em style={{ fontStyle: 'normal', color: 'var(--c)' }}>Doe em dois minutos.</em></h2>
-                  <p>Pix direto na conta do Instituto Imagine, recibo com CNPJ e notícias do projeto que você apoiou.</p>
+                  <p>Pix ou Cartão na página segura do Asaas, recibo com CNPJ e notícias do projeto que você apoiou.</p>
                   <div className="hero-act">
                     <Link className="btn" href="/#projetos"><span className="bt">Escolher um projeto</span><PillBtnIcon /></Link>
                     <button type="button" className="btn btn-ghost" onClick={() => openDoar('natal')}><span className="bt">Doar pelo Pix</span><PillBtnIcon /></button>
@@ -1028,7 +1029,7 @@ export default function ImagineSitePage({
                   <button type="button" className="btn btn-full" onClick={() => openDoar(currentProject.id)}>
                     <span className="bt">Doar pelo Pix</span><PillBtnIcon />
                   </button>
-                  <p className="nota">Pix direto na conta do Instituto Imagine (CNPJ 14.351.728/0001-72) e recibo depois do comprovante.</p>
+                  <p className="nota">Pix ou Cartão na página segura do Asaas (CNPJ 14.351.728/0001-72) e recibo por e-mail depois da confirmação.</p>
                   <a className="lnk" href={`https://wa.me/?text=${encodeURIComponent(`Conheça o projeto ${currentProject.titulo} do Instituto Imagine: ${currentProject.shareUrl}`)}`} target="_blank" rel="noopener">
                     Compartilhar no WhatsApp <ArrowIcon />
                   </a>
@@ -1062,7 +1063,7 @@ export default function ImagineSitePage({
                 <div className="cta escuro">
                   <Pecas />
                   <h2>Escolha um projeto. <em style={{ fontStyle: 'normal', color: 'var(--c)' }}>Doe em dois minutos.</em></h2>
-                  <p>Pix direto na conta do Instituto Imagine, recibo com CNPJ e notícias do projeto que você apoiou.</p>
+                  <p>Pix ou Cartão na página segura do Asaas, recibo com CNPJ e notícias do projeto que você apoiou.</p>
                   <div className="hero-act">
                     <Link className="btn" href="/#projetos"><span className="bt">Escolher um projeto</span><PillBtnIcon /></Link>
                     <button type="button" className="btn btn-ghost" onClick={() => openDoar(currentProject.id)}><span className="bt">Doar pelo Pix</span><PillBtnIcon /></button>
@@ -1318,7 +1319,9 @@ export default function ImagineSitePage({
                     <span className="bt">
                       {doarLoading
                         ? 'Abrindo pagamento seguro...'
-                        : `Continuar para pagamento · ${formatBRL(doarValor > 0 ? doarValor : 0)}`}
+                        : `Continuar para pagamento · ${formatBRL(doarValor > 0 ? doarValor : 0)}${
+                            doarMensal ? `/${getFrequencyLabelPTBR(doarFrequencia).toLowerCase()}` : ''
+                          }`}
                     </span>
                     <PillBtnIcon />
                   </button>

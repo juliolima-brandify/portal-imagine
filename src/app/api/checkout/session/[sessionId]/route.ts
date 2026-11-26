@@ -57,6 +57,7 @@ export async function GET(
         payment_method: row.payment_method,
         is_recurring: row.is_recurring,
         recurring_frequency: row.recurring_frequency,
+        receipt_sent_at: row.receipt_sent_at,
       })
     )
   } catch (err) {
