@@ -1,90 +1,81 @@
 # 🏗️ Frente 2 — Pagamentos Asaas + E-mails Transacionais Resend (`docs/PAGAMENTOS_ASAAS_RESEND.md`)
 
+- **Modo**: **Mudança crítica** (toca dinheiro, banco/migração, permissões/RLS e integrações externas Asaas + Resend)
 - **Branch**: `feat/pagamentos-asaas-resend` (base `main` `78e8298`)
-- **Migração SQL prevista**: `supabase/migrations/20261126_asaas_payments_and_webhooks.sql` (colunas Asaas em `public.donations`, suporte a doação geral/campanha com `project_id` opcional + `campaign_slug`, tabela de idempotência `public.webhook_events` e RLS de menor privilégio)
-- **Decisões marteladas por Julio Lima (25–26/11/2026)**:
-  - **P1 → R9 (1A — Tudo pelo Asaas)**: **Pix avulso, Cartão de Crédito e Doação Recorrente** rodam 100% pelo **Asaas**, eliminando conciliação manual e carimbando cada cobrança com descrição clara do projeto (`"Doação - <Projeto>"`) + `externalReference = donation.id` para separação automática tanto no extrato do Asaas quanto no Portal Imagine.
-  - **P2 → R10 (2A — Tela Segura Hospedada do Asaas)**: Uso do **Asaas Checkout (`POST /v3/checkouts`)**. O doador escolhe projeto (incluindo os projetos dinâmicos do Supabase, *"Onde for mais necessário"* e *"Natal Feliz 2026"*), valor (mínimo `R$ 5,00`), frequência (`Única` ou `Mensal` / `Trimestral` / `Anual`), opção anônima e mensagem no nosso site/modal, finaliza na página segura hospedada do Asaas (`asaas.com/checkoutSession/show?id=<id>` ou Sandbox) e retorna para `/doacao-sucesso`. Zero coleta de dados de cartão/CEP/CPF no nosso frontend.
-  - **P3 → R11 (3A — Conta Automática Segura no Portal)**: Na 1ª doação confirmada via webhook com e-mail válido, o servidor cria/vincula automaticamente o doador no Supabase Auth + `public.profiles` (`role = 'donor'`) via `supabaseAdmin` e envia no e-mail de confirmação um **link seguro de acesso/definição de senha** (`generateLink`), **nunca** senha temporária em texto plano.
-  - **P4 → R12 (Resend Transacional 3.000/mês)**: Ativação do **Resend** no plano grátis (`3.000/mês` · `100/dia UTC`, com upgrade futuro se necessário), focado nos e-mails transacionais 1-para-1 (recibo/confirmação com acesso ao Portal, aviso para `ADMIN_NOTIFY_EMAIL`, alerta de falha/estorno e reenvio manual de recibo em `/admin/doacoes`), 100% isolado no servidor e sem tocar nos 10 registros DNS corporativos da Hostinger.
+- **Arquivos a criar ou alterar**:
+  - Criar: `supabase/migrations/20261126_asaas_payments_and_webhooks.sql`, `src/lib/payments.ts`, `src/lib/payments.test.mjs`, `src/lib/server/asaas.ts`, `src/lib/server/email.ts`, `src/lib/server/donor-provision.ts`, `src/app/api/webhooks/asaas/route.ts`, `src/app/api/admin/donations/route.ts`, `src/app/api/admin/donations/[id]/resend-receipt/route.ts`, `src/app/embed/checkout/page.tsx`
+  - Alterar: `package.json`, `src/lib/database.ts`, `src/lib/urls.ts`, `src/lib/export.ts`, `src/lib/validations.ts`, `src/lib/validations-updated.ts`, `src/app/api/checkout/create-session/route.ts`, `src/app/api/checkout/session/[sessionId]/route.ts`, `src/app/api/health/route.ts`, `src/components/site/ImagineSitePage.tsx`, `src/components/DonationEmbed.tsx`, `src/app/embed/checkout/checkout-stripe/page.tsx`, `src/app/embed/checkout/[id]/page.tsx`, `src/app/doacao-sucesso/page.tsx`, `src/app/entrar/page.tsx`, `src/app/doacoes/page.tsx`, `src/app/doacoes/[id]/page.tsx`, `src/app/historico/page.tsx`, `src/app/admin/doacoes/page.tsx`, `src/app/admin/dashboard/page.tsx`, `src/app/admin/relatorios/page.tsx`, `src/app/contato/page.tsx`, `src/app/sobre/page.tsx`
+  - Remover: `src/lib/stripe.ts`, `src/lib/stripe-integration.ts`, `src/components/StripePaymentForm.tsx`, `src/app/api/webhooks/stripe/route.ts`, `src/app/api/payments/create-intent/route.ts`, `src/app/payments/page.tsx`, `src/app/prototype/checkout/[id]/page.tsx`, `src/lib/resend.ts`, `src/lib/email-service.ts`, `src/lib/email-config.ts`
 
 ---
 
-## 1. 🎯 Propósito e Problema Real (PRD do `/conselho`)
-- **Problema raiz**: O Portal ainda carrega o legado inativo do Stripe (`stripe`, `@stripe/*`, rotas e componentes quebrados, recibo com CNPJ falso `12.345.678/0001-90` em `src/app/doacoes/page.tsx`) e acopla `src/lib/resend.ts` dentro de `src/lib/database.ts`, puxando código server-only para o bundle client (`dist/client`) na Cloudflare Workers.
-- **Público-Alvo / Quem vive isso (🎭 Mímico)**: Doadores PF/PJ no celular ou computador em `imagineinstituto.com` e `portal.imagineinstituto.com` + equipe financeira/administrativa do Instituto em `/admin/doacoes` e no extrato do Asaas *(persona presumida + áudio real da operação validando necessidade de separação automática por projeto sem cadastro manual no Asaas)*.
-- **Resultado esperado no negócio (💼 Cofre)**: Recebimento real em produção via Asaas (Pix R$ 1,99 / R$ 0,99 promocional; Cartão à vista 2,99% + R$ 0,49 / 1,99% + R$ 0,49 promocional; mínimo R$ 5,00), saldo `projects.current_amount` e relatórios separados por projeto atualizados exclusivamente por webhook autenticado e recibos automáticos com o CNPJ oficial **`14.351.728/0001-72`**.
-- **Hipóteses a monitorar após subida**:
-  1. Taxa de conversão entre clique em *"Continuar para pagamento"* e evento `CHECKOUT_PAID` / `PAYMENT_CONFIRMED` (medir funil sem cookies no Umami).
-  2. Consumo diário da cota de `100 e-mails/dia UTC` do plano grátis do Resend em dias de pico de campanha (como Natal Feliz).
+## Fase 2 — As Duas Listas (`🏗️ O Arquiteto`)
+
+### Lista 1: Regras que não podem quebrar
+
+| # | Regra (e quem decidiu) | Formas de falha que precisa suportar | Teste que prova |
+|---|---|---|---|
+| **R1** | **Zero Stripe no sistema**: o projeto nunca carrega nem expõe SDKs, rotas, telas protótipo ou textos do Stripe, operando 100% no Asaas Checkout (`POST /v3/checkouts`) para Pix, Cartão e Assinatura Recorrente (Julio Lima — `1A` + `2A`) | Links legados apontando para `/embed/checkout/checkout-stripe`; referências antigas em `export.ts`, `/contato`, `/sobre`, `/api/health` | `src/lib/payments.test.mjs` (varredura estática de imports/dependências Stripe) + `npx.cmd vinext build` |
+| **R2** | **Isolamento Server-Only e Zero Segredos em `dist/client`**: módulos client (`database.ts`, componentes `'use client'`) nunca importam clientes Asaas, Resend ou `supabaseAdmin`, e nenhum segredo vaza para `dist/client` (Julio Lima / Contexto Geral) | Import indireto via `database.ts`; variáveis `ASAAS_*`, `RESEND_*` ou `SUPABASE_SERVICE_ROLE_KEY` embutidas no bundle do navegador | `src/lib/payments.test.mjs` + inspeção automatizada dos artefatos de `dist/client` após `npx.cmd vinext build` |
+| **R3** | **Webhook Asaas Blindado, Atômico e Idempotente**: `POST /api/webhooks/asaas` só processa eventos com `asaas-access-token` válido em tempo constante (`timingSafeEqual`), nunca processa o mesmo `event.id` duas vezes, nunca duplica `projects.current_amount` e sempre responde `200 OK` rápido executando e-mails em background (`waitUntil`/`after`) (Arquitetura / Segurança) | Token ausente ou inválido (`401`); payload > 256 KB (`413`); entrega *at-least-once* repetida; `PAYMENT_RECEIVED` após `PAYMENT_CONFIRMED` na mesma cobrança; 2ª mensalidade de assinatura recorrente (`asaas_subscription_id`); `CHECKOUT_EXPIRED` atrasado após doação já `completed`; estorno `PAYMENT_REFUNDED` | `src/lib/payments.test.mjs` (máquina de estados, token timing-safe, recorrência e fora de ordem) + função atômica `apply_asaas_webhook_event` na migração SQL |
+| **R4** | **Verdade Financeira, Carimbo por Projeto e Limites Reais da API Asaas**: toda cobrança exige valor `>= R$ 5,00` calculado em centavos inteiros, carimba `items[0].name` com `<= 30` caracteres e `description` com o nome completo do projeto/campanha, usa `callback` HTTPS público válido, emite recibos exclusivamente com o CNPJ oficial `14.351.728/0001-72` e nunca marca pagamento como confirmado só pela URL `/doacao-sucesso` (Julio Lima / Cofre) | Nome de projeto longo (> 30 chars gerando HTTP 400 no Asaas); `localhost` em `callback` gerando HTTP 400 no Asaas; conta Sandbox sem chave Pix cadastrada; ponto flutuante (`19.99 * 100`); doador voltando para `/doacao-sucesso` antes de pagar o Pix | `src/lib/payments.test.mjs` (`buildAsaasCheckoutPayload`, centavos, truncamento `<= 30`, `callback` HTTPS, recibo CNPJ oficial) |
+| **R5** | **Privacidade de Dados (Anti-IDOR / Zero PII Público) e Anti-Injeção**: `/api/checkout/session/[sessionId]` nunca expõe `donor_email`, `donor_name` ou CPF; `/doacoes/[id]` só exibe doação pertencente ao `auth.uid()` autenticado; e-mails escapam HTML (`escapeHtml`) e exportações CSV/Excel neutralizam fórmulas (`=`, `+`, `-`, `@`) (Segurança / LGPD) | Tentativa de enumerar UUIDs em `/api/checkout/session/[id]` ou `/doacoes/[id]`; nome/mensagem com `<script>` ou `<img onerror>` no e-mail; mensagem começando com `=CMD()` no CSV admin | `src/lib/payments.test.mjs` (`sanitizePublicSessionResponse`, `escapeHtml`, `sanitizeSpreadsheetCell`) |
+| **R6** | **Conta Automática Segura sem Senha em Texto Plano (`3A`)**: ao confirmar doação com e-mail válido, o servidor cria/vincula o usuário (`role = 'donor'`) via `supabaseAdmin` e gera link seguro de definição de senha (`generateLink` → `/entrar?reset=true`), onde o doador define a própria senha sem jamais trafegar senha em texto plano por e-mail (Julio Lima — `3A`) | Doador que já possui conta no Portal (apenas vincula `user_id` sem recriar e sem sobrescrever `role` de `admin`/`volunteer`); doação anônima ou sem e-mail no Asaas; link de recuperação aberto em `/entrar?reset=true` | `src/lib/payments.test.mjs` (regras de provisionamento e proteção de `role`) + fluxo `PASSWORD_RECOVERY` em `src/app/entrar/page.tsx` |
+| **R7** | **Resiliência do Resend (`mail.imagineinstituto.com`) e Reenvio Admin**: todo envio usa o domínio já verificado `mail.imagineinstituto.com` (preservando 100% os 10 registros Hostinger na zona raiz), falha ou cota `429` (`100/dia UTC`) no Resend nunca derruba o webhook nem reverte a doação, e `/admin/doacoes` reenvia recibo por rota real protegida por `requireAdmin()` + `verifyAdminMutationOrigin()` (Julio Lima — `4`) | Resend retornando `429` ou timeout; doação sem `donor_email` (`422` amigável no reenvio manual); duplo clique em "Reenviar Recibo" | `src/lib/payments.test.mjs` + rota `/api/admin/donations/[id]/resend-receipt` |
+| **R8** | **Menor Privilégio no Postgres e Compatibilidade com Projetos Dinâmicos e Campanhas**: `public.donations` e `public.webhook_events` têm RLS ativo sem acesso `anon`, escritas exclusivas via `service_role`, e suportam tanto projetos de `public.projects` quanto doações institucionais (`'geral'` e `'natal'` com `project_id IS NULL` + `campaign_slug`) sem quebrar `update_project_amount` (Arquitetura) | Doação para *"Onde for mais necessário"* ou *"Natal Feliz 2026"* com `project_id = NULL` disparando trigger em `projects`; cliente `anon` tentando `SELECT` ou `INSERT` direto em `donations` | Revisão de `supabase/migrations/20261126_asaas_payments_and_webhooks.sql` + `src/lib/payments.test.mjs` |
+
+### Lista 2: Pendências de regra de negócio
+
+| # | Pergunta | Quem responde | Comportamento até a resposta |
+|---|---|---|---|
+| — | *Nenhuma pendência bloqueante para a Frente 2* (`1A`, `2A`, `3A` e `4` decididas por Julio Lima em 26/11/2026; domínio `mail.imagineinstituto.com` verificado no Resend; chave Pix EVP ativa na conta Asaas de produção). | — | As pendências institucionais globais (`irAtivo: false` e badges `.pend` de metas/beneficiários) permanecem inalteradas conforme `CONTEXTO_GERAL_IMAGINE.md`. |
 
 ---
 
-## 2. ⚡ Jornada Sem Atrito (Fluxo Ponta a Ponta)
-1. **Escolha no Site ou Portal**: Em qualquer botão *"Quero doar"* da Home `/`, `/projetos/[slug]`, `/natal-feliz`, `/projetos` do Portal ou `/embed/checkout`, o doador seleciona o destino (projeto específico, *"Onde for mais necessário"* ou *"Natal Feliz 2026"*), valor (`R$ 50`, `R$ 100`, `R$ 200` ou personalizado `>= R$ 5,00`), recorrência (`Única` ou `Mensal` / `Trimestral` / `Anual`), doação anônima e mensagem opcional.
-2. **Criação da Sessão (`POST /api/checkout/create-session`)**:
-   - Valida o payload (Zod), resolve o projeto no Supabase (quando aplicável), grava a doação `pending` em `public.donations` via `supabaseAdmin` e chama `POST /v3/checkouts` no Asaas (`DETACHED` com `["PIX", "CREDIT_CARD"]` para doação única; `RECURRENT` com `["CREDIT_CARD"]` + `subscription.cycle` para recorrente; pré-preenche `customerData` se o doador já estiver autenticado).
-   - Redireciona `window.top.location.href` para a tela segura do Asaas. *(Fallback seguro para WhatsApp apenas se o Asaas estiver indisponível ou não configurado no ambiente.)*
-3. **Retorno e Confirmação Assíncrona**:
-   - `/doacao-sucesso` consulta endpoint seguro sem expor PII e distingue claramente *"Aguardando confirmação do pagamento (Pix/Cartão)"* de *"Doação confirmada!"* — nunca aprova pagamento apenas pela URL de retorno.
-   - `POST /api/webhooks/asaas` valida `asaas-access-token`, registra `event.id` de forma idempotente, atualiza `donations` (`completed`, `failed` ou `refunded`), cria/vincula a conta do doador (`3A`) e dispara e-mails no Resend via `after()` / `waitUntil()` antes/após responder `200 OK` rápido.
+## Roteiro dos 5 Blocos
 
----
+### 1. 🕵️ Segurança, Permissões e Dados (Contrato do *Invasor*)
+- **Rotas e Permissões**:
+  - `POST /api/checkout/create-session`: pública para doadores autenticados ou visitantes; valida payload via Zod, resolve `user_id` exclusivamente pelo token/cookie real no servidor (nunca confia em `userId` enviado no body!) e grava via `supabaseAdmin`.
+  - `GET /api/checkout/session/[sessionId]`: pública com `jsonNoStore()`, retornando apenas resumo sem PII (`status`, `amount`, `projectTitle`, `isRecurring`, `recurringFrequency`, `paymentMethod`).
+  - `POST /api/webhooks/asaas`: exige `asaas-access-token` validado com `timingSafeEqual` (SHA-256) e limita corpo a `256 KB`.
+  - `GET /api/admin/donations` e `POST /api/admin/donations/[id]/resend-receipt`: exigem `requireAdmin()` (`401`/`403`) + `verifyAdminMutationOrigin()` nas mutações + `jsonNoStore()`.
+- **Anti-IDOR**: `/doacoes` e `/doacoes/[id]` filtram `user_id = auth.uid()` (reforçado por RLS no Postgres).
+- **Banco de Dados**: `REVOKE ALL ON public.donations, public.webhook_events FROM PUBLIC, anon, authenticated`, concedendo `SELECT` apenas de colunas necessárias de `donations` para `authenticated` sob RLS (`user_id = (SELECT auth.uid())` ou `admin`), e `ALL` apenas para `service_role`. Funções `SECURITY DEFINER` com `SET search_path = pg_catalog, public, pg_temp`.
 
-## 3. 🔒 Regras Decididas (entram como "regras que não podem quebrar" no `/desenvolvimento`)
+### 2. 🤪 Regras de Domínio e Casos Extremos (Contrato do *Usuário Confuso*)
+- **Precisão Matemática**: Valores validados e somados em **centavos inteiros** (`Math.round(v * 100)`), bloqueando valores `< 500` centavos (`R$ 5,00`) e `> 50000000` centavos (`R$ 500.000,00`, teto PJ do Asaas).
+- **Limites Reais da API Asaas (comprovados em Sandbox)**:
+  - `items[0].name`: truncado de forma limpa em até **30 caracteres** (ex.: `Doacao - Projeto Amarelinha`), mantendo o título completo em `items[0].description` (`<= 100` chars).
+  - `callback`: se a origem da requisição for `localhost`/`127.0.0.1`, usa `NEXT_PUBLIC_BASE_URL` (`https://imagineinstituto.com`) para não tomar HTTP `400` do validador de URL do Asaas.
+- **Fuso Horário**: `subscription.nextDueDate` calculado explicitamente no fuso `America/Sao_Paulo`.
+- **Duplo Clique e Concorrência**: Botões de checkout e de admin travados durante `await` (`processing` + `useRef` lock); no banco, `webhook_events.event_id` (`PRIMARY KEY`) e `SELECT ... FOR UPDATE` dentro de `apply_asaas_webhook_event` eliminam condições de corrida.
 
-- **R1 — Remoção Total do Stripe (decidida por Julio Lima / Contexto Geral):**
-  - *Regra:* Remover 100% dos pacotes `stripe`, `@stripe/stripe-js`, `@stripe/react-stripe-js`, arquivos `src/lib/stripe.ts`, `src/lib/stripe-integration.ts`, `src/components/StripePaymentForm.tsx`, rotas `/api/webhooks/stripe`, `/api/payments/create-intent`, páginas protótipo `/payments` e `/prototype/checkout/[id]`, e menções a "Stripe" na UI (`/contato`, `/sobre`, `DonationEmbed`, `embed/checkout`, `/api/health`, `export.ts`). Manter redirect/compatibilidade em `/embed/checkout/checkout-stripe` apontando para a nova rota limpa `/embed/checkout` para não quebrar links antigos.
-  - *Prova:* Busca global por `stripe` em `src/` e `package.json` (restando apenas coluna legada se mantida por compatibilidade ou migrada, e rota de redirect se aplicável) + `npx.cmd vinext build`.
-- **R2 — Isolamento Server-Only e Zero Segredos em `dist/client` (decidida por Julio Lima):**
-  - *Regra:* `src/lib/database.ts` e qualquer módulo importado por componentes `'use client'` nunca importam `resend`, `email-config`, `email-service`, `asaas` ou `supabaseAdmin`. Os clientes de Asaas e Resend vivem em `src/lib/server/*` com `import 'server-only'` e usam `fetch` nativo compatível com Cloudflare Workers (`workerd`).
-  - *Prova:* Teste automatizado/inspeção sobre `dist/client` após `npx.cmd vinext build` garantindo zero ocorrência de `RESEND_API_KEY`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `SUPABASE_SERVICE_ROLE_KEY` ou `api.resend.com`.
-- **R3 — Webhook Asaas Blindado e Idempotente na Cloudflare Workers (Arquitetura / Segurança):**
-  - *Regra:* `POST /api/webhooks/asaas` exige header `asaas-access-token` validado com `timingSafeEqual` (SHA-256) contra `ASAAS_WEBHOOK_TOKEN` (`401` com `Cache-Control: no-store` se ausente/inválido), grava `event.id` em `public.webhook_events` para idempotência *at-least-once*, atualiza `donations` de forma atômica evitando dupla contagem em `projects.current_amount` (`CHECKOUT_PAID` / `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` / `PAYMENT_REFUNDED`) e executa envios de e-mail em `after()` / `waitUntil()` com `try/catch` isolado para responder `200 OK` rápido e nunca travar a fila do Asaas (que pausa após 15 erros consecutivos).
-  - *Prova:* Testes unitários do processador de webhook cobrindo token inválido, evento duplicado, transição `pending → completed`, `PAYMENT_RECEIVED` após `PAYMENT_CONFIRMED` (sem somar 2x) e estorno `completed → refunded`.
-- **R4 — Verdade Financeira, Separação por Projeto e CNPJ Oficial (Cofre / Operação):**
-  - *Regra:* Toda sessão criada no Asaas envia `items[0].name` e `description` identificados com o nome do projeto/campanha (ex.: `"Doação - Projeto Amarelinha"`, `"Doação - Natal Feliz 2026"`, `"Doação - Onde for mais necessário"`) e `externalReference = donation.id`. Todos os recibos e telas usam o CNPJ oficial **`14.351.728/0001-72`** (corrigindo o CNPJ incorreto em `src/app/doacoes/page.tsx`), e `/doacao-sucesso` nunca marca pagamento como confirmado sem confirmação no banco.
-  - *Prova:* Testes unitários de montagem do payload Asaas + verificação de CNPJ e status em `/doacao-sucesso` e recibos.
-- **R5 — Privacidade de Dados (LGPD) e Anti-XSS em E-mails (Segurança):**
-  - *Regra:* Endpoints públicos consultados por `/doacao-sucesso` retornam apenas metadados não sensíveis da doação (`status`, `amount`, `projectTitle`, `isRecurring`), jamais expondo `donor_email`, `donor_name` ou CPF sem sessão autenticada. Todos os templates HTML de e-mail aplicam `escapeHtml()` em qualquer dado vindo do usuário (`name`, `projectTitle`, `message`).
-  - *Prova:* Testes unitários de `escapeHtml` e sanitização do retorno público da sessão de checkout.
-- **R6 — Conta Automática Segura sem Senha em Texto Plano — Decisão 3A (decidida por Julio Lima):**
-  - *Regra:* Remover `createUserFromDonation` de `src/lib/database.ts` (que usava `supabase.auth.signUp` anon e enviava senha em texto plano). No webhook confirmado, se houver `donor_email`, o servidor garante o usuário/perfil via `supabaseAdmin` (`role = 'donor'`) vinculando `donations.user_id` e gera link seguro de primeiro acesso/definição de senha (`supabaseAdmin.auth.admin.generateLink`) apontando para `NEXT_PUBLIC_BASE_URL` / `portal.imagineinstituto.com`.
-  - *Prova:* Teste unitário do fluxo de provisionamento de doador (novo e-mail vs e-mail já existente em `profiles`).
-- **R7 — Integridade do DNS Hostinger e Resiliência de E-mail — Decisão 4 (decidida por Julio Lima):**
-  - *Regra:* A verificação do domínio no Resend usa o subdomínio de Return-Path (`send.imagineinstituto.com` para MX/SPF + `resend._domainkey` para DKIM), **sem alterar nem ativar proxy** nos 10 registros corporativos da Hostinger na zona Cloudflare `imagineinstituto.com`. Erro HTTP ou limite `429` (`100/dia UTC`) no Resend é registrado em log sem reverter a confirmação financeira da doação, e `/admin/doacoes` ganha endpoint real protegido por `requireAdmin()` + `verifyAdminMutationOrigin()` para reenviar recibo.
-  - *Prova:* Teste unitário garantindo que falha no Resend não derruba o webhook + teste de autorização (`401`/`403`) na rota admin de reenvio de recibo.
-- **R8 — Menor Privilégio no Banco (`public.donations` e `public.webhook_events`) e Compatibilidade com Frente 1:**
-  - *Regra:* `public.donations` e `public.webhook_events` operam com RLS ativo (`ENABLE ROW LEVEL SECURITY`): `anon` não tem `SELECT`/`INSERT`/`UPDATE`/`DELETE`; `authenticated` lê apenas as próprias doações (`auth.uid() = user_id`) ou todas se `role = 'admin'`; escritas acontecem exclusivamente via `service_role` (`supabaseAdmin`). Suporta tanto os projetos dinâmicos de `public.projects` quanto doações institucionais gerais (`project_id IS NULL` com `campaign_slug = 'geral' | 'natal'`).
-  - *Prova:* Revisão da migração SQL seguindo o padrão de `20261125_harden_rls_and_remove_framer_trigger.sql` + testes das regras puras.
+### 3. 🧓 Arquitetura, Transações e Escala (Contrato do *Programador Sênior*)
+- **Regra Pura Extraída**: `src/lib/payments.ts` concentra validação, centavos, montagem do payload Asaas, máquina de estados do webhook, escape HTML, proteção CSV e formatação de recibo.
+- **Transação Atômica no Banco**: A RPC `public.apply_asaas_webhook_event` grava em `webhook_events` e atualiza/insere em `donations` na mesma transação Postgres (disparando `update_project_amount` exatamente uma vez por transição para `completed`).
+- **Paginação e Anti-N+1**: `/api/admin/donations` pagina no servidor (`range(from, to)`) e resolve projetos/perfis em lote (`in('id', ids)`), sem queries em loop.
+- **Workers Lifecycle**: Uso de `waitUntil` (via `cloudflare:workers` quando disponível no runtime Worker, com fallback seguro em dev) para enviar e-mails sem atrasar o `200 OK` do Asaas.
 
----
+### 4. 🎨 Gabarito de Tela Irmã e os 8 Pontos Visuais (Contrato do *Designer*)
+- **Telas e Modais Irmãos de Gabarito**:
+  - **Admin (`/admin/doacoes`)**: clona a geometria aprovada na Banca de `src/app/admin/blog/page.tsx` + `Modal` de 3 zonas de `src/components/ConfirmDialog.tsx`.
+  - **Site Institucional (Modal de Doação `.ii-root`)**: mantém a geometria nativa de `src/components/site/ImagineSitePage.tsx` + `src/components/site/imagine-site.css`.
+- **Verificação dos 8 Pontos**:
+  1. **Abas e Rolagem**: Zero abas empilhadas e zero barra de rolagem horizontal aparente (`whitespace-nowrap`).
+  2. **Barra de Filtros (`Toolbar`)**: Em `/admin/doacoes`, `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end` com `input-modern h-12 !py-0` e `btn-secondary w-full h-12 !py-0 flex items-center justify-center`.
+  3. **Menus Flutuantes e Dicas**: Zero atributo `title=` nativo do HTML; botão direto `Exportar CSV` no topo sem popover cortado por `overflow-hidden`.
+  4. **Janelas / Modais (3 Zonas)**: `<Modal>` de `ConfirmDialog.tsx` com cabeçalho fixo (`border-b`), corpo com rolagem limpa (`overflow-y-auto`, sem caixas triplamente aninhadas) e rodapé fixo (`border-t`) com `Fechar` (`type="button"`) e `Reenviar Recibo` travado durante `await`.
+  5. **Alinhamento e Tabelas**: Todo `<th>` tem exatamente o mesmo alinhamento (`text-left` ou `text-right`) do seu `<td>`; colunas `Valor` (`text-right tabular-nums whitespace-nowrap`) e `Data` (`text-left tabular-nums whitespace-nowrap`).
+  6. **Cabeçalho Global**: Único `<h1>` por página (`text-3xl font-bold text-gray-900 mb-2`), respeitando `GlobalLayout` e `AdminLayout`.
+  7. **Contraste**: Classes e tokens de alto contraste consistentes tanto nas telas claras do Portal/Admin quanto nas seções `.ii-root` (`.escuro` e creme `#FBF8F3`).
+  8. **Decisão Informada**: Antes de redirecionar ao Asaas, o doador vê claramente projeto escolhido, valor formatado em `R$`, periodicidade (`Única` ou `Mensal`/`Trimestral`/`Anual`) e aviso *"Pagamento seguro via Asaas (Pix ou Cartão)"*; no modal Admin, o operador vê `donorEmail`, status e data do último envio antes de reenviar o recibo.
 
-## 4. ❓ Pendências de Regra de Negócio
-- **Nenhuma pendência bloqueante de produto para a Frente 2** (`1A`, `2A`, `3A` e `4` marteladas por Julio Lima em 26/11/2026; chaves `ASAAS_API_KEY`, `ASAAS_API_KEY_SANDBOX`, `RESEND_API_KEY` e `ADMIN_NOTIFY_EMAIL` já presentes em `.env.local`).
-- **Pendências institucionais herdadas do Contexto Geral (não bloqueiam a Frente 2)**:
-  - `irAtivo: false` (leis de incentivo ainda em preparação) e badges `.pend` de metas/beneficiários.
-- **Checklist operacional de virada em produção (após `/desenvolvimento` + `/banca`)**:
-  1. Aplicar `supabase/migrations/20261126_asaas_payments_and_webhooks.sql` no Supabase `zzxtethlsdjjfjjrqmlk`.
-  2. Verificar o domínio `imagineinstituto.com` (Return-Path `send`) no painel do Resend adicionando apenas os registros `send` e `resend._domainkey` (`proxied: false`) na zona Cloudflare sem tocar nos registros Hostinger.
-  3. Subir os secrets no Worker `instituto-imagine` (`ASAAS_ENV`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `RESEND_API_KEY`, `RESEND_FROM`, `ADMIN_NOTIFY_EMAIL`) e registrar o webhook `https://imagineinstituto.com/api/webhooks/asaas` no Asaas.
-  4. Garantir `https://portal.imagineinstituto.com/**` nas Redirect URLs do Supabase Auth (para o link de acesso `3A`).
-
----
-
-## 5. 🧓 Diretriz Técnica e Gabarito de Tela Irmã
-- **Base existente a reaproveitar**:
-  - `src/lib/supabase-admin.ts`, `src/lib/admin-auth.ts` (`requireAdmin()`) e `src/lib/admin-http.ts` (`jsonNoStore`, `verifyAdminMutationOrigin`).
-  - Padrão `safeEqual` (`createHash` + `timingSafeEqual` de `node:crypto`) de `src/app/api/webhooks/supabase-projects/route.ts`.
-  - Catálogo dinâmico `src/lib/site-projects.ts` / `src/lib/site-projects-server.ts` da Frente 1.
-- **Gabarito de Tela Irmã**:
-  - **Modal Institucional (`.ii-root`)**: `src/components/site/ImagineSitePage.tsx` + `src/components/site/imagine-site.css` — manter a estética limpa do modal atual (seleção de projeto, botões de valor, campo de outro valor, recorrência, opção anônima/mensagem opcional e botão direto *"Continuar para pagamento seguro"* redirecionando ao Asaas Checkout, sem iframe apertado quando desnecessário).
-  - **Admin (`/admin/doacoes`)**: alinhar filtros, tabela, modais (`ConfirmDialog.tsx`) e ações reais ao padrão aprovado em `src/app/admin/projetos/page.tsx` e `src/app/admin/blog/page.tsx`, removendo dados falsos (`'email@exemplo.com'`) e botões stub sem backend.
-
----
-
-## 6. ✂️ Escopo Cortado (Inimigo do Atrito)
-- ❌ **Boleto bancário**: Cortado por compensação lenta e alto índice de abandono em doações.
-- ❌ **Formulário próprio de cartão de crédito (Checkout Transparente)**: Cortado por decisão `2A` (elimina coleta de CEP/endereço/cartão no site e escopo PCI-DSS na Worker).
-- ❌ **`POST /v3/paymentLinks` fixos por projeto**: Cortado em favor de `POST /v3/checkouts` dinâmico (zero cadastro manual no Asaas para a equipe do Instituto).
-- ❌ **Disparo de e-mails de marketing em massa pelo Portal nesta entrega**: Cortado para proteger a cota transacional diária (`100/dia UTC`) do plano grátis do Resend (notícias públicas já contam com `/blog` da Frente 3).
+### 5. 🧪 Matriz de Prova Real (Contrato do *Testador*)
+- **Testes Unitários de Regra Pura (`src/lib/payments.test.mjs`)**:
+  - Conversão/soma em centavos, limites `R$ 5,00`..`R$ 500.000,00`, truncamento `items[0].name <= 30` chars, `callback` HTTPS contra `localhost`, fuso `America/Sao_Paulo`.
+  - Verificação `timingSafeEqual` de `asaas-access-token`, máquina de estados para eventos duplicados, fora de ordem (`PAYMENT_RECEIVED` após `PAYMENT_CONFIRMED`, `CHECKOUT_EXPIRED` após `completed`), estornos (`PAYMENT_REFUNDED`) e renovação de assinatura (`asaas_subscription_id` com novo `payment.id`).
+  - Sanitização anti-XSS (`escapeHtml`), anti-CSV Formula Injection (`sanitizeSpreadsheetCell`), omissão de PII em `sanitizePublicSessionResponse` e recibo com CNPJ `14.351.728/0001-72`.
+  - Auditoria automatizada de código/bundle: verifica ausência de dependências Stripe em `package.json`, ausência de imports proibidos em `src/lib/database.ts` e zero segredos/SDKs de servidor em `dist/client`.
+- **O que o teste unitário não cobre sozinho (e como validamos)**:
+  - Aplicação da migração SQL `20261126_asaas_payments_and_webhooks.sql` no banco de produção `zzxtethlsdjjfjjrqmlk` (fica pendente para pós-`/banca`, conforme regra de Mudança Crítica; o servidor tem fallback gracioso caso a RPC ainda não exista em dev).

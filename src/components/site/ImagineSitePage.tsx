@@ -14,13 +14,17 @@ import {
   formatBRL,
   formatBRLCompact,
   parseBRNumber,
-  generatePixBRCode,
   simulateIR2026,
   type PageKey,
   type ProjectInfo,
   type IRSimulationResult,
 } from '@/lib/imagine-site'
 import { formatBlogDatePTBR, type PublicBlogPostSummary } from '@/lib/blog-posts'
+import {
+  MIN_DONATION_BRL,
+  validateCheckoutAmountBrl,
+  type RecurringFrequency,
+} from '@/lib/payments'
 
 interface ImagineSitePageProps {
   page: PageKey
@@ -86,7 +90,7 @@ export default function ImagineSitePage({
   activeProject,
   blogPosts,
 }: ImagineSitePageProps) {
-  const { irAtivo, pixChave, pixNome, pixCidade, whatsapp, prazoIR, arrecadado, meta } = IMAGINE_SITE_CONFIG
+  const { irAtivo, whatsapp, prazoIR, arrecadado, meta } = IMAGINE_SITE_CONFIG
   const siteProjects = projects ?? IMAGINE_PROJECTS
   const anchor = (id: string) => (page === 'home' ? `#${id}` : `/#${id}`)
 
@@ -99,17 +103,19 @@ export default function ImagineSitePage({
   const [toastMsg, setToastMsg] = useState('')
   const [indicador, setIndicador] = useState('')
 
-  // Modal de doação (híbrido: checkout nativo do Portal quando o projeto está no Supabase + Pix/WhatsApp fallback)
+  // Modal de doação unificado via Asaas Checkout (Pix e Cartão) + contingência WhatsApp
   const [modalOpen, setModalOpen] = useState(false)
-  const [doarStep, setDoarStep] = useState<1 | 2>(1)
   const [doarProj, setDoarProj] = useState('geral')
   const [doarValor, setDoarValor] = useState(50)
   const [doarOutro, setDoarOutro] = useState('')
   const [doarNome, setDoarNome] = useState('')
+  const [doarMensagem, setDoarMensagem] = useState('')
+  const [doarAnonima, setDoarAnonima] = useState(false)
   const [doarMensal, setDoarMensal] = useState(false)
-  const [forcePixFallback, setForcePixFallback] = useState(false)
-  const [pixCode, setPixCode] = useState('')
-  const qrRef = useRef<HTMLDivElement | null>(null)
+  const [doarFrequencia, setDoarFrequencia] = useState<RecurringFrequency>('monthly')
+  const [doarLoading, setDoarLoading] = useState(false)
+  const [doarErro, setDoarErro] = useState('')
+  const doarLockRef = useRef(false)
   const galRef = useRef<HTMLDivElement | null>(null)
 
   // Simulador IR
@@ -205,43 +211,17 @@ export default function ImagineSitePage({
     return () => window.clearInterval(id)
   }, [page])
 
-  useEffect(() => {
-    if (!pixCode || doarStep !== 2 || !qrRef.current) return
-    const alvo = qrRef.current
-    const renderQR = () => {
-      const w = window as unknown as { qrcode?: (a: number, b: string) => { addData: (s: string) => void; make: () => void; createSvgTag: (o: unknown) => string } }
-      if (!w.qrcode || !qrRef.current) return
-      const q = w.qrcode(0, 'M')
-      q.addData(pixCode)
-      q.make()
-      alvo.innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true })
-    }
-    if ((window as unknown as { qrcode?: unknown }).qrcode) {
-      renderQR()
-      return
-    }
-    const existing = document.getElementById('ii-qrcode-lib') as HTMLScriptElement | null
-    if (existing) {
-      existing.addEventListener('load', renderQR, { once: true })
-      return
-    }
-    const s = document.createElement('script')
-    s.id = 'ii-qrcode-lib'
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'
-    s.crossOrigin = 'anonymous'
-    s.onload = renderQR
-    s.onerror = () => showToast('Use o botão "Copiar código Pix" abaixo')
-    document.head.appendChild(s)
-  }, [pixCode, doarStep])
-
   const openDoar = (projId?: string, mensal = false) => {
     setDoarProj(projId || 'geral')
     setDoarValor(50)
     setDoarOutro('')
+    setDoarMensagem('')
+    setDoarAnonima(false)
     setDoarMensal(mensal)
-    setDoarStep(1)
-    setPixCode('')
-    setForcePixFallback(false)
+    setDoarFrequencia('monthly')
+    setDoarErro('')
+    setDoarLoading(false)
+    doarLockRef.current = false
     setModalOpen(true)
   }
 
@@ -252,14 +232,6 @@ export default function ImagineSitePage({
         : siteProjects.find((p) => p.id === doarProj),
     [siteProjects, doarProj]
   )
-
-  const portalEmbedPath = selectedProjectInfo?.portalProjectId
-    ? `/embed/checkout/checkout-stripe?project=${selectedProjectInfo.portalProjectId}&source=embed&utm_campaign=${selectedProjectInfo.portalCampaignSlug || selectedProjectInfo.id}`
-    : ''
-
-  const portalDirectPath = selectedProjectInfo?.portalProjectId
-    ? `/embed/checkout/checkout-stripe?project=${selectedProjectInfo.portalProjectId}&source=site&utm_campaign=${selectedProjectInfo.portalCampaignSlug || selectedProjectInfo.id}`
-    : ''
 
   const projLabelMap = useMemo(() => {
     const map: Record<string, string> = {
@@ -284,24 +256,65 @@ export default function ImagineSitePage({
     return ['todos', ...Array.from(unique)]
   }, [siteProjects])
 
-  const handleDoarSubmit = (e: React.FormEvent) => {
+  const handleDoarSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (Math.round(doarValor * 100) < 1) {
-      showToast('Escolha um valor válido')
+    if (doarLockRef.current || doarLoading) return
+    setDoarErro('')
+
+    const validation = validateCheckoutAmountBrl(doarValor)
+    if (!validation.ok) {
+      setDoarErro(validation.error)
       return
     }
-    setDoarStep(2)
-    if (pixChave.trim()) {
-      const code = generatePixBRCode(
-        pixChave.trim(),
-        doarValor,
-        pixNome,
-        pixCidade,
-        'II' + doarProj.toUpperCase().slice(0, 10)
+
+    doarLockRef.current = true
+    setDoarLoading(true)
+
+    try {
+      const targetProjectId = selectedProjectInfo?.portalProjectId || doarProj
+      const targetTitle = projLabelMap[doarProj] || doarProj
+      const noteParts = [doarMensagem.trim()]
+      if (indicador) {
+        noteParts.push(`(Indicação: ${indicador})`)
+      }
+      const combinedMessage = noteParts.filter(Boolean).join(' ').slice(0, 500)
+
+      const res = await fetch('/api/checkout/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: validation.valueBrl,
+          projectId: targetProjectId,
+          projectTitle: targetTitle,
+          source: 'site',
+          options: {
+            isRecurring: doarMensal,
+            frequency: doarFrequencia,
+            anonymous: doarAnonima,
+            message: combinedMessage,
+            donorName: !doarAnonima && doarNome.trim() ? doarNome.trim() : undefined,
+          },
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (res.ok && json.success && typeof json.url === 'string' && json.url) {
+        window.location.href = json.url
+        return
+      }
+
+      setDoarErro(
+        json.error ||
+          'Não foi possível abrir a página segura de pagamento agora. Tente novamente ou chame nossa equipe no WhatsApp.'
       )
-      setPixCode(code)
-    } else {
-      setPixCode('')
+      doarLockRef.current = false
+      setDoarLoading(false)
+    } catch {
+      setDoarErro(
+        'Falha de conexão ao iniciar o pagamento. Verifique sua internet ou fale conosco pelo WhatsApp.'
+      )
+      doarLockRef.current = false
+      setDoarLoading(false)
     }
   }
 
@@ -1071,21 +1084,21 @@ export default function ImagineSitePage({
                 <h2>Quem é o responsável</h2>
                 <p>Instituto Imagine, associação sem fins lucrativos, CNPJ 14.351.728/0001-72, R. Rui de Castro Santos, 1991 — Grand Ville, Uberlândia-MG, 38406-260. É o Instituto quem decide como os dados são usados (controlador, nos termos da Lei Geral de Proteção de Dados, Lei 13.709/2018).</p>
                 <h2>O que coletamos</h2>
-                <p>O site não tem cadastro e não guarda formulários em servidor. Os dados chegam até nós quando você escolhe falar com o Instituto:</p>
+                <p>Os dados chegam até nós apenas quando você realiza uma doação ou escolhe falar com o Instituto:</p>
                 <ul>
-                  <li><b>Doação:</b> nome (opcional), valor, projeto escolhido e o comprovante que você envia pelo WhatsApp.</li>
+                  <li><b>Doação online:</b> projeto escolhido, valor, modalidade (única ou recorrente) e os dados de identificação solicitados no checkout seguro da instituição de pagamento Asaas (nome, e-mail, CPF/CNPJ e meio de pagamento). O Instituto Imagine não armazena números de cartão de crédito em seus servidores.</li>
                   <li><b>Contato, voluntariado, empresas e avisos de Imposto de Renda:</b> nome, telefone e a mensagem que você escreve.</li>
                   <li><b>Simulador de Imposto de Renda:</b> os valores ficam só no seu navegador e não são enviados a ninguém.</li>
                   <li><b>Link de embaixador:</b> o código de indicação fica guardado no seu navegador para registrar quem indicou a doação.</li>
                 </ul>
                 <h2>Para que usamos</h2>
                 <ul>
-                  <li>Emitir o recibo da sua doação e cumprir obrigações legais e fiscais.</li>
+                  <li>Processar a sua doação, enviar automaticamente o recibo com CNPJ por e-mail, liberar seu acesso ao Portal do Doador e cumprir obrigações legais e fiscais.</li>
                   <li>Responder ao seu contato e organizar o voluntariado.</li>
-                  <li>Enviar notícias dos projetos, só se você pedir ou autorizar.</li>
+                  <li>Enviar notícias e prestações de contas dos projetos apoiados.</li>
                 </ul>
                 <h2>Com quem compartilhamos</h2>
-                <p>Não vendemos nem cedemos seus dados. As conversas passam pelo WhatsApp (Meta) e o pagamento pelo Pix é processado pela sua instituição financeira e pela do Instituto. O site carrega fontes do Google Fonts e uma biblioteca de QR Code do cdnjs (Cloudflare), que podem registrar dados técnicos de acesso, como o endereço IP.</p>
+                <p>Não vendemos nem cedemos seus dados. As doações online (Pix e Cartão de Crédito) são processadas pela instituição de pagamento Asaas Gestão Financeira S.A., os e-mails transacionais de recibo e acesso ao Portal são entregues via Resend, e o atendimento direto ocorre pelo WhatsApp (Meta). O site carrega fontes do Google Fonts e é distribuído pela rede da Cloudflare, que pode registrar dados técnicos de segurança e acesso, como o endereço IP.</p>
                 <h2>Medição de acesso</h2>
                 <p>Para saber quais páginas e botões funcionam, usamos uma ferramenta de medição instalada em servidor próprio (Umami). Ela não usa cookies, não identifica você e mostra só números agregados, como total de visitas, páginas vistas, de onde as pessoas chegaram e quantas vezes um botão foi usado.</p>
                 <h2>Por quanto tempo guardamos</h2>
@@ -1144,119 +1157,189 @@ export default function ImagineSitePage({
       </footer>
 
       {modalOpen && (
-        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="md-t" onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false) }}>
+        <div
+          className="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="md-t"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !doarLoading) setModalOpen(false)
+          }}
+        >
           <div className="modal-c">
-            <button type="button" className="modal-x" aria-label="Fechar" onClick={() => setModalOpen(false)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+            <button
+              type="button"
+              className="modal-x"
+              aria-label="Fechar"
+              disabled={doarLoading}
+              onClick={() => setModalOpen(false)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
             </button>
             <div className="modal-in">
-              {portalEmbedPath && !forcePixFallback ? (
-                <div style={{ display: 'grid', gap: 14 }}>
-                  <Pecas />
-                  <h3 id="md-t">Faça a sua doação</h3>
-                  <p className="modal-sub" style={{ marginBottom: 4 }}>
-                    Checkout oficial do Portal Imagine · {projLabelMap[doarProj] || doarProj}
-                  </p>
-                  <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--line-2)', background: '#fff' }}>
-                    <iframe
-                      src={portalEmbedPath}
-                      title={`Checkout ${projLabelMap[doarProj] || 'Instituto Imagine'}`}
-                      style={{ width: '100%', height: 'min(500px, 60svh)', border: 0, display: 'block' }}
-                      allow="payment 'self'"
+              <form onSubmit={(e) => void handleDoarSubmit(e)} noValidate>
+                <Pecas />
+                <h3 id="md-t">Faça a sua doação</h3>
+                <p className="modal-sub">
+                  Pagamento seguro via Asaas (Pix ou Cartão) · CNPJ 14.351.728/0001-72
+                </p>
+                <div style={{ display: 'grid', gap: 15 }}>
+                  <div className="campo">
+                    <label htmlFor="d-proj">Destino da doação</label>
+                    <select
+                      id="d-proj"
+                      value={doarProj}
+                      disabled={doarLoading}
+                      onChange={(e) => {
+                        setDoarProj(e.target.value)
+                        setDoarErro('')
+                      }}
+                    >
+                      {Object.entries(projLabelMap).map(([val, label]) => (
+                        <option key={val} value={val}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="campo">
+                    <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--tx-2)' }}>Valor</span>
+                    <div className="valores-d">
+                      {[30, 50, 100, 200].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          disabled={doarLoading}
+                          aria-pressed={doarValor === v && !doarOutro}
+                          onClick={() => {
+                            setDoarValor(v)
+                            setDoarOutro('')
+                            setDoarErro('')
+                          }}
+                        >
+                          R$ {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="campo">
+                    <label htmlFor="d-outro">
+                      Outro valor em R$ (mínimo {formatBRL(MIN_DONATION_BRL)})
+                    </label>
+                    <input
+                      id="d-outro"
+                      inputMode="decimal"
+                      disabled={doarLoading}
+                      placeholder="Ex.: 75,00"
+                      value={doarOutro}
+                      onChange={(e) => {
+                        setDoarOutro(e.target.value)
+                        setDoarValor(parseBRNumber(e.target.value))
+                        setDoarErro('')
+                      }}
                     />
                   </div>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Link className="lnk" href={portalDirectPath}>
-                      Abrir checkout em tela cheia <ArrowIcon />
-                    </Link>
-                    <button type="button" className="btn-mais" onClick={() => setForcePixFallback(true)}>
-                      Prefere Pix / WhatsApp?
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <form onSubmit={handleDoarSubmit} noValidate>
-                  {doarStep === 1 ? (
-                    <div>
-                      <Pecas />
-                      <h3 id="md-t">Faça a sua doação</h3>
-                      <p className="modal-sub">Pix direto para o Instituto Imagine · CNPJ 14.351.728/0001-72</p>
-                      <div style={{ display: 'grid', gap: 16 }}>
-                        <div className="campo">
-                          <label htmlFor="d-proj">Projeto</label>
-                          <select
-                            id="d-proj"
-                            value={doarProj}
-                            onChange={(e) => {
-                              setDoarProj(e.target.value)
-                              setForcePixFallback(true)
-                              setPixCode('')
-                            }}
-                          >
-                            {Object.entries(projLabelMap).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
-                          </select>
-                        </div>
-                        {portalEmbedPath && (
-                          <button
-                            type="button"
-                            className="btn-mais"
-                            style={{ justifySelf: 'start' }}
-                            onClick={() => setForcePixFallback(false)}
-                          >
-                            Pagar online pelo Portal
-                          </button>
-                        )}
-                        <div className="campo">
-                          <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--tx-2)' }}>Valor</span>
-                          <div className="valores-d">
-                            {[30, 50, 100, 200].map((v) => (
-                              <button key={v} type="button" aria-pressed={doarValor === v && !doarOutro} onClick={() => { setDoarValor(v); setDoarOutro('') }}>R$ {v}</button>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="campo">
-                          <label htmlFor="d-outro">Outro valor (R$)</label>
-                          <input id="d-outro" inputMode="decimal" placeholder="Digite o valor" value={doarOutro} onChange={(e) => { setDoarOutro(e.target.value); setDoarValor(parseBRNumber(e.target.value)) }} />
-                        </div>
-                        <div className="campo">
-                          <label htmlFor="d-nome">Seu nome (opcional)</label>
-                          <input id="d-nome" value={doarNome} onChange={(e) => setDoarNome(e.target.value)} />
-                        </div>
-                        <label className="chk">
-                          <input type="checkbox" checked={doarMensal} onChange={(e) => setDoarMensal(e.target.checked)} /> Quero doar todo mês
-                        </label>
-                        <button className="btn btn-full" type="submit"><span className="bt">Gerar Pix</span><PillBtnIcon /></button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="pix" aria-live="polite">
-                      <span className="campanha-k">{projLabelMap[doarProj] || doarProj}</span>
-                      <div className="pix-v">{formatBRL(doarValor)}{doarMensal ? ' / mês' : ''}</div>
-                      {pixCode ? (
-                        <div style={{ width: '100%' }}>
-                          <div className="pix-qr" ref={qrRef} style={{ margin: '0 auto 14px' }} />
-                          <code>{pixCode}</code>
-                          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12, flexWrap: 'wrap' }}>
-                            <button type="button" className="btn-mais" onClick={() => copyText(pixCode)}>Copiar código Pix</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ width: '100%', display: 'grid', gap: 12 }}>
-                          <p className="modal-sub" style={{ margin: 0 }}>A chave Pix chega pelo WhatsApp em instantes.</p>
-                          <button type="button" className="btn btn-full" onClick={() => openWhats(`Olá! Quero doar ${formatBRL(doarValor)}${doarMensal ? ' por mês' : ''} para o projeto "${projLabelMap[doarProj] || doarProj}" do Instituto Imagine. Pode me passar a chave Pix?${doarNome.trim() ? `\nNome: ${doarNome.trim()}` : ''}`)}>
-                            <span className="bt">Receber a chave Pix</span><PillBtnIcon />
-                          </button>
-                        </div>
-                      )}
-                      <p className="modal-sub" style={{ margin: '4px 0 0' }}>Depois de pagar, envie o comprovante para receber o seu recibo.</p>
-                      <button type="button" className="btn btn-full btn-ghost" onClick={() => openWhats(`Olá! Fiz uma doação de ${formatBRL(doarValor)}${doarMensal ? ' (quero doar todo mês)' : ''} para o projeto "${projLabelMap[doarProj] || doarProj}" do Instituto Imagine.${doarNome.trim() ? `\nNome: ${doarNome.trim()}` : ''}\nSegue o comprovante:`)}>
-                        <span className="bt">Enviar comprovante</span><PillBtnIcon />
-                      </button>
-                      <button type="button" className="btn-mais" onClick={() => { setPixCode(''); setDoarStep(1) }}>Voltar</button>
+
+                  {!doarAnonima && (
+                    <div className="campo">
+                      <label htmlFor="d-nome">Seu nome (opcional)</label>
+                      <input
+                        id="d-nome"
+                        maxLength={120}
+                        disabled={doarLoading}
+                        placeholder="Você também poderá preencher na tela de pagamento"
+                        value={doarNome}
+                        onChange={(e) => setDoarNome(e.target.value)}
+                      />
                     </div>
                   )}
-                </form>
-              )}
+
+                  <div className="campo">
+                    <label htmlFor="d-msg">Mensagem de apoio (opcional)</label>
+                    <input
+                      id="d-msg"
+                      maxLength={500}
+                      disabled={doarLoading}
+                      placeholder="Deixe um recado para a equipe do projeto"
+                      value={doarMensagem}
+                      onChange={(e) => setDoarMensagem(e.target.value)}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <label className="chk">
+                      <input
+                        type="checkbox"
+                        disabled={doarLoading}
+                        checked={doarMensal}
+                        onChange={(e) => setDoarMensal(e.target.checked)}
+                      />{' '}
+                      Quero doar todo mês (assinatura automática no cartão)
+                    </label>
+
+                    {doarMensal && (
+                      <div className="campo" style={{ paddingLeft: 4 }}>
+                        <label htmlFor="d-freq">Periodicidade</label>
+                        <select
+                          id="d-freq"
+                          value={doarFrequencia}
+                          disabled={doarLoading}
+                          onChange={(e) => setDoarFrequencia(e.target.value as RecurringFrequency)}
+                        >
+                          <option value="monthly">Mensal</option>
+                          <option value="quarterly">Trimestral</option>
+                          <option value="yearly">Anual</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <label className="chk">
+                      <input
+                        type="checkbox"
+                        disabled={doarLoading}
+                        checked={doarAnonima}
+                        onChange={(e) => setDoarAnonima(e.target.checked)}
+                      />{' '}
+                      Doar anonimamente (não exibir meu nome em listagens)
+                    </label>
+                  </div>
+
+                  {doarErro && (
+                    <div className="aviso" role="alert" style={{ margin: 0 }}>
+                      <b>Atenção:</b> {doarErro}
+                    </div>
+                  )}
+
+                  <button className="btn btn-full" type="submit" disabled={doarLoading}>
+                    <span className="bt">
+                      {doarLoading
+                        ? 'Abrindo pagamento seguro...'
+                        : `Continuar para pagamento · ${formatBRL(doarValor > 0 ? doarValor : 0)}`}
+                    </span>
+                    <PillBtnIcon />
+                  </button>
+
+                  <p className="nota" style={{ margin: 0, textAlign: 'center' }}>
+                    Você concluirá com Pix ou Cartão na página segura do Asaas e receberá o recibo com CNPJ por e-mail.{' '}
+                    <button
+                      type="button"
+                      className="lnk"
+                      style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 'inherit' }}
+                      onClick={() =>
+                        openWhats(
+                          `Olá! Quero fazer uma doação de ${formatBRL(doarValor > 0 ? doarValor : 50)}${doarMensal ? ' recorrente' : ''} para "${projLabelMap[doarProj] || doarProj}" e gostaria de ajuda.`
+                        )
+                      }
+                    >
+                      Precisa de ajuda no WhatsApp?
+                    </button>
+                  </p>
+                </div>
+              </form>
             </div>
           </div>
         </div>

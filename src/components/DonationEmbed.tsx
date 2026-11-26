@@ -1,7 +1,13 @@
 'use client'
 
-import { useState } from 'react'
-import { generateCheckoutUrl } from '@/lib/urls'
+import { useRef, useState } from 'react'
+import {
+  MIN_DONATION_BRL,
+  formatCurrencyBRL,
+  validateCheckoutAmountBrl,
+  type RecurringFrequency,
+} from '@/lib/payments'
+import { parseBRNumber } from '@/lib/imagine-site'
 
 interface DonationEmbedProps {
   project: {
@@ -13,245 +19,249 @@ interface DonationEmbedProps {
     imageUrl?: string
     hasFundingGoal?: boolean
   }
+  source?: 'embed' | 'portal' | 'site'
 }
 
-const donationAmounts = [50, 100, 200]
+const donationAmounts = [30, 50, 100, 200]
 
-export default function DonationEmbed({ project }: DonationEmbedProps) {
-  const [donationData, setDonationData] = useState({
-    amount: '50',
-    customAmount: '',
-    isRecurring: false,
-    frequency: 'monthly',
-    anonymous: false,
-    message: ''
-  })
+export default function DonationEmbed({ project, source = 'embed' }: DonationEmbedProps) {
+  const [selectedPreset, setSelectedPreset] = useState<number | 'custom'>(50)
+  const [customAmount, setCustomAmount] = useState('')
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [frequency, setFrequency] = useState<RecurringFrequency>('monthly')
+  const [anonymous, setAnonymous] = useState(false)
+  const [showMessageField, setShowMessageField] = useState(false)
+  const [message, setMessage] = useState('')
+  const [donorName, setDonorName] = useState('')
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const submitLockRef = useRef(false)
 
-  const handleAmountChange = (amount: string) => {
-    setDonationData(prev => ({
-      ...prev,
-      amount,
-      customAmount: ''
-    }))
-  }
-
-  const handleCustomAmountChange = (value: string) => {
-    setDonationData(prev => ({
-      ...prev,
-      amount: 'custom',
-      customAmount: value
-    }))
-  }
-
-  const handleRecurringToggle = () => {
-    setDonationData(prev => ({
-      ...prev,
-      isRecurring: !prev.isRecurring,
-      frequency: !prev.isRecurring ? 'monthly' : prev.frequency
-    }))
-  }
-
-  const handleAnonymousToggle = () => {
-    setDonationData(prev => ({
-      ...prev,
-      anonymous: !prev.anonymous
-    }))
-  }
-
-  const handleMessageToggle = () => {
-    setDonationData(prev => ({
-      ...prev,
-      message: prev.message ? '' : 'Mensagem de apoio ao projeto!'
-    }))
-  }
-
-  const handleInputChange = (field: string, value: string) => {
-    setDonationData(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
-
-
-  const getDonationAmount = () => {
-    if (donationData.amount === 'custom') {
-      return parseFloat(donationData.customAmount) || 0
+  const getDonationAmount = (): number => {
+    if (selectedPreset === 'custom') {
+      return parseBRNumber(customAmount)
     }
-    return parseFloat(donationData.amount) || 0
-  }
-
-  const validateForm = () => {
-    const amount = getDonationAmount()
-    if (amount <= 0) {
-      setError('Valor deve ser maior que zero')
-      return false
-    }
-    return true
+    return selectedPreset
   }
 
   const handleContinue = async () => {
+    if (submitLockRef.current || processing) return
     setError(null)
-    setProcessing(true)
-    
-    if (!validateForm()) {
-      setProcessing(false)
+
+    const amount = getDonationAmount()
+    const validation = validateCheckoutAmountBrl(amount)
+    if (!validation.ok) {
+      setError(validation.error)
       return
     }
-    
+
+    submitLockRef.current = true
+    setProcessing(true)
+
     try {
-      const amount = getDonationAmount()
-      
       const response = await fetch('/api/checkout/create-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          amount,
+          amount: validation.valueBrl,
           projectId: project.id,
           projectTitle: project.title,
+          source,
           options: {
-            isRecurring: donationData.isRecurring,
-            frequency: donationData.frequency,
-            anonymous: donationData.anonymous,
-            message: donationData.message
-          }
+            isRecurring,
+            frequency,
+            anonymous,
+            message: showMessageField ? message.trim() : '',
+            donorName: !anonymous && donorName.trim() ? donorName.trim() : undefined,
+          },
         }),
       })
 
-      const result = await response.json()
+      const result = await response.json().catch(() => ({}))
 
-      if (result.success && result.url) {
-        // Escapar do iframe ao redirecionar para gateway externo
+      if (response.ok && result.success && typeof result.url === 'string' && result.url) {
         if (window.top && window.top !== window.self) {
           window.top.location.href = result.url
         } else {
           window.location.href = result.url
         }
-      } else {
-        setError(result.error || 'Erro ao processar pagamento')
-        setProcessing(false)
+        return
       }
-    } catch (error) {
-      console.error('Erro ao processar pagamento:', error)
-      setError('Erro ao processar pagamento. Tente novamente.')
+
+      setError(result.error || 'Não foi possível iniciar o checkout seguro agora. Tente novamente.')
+      submitLockRef.current = false
+      setProcessing(false)
+    } catch {
+      setError('Falha de conexão ao iniciar o pagamento. Verifique sua internet e tente novamente.')
+      submitLockRef.current = false
       setProcessing(false)
     }
   }
 
+  const progressPct =
+    project.targetAmount > 0
+      ? Math.min(100, Math.round(((project.currentAmount || 0) / project.targetAmount) * 100))
+      : 0
+
+  const currentAmountFormatted = formatCurrencyBRL(project.currentAmount || 0)
+  const targetAmountFormatted = formatCurrencyBRL(project.targetAmount || 0)
+  const activeAmount = getDonationAmount()
+
   return (
-    <div className="max-w-2xl mx-auto bg-white overflow-hidden">
-      {/* Project Info */}
-      <div className="p-6 bg-white">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">{project.title}</h1>
-        
-        {/* Mostrar barra de progresso apenas se tem meta de arrecadação */}
-        {project.hasFundingGoal !== false && (
-          <div className="bg-white rounded-lg p-4">
+    <div className="max-w-2xl mx-auto bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-gray-100 bg-white">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">{project.title}</h1>
+        {project.description && (
+          <p className="text-sm text-gray-600 mb-4">{project.description}</p>
+        )}
+
+        {project.hasFundingGoal !== false && project.targetAmount > 0 ? (
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-medium text-gray-600">Arrecadado</span>
-              <span className="text-sm font-medium text-gray-900">
-                R$ {(project.currentAmount || 0).toLocaleString('pt-BR')}
+              <span className="text-sm font-semibold text-gray-900 tabular-nums">
+                {currentAmountFormatted}
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-green-600 h-2 rounded-full" 
-                style={{ width: `${((project.currentAmount || 0) / (project.targetAmount || 10000)) * 100}%` }}
-              ></div>
+              <div
+                className="bg-green-600 h-2 rounded-full transition-all"
+                style={{ width: `${progressPct}%` }}
+              />
             </div>
             <div className="flex justify-between items-center mt-2">
-              <span className="text-xs text-gray-500">Meta: R$ {(project.targetAmount || 10000).toLocaleString('pt-BR')}</span>
-              <span className="text-xs text-gray-500">
-                {Math.round(((project.currentAmount || 0) / (project.targetAmount || 10000)) * 100)}%
+              <span className="text-xs text-gray-500 tabular-nums">
+                Meta: {targetAmountFormatted}
+              </span>
+              <span className="text-xs font-medium text-gray-600 tabular-nums">
+                {progressPct}%
               </span>
             </div>
           </div>
-        )}
-
-        {/* Mostrar apenas valor arrecadado se não tem meta */}
-        {project.hasFundingGoal === false && (
-          <div className="bg-white rounded-lg p-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-gray-600">Total Arrecadado</span>
-              <span className="text-lg font-bold text-green-600">
-                R$ {(project.currentAmount || 0).toLocaleString('pt-BR')}
-              </span>
-            </div>
+        ) : (
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100 flex justify-between items-center">
+            <span className="text-sm font-medium text-gray-600">Destino confirmado</span>
+            <span className="text-xs font-semibold text-green-700 bg-green-100 px-2.5 py-1 rounded-full">
+              CNPJ 14.351.728/0001-72
+            </span>
           </div>
         )}
       </div>
 
-      {/* Donation Form */}
       <div className="p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Escolha o valor da doação</h2>
-        
-        {/* Amount Selection */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          {donationAmounts.map((amount) => (
-            <button
-              key={amount}
-              onClick={() => handleAmountChange(amount.toString())}
-              className={`p-4 rounded-full border-2 text-center font-semibold transition-all duration-200 ${
-                donationData.amount === amount.toString()
-                  ? 'border-green-500 bg-green-50 text-green-600 shadow-md'
-                  : 'border-gray-300 text-gray-700 hover:border-green-400 hover:bg-green-50'
-              }`}
-            >
-              R$ {amount}
-            </button>
-          ))}
+        <h2 className="text-base font-semibold text-gray-900 mb-3">
+          Escolha o valor da doação
+        </h2>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          {donationAmounts.map((amount) => {
+            const selected = selectedPreset === amount
+            return (
+              <button
+                key={amount}
+                type="button"
+                onClick={() => {
+                  setSelectedPreset(amount)
+                  setCustomAmount('')
+                  setError(null)
+                }}
+                className={`py-3 px-4 rounded-lg border-2 text-center font-semibold tabular-nums transition-colors ${
+                  selected
+                    ? 'border-green-600 bg-green-50 text-green-700'
+                    : 'border-gray-200 text-gray-700 hover:border-green-400 hover:bg-green-50/50'
+                }`}
+              >
+                R$ {amount}
+              </button>
+            )
+          })}
         </div>
-        
-        {/* Custom Amount */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Ou digite um valor personalizado
+
+        <div className="mb-5">
+          <label
+            htmlFor="embed-custom-amount"
+            className="block text-sm font-medium text-gray-700 mb-1.5"
+          >
+            Ou digite outro valor (mínimo {formatCurrencyBRL(MIN_DONATION_BRL)})
           </label>
           <input
+            id="embed-custom-amount"
             type="text"
-            value={donationData.customAmount ? `R$ ${donationData.customAmount}` : ''}
+            inputMode="decimal"
+            value={customAmount}
             onChange={(e) => {
-              const value = e.target.value.replace('R$ ', '').replace(/[^0-9,]/g, '')
-              handleCustomAmountChange(value)
+              const cleaned = e.target.value.replace(/[^0-9.,]/g, '')
+              setCustomAmount(cleaned)
+              setSelectedPreset('custom')
+              setError(null)
             }}
-            placeholder="R$ 0,00"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            placeholder="Ex.: 75,00"
+            className="input-modern tabular-nums"
           />
         </div>
 
-        {/* Options */}
-        <div className="space-y-4 mb-6">
-          {/* Recurring Donation */}
-          <div className="flex items-center justify-between">
+        {!anonymous && (
+          <div className="mb-5">
+            <label
+              htmlFor="embed-donor-name"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
+              Seu nome (opcional — você também poderá informar no checkout)
+            </label>
+            <input
+              id="embed-donor-name"
+              type="text"
+              maxLength={120}
+              value={donorName}
+              onChange={(e) => setDonorName(e.target.value)}
+              placeholder="Como deseja aparecer no recibo"
+              className="input-modern"
+            />
+          </div>
+        )}
+
+        <div className="space-y-4 mb-6 border-t border-gray-100 pt-4">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <span className="text-sm font-medium text-gray-700">Doação recorrente</span>
-              <p className="text-xs text-gray-500">Repetir automaticamente</p>
+              <span className="text-sm font-medium text-gray-800">Doação recorrente</span>
+              <p className="text-xs text-gray-500">
+                {isRecurring
+                  ? 'Assinatura automática no cartão de crédito via Asaas'
+                  : 'Doação única via Pix ou Cartão de Crédito'}
+              </p>
             </div>
             <button
-              onClick={handleRecurringToggle}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                donationData.isRecurring ? 'bg-green-600' : 'bg-gray-200'
+              type="button"
+              role="switch"
+              aria-checked={isRecurring}
+              onClick={() => setIsRecurring((prev) => !prev)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                isRecurring ? 'bg-green-600' : 'bg-gray-200'
               }`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  donationData.isRecurring ? 'translate-x-6' : 'translate-x-1'
+                  isRecurring ? 'translate-x-6' : 'translate-x-1'
                 }`}
               />
             </button>
           </div>
 
-          {/* Frequency Selector */}
-          {donationData.isRecurring && (
-            <div className="ml-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Frequência</label>
+          {isRecurring && (
+            <div className="pl-3 border-l-2 border-green-200">
+              <label
+                htmlFor="embed-frequency"
+                className="block text-xs font-medium text-gray-700 mb-1.5"
+              >
+                Frequência da assinatura
+              </label>
               <select
-                value={donationData.frequency}
-                onChange={(e) => handleInputChange('frequency', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                id="embed-frequency"
+                value={frequency}
+                onChange={(e) => setFrequency(e.target.value as RecurringFrequency)}
+                className="input-modern h-11 !py-0"
               >
                 <option value="monthly">Mensal</option>
                 <option value="quarterly">Trimestral</option>
@@ -260,91 +270,103 @@ export default function DonationEmbed({ project }: DonationEmbedProps) {
             </div>
           )}
 
-          {/* Anonymous Donation */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <span className="text-sm font-medium text-gray-700">Doação anônima</span>
-              <p className="text-xs text-gray-500">Não exibir meu nome</p>
+              <span className="text-sm font-medium text-gray-800">Doação anônima</span>
+              <p className="text-xs text-gray-500">Ocultar meu nome em listagens públicas</p>
             </div>
             <button
-              onClick={handleAnonymousToggle}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                donationData.anonymous ? 'bg-green-600' : 'bg-gray-200'
+              type="button"
+              role="switch"
+              aria-checked={anonymous}
+              onClick={() => setAnonymous((prev) => !prev)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                anonymous ? 'bg-green-600' : 'bg-gray-200'
               }`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  donationData.anonymous ? 'translate-x-6' : 'translate-x-1'
+                  anonymous ? 'translate-x-6' : 'translate-x-1'
                 }`}
               />
             </button>
           </div>
 
-          {/* Message */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <span className="text-sm font-medium text-gray-700">Adicionar mensagem</span>
-              <p className="text-xs text-gray-500">Deixar uma mensagem de apoio</p>
+              <span className="text-sm font-medium text-gray-800">Mensagem de apoio</span>
+              <p className="text-xs text-gray-500">Deixar um recado opcional para a equipe</p>
             </div>
             <button
-              onClick={handleMessageToggle}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-                donationData.message ? 'bg-green-600' : 'bg-gray-200'
+              type="button"
+              role="switch"
+              aria-checked={showMessageField}
+              onClick={() => setShowMessageField((prev) => !prev)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                showMessageField ? 'bg-green-600' : 'bg-gray-200'
               }`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  donationData.message ? 'translate-x-6' : 'translate-x-1'
+                  showMessageField ? 'translate-x-6' : 'translate-x-1'
                 }`}
               />
             </button>
           </div>
 
-          {/* Message Field */}
-          {donationData.message && (
-            <div className="ml-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Sua mensagem</label>
+          {showMessageField && (
+            <div>
+              <label
+                htmlFor="embed-message"
+                className="block text-xs font-medium text-gray-700 mb-1.5"
+              >
+                Sua mensagem (máx. 500 caracteres)
+              </label>
               <textarea
-                value={donationData.message}
-                onChange={(e) => handleInputChange('message', e.target.value)}
+                id="embed-message"
+                value={message}
+                maxLength={500}
+                onChange={(e) => setMessage(e.target.value)}
                 placeholder="Deixe uma mensagem de apoio ao projeto..."
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
+                className="input-modern resize-none"
               />
             </div>
           )}
         </div>
 
+        {error && (
+          <div className="mb-4 p-3.5 bg-red-50 border border-red-200 rounded-lg" role="alert">
+            <p className="text-red-700 text-sm">{error}</p>
+          </div>
+        )}
 
-        {/* Continue Button */}
         <button
-          onClick={handleContinue}
+          type="button"
+          onClick={() => void handleContinue()}
           disabled={processing}
-          className="w-full mb-4 px-6 py-4 bg-green-600 text-white font-medium rounded-md hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full mb-4 px-6 py-3.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {processing ? (
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-              Processando...
-            </div>
+            <span className="inline-flex items-center justify-center">
+              <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
+              Redirecionando ao ambiente seguro...
+            </span>
           ) : (
-            `Continuar para Pagamento - R$ ${getDonationAmount().toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+            `Continuar para pagamento · ${formatCurrencyBRL(activeAmount > 0 ? activeAmount : 0)}`
           )}
         </button>
 
-        {/* Security Seal */}
-        <div className="flex items-center justify-center space-x-2 text-gray-500 text-sm">
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+        <div className="flex items-center justify-center gap-2 text-gray-500 text-xs text-center">
+          <svg className="w-4 h-4 flex-shrink-0 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+              clipRule="evenodd"
+            />
           </svg>
-          <span>Pagamento seguro via Stripe</span>
+          <span>Ambiente seguro Asaas · Pix e Cartão · Recibo enviado por e-mail</span>
         </div>
-        
-        {error && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600 text-sm">{error}</p>
-          </div>
-        )}
       </div>
     </div>
   )

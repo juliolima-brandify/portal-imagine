@@ -15,10 +15,9 @@
     "deploy:vinext": "vinext-cloudflare deploy --config dist/server/wrangler.json"
   },
   "dependencies": {
-    "@stripe/react-stripe-js": "^2.4.0",
-    "@stripe/stripe-js": "^2.2.0",
     "@supabase/ssr": "^0.1.0",
     "@supabase/supabase-js": "^2.39.0",
+    "@vinext/cloudflare": "latest",
     "chart.js": "^4.4.1",
     "date-fns": "^3.0.6",
     "jspdf": "^2.5.2",
@@ -28,18 +27,18 @@
     "react-chartjs-2": "^5.2.0",
     "react-day-picker": "^8.10.0",
     "react-dom": "^19.3.1",
-    "resend": "^3.0.0",
-    "stripe": "^14.9.0",
-    "xlsx": "^0.18.5",
-    "zod": "^3.22.4",
-    "vinext": "latest",
     "react-server-dom-webpack": "latest",
-    "@vinext/cloudflare": "latest"
+    "vinext": "latest",
+    "xlsx": "^0.18.5",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "latest",
+    "@vitejs/plugin-rsc": "latest",
     "autoprefixer": "^10.0.1",
     "eslint": "^8",
     "eslint-config-next": "14.0.4",
@@ -47,9 +46,6 @@
     "tailwindcss": "^3.3.0",
     "typescript": "^5",
     "vite": "latest",
-    "@vitejs/plugin-react": "latest",
-    "@vitejs/plugin-rsc": "latest",
-    "@cloudflare/vite-plugin": "1",
     "wrangler": "latest"
   },
   "type": "module"

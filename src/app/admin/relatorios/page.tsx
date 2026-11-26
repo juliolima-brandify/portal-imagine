@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getProjects, getDonations } from '@/lib/database'
+import { adminFetch } from '@/lib/admin-api'
+import { getDonationDestinationLabel, sumDonationsBrl } from '@/lib/payments'
 
 import ExportDropdown from '@/components/ExportDropdown'
 import DonationTrendChart from '@/components/DonationTrendChart'
@@ -74,10 +76,30 @@ export default function AdminRelatoriosPage() {
   useEffect(() => {
     const loadReports = async () => {
       try {
-        const [projectsData, donations] = await Promise.all([
+        const [projectsData, adminDonRes] = await Promise.all([
           getProjects(),
-          getDonations()
+          adminFetch('/api/admin/donations?page=1&pageSize=100').catch(() => null),
         ])
+        let donations: any[] = []
+        if (adminDonRes && adminDonRes.ok) {
+          const parsed = await adminDonRes.json().catch(() => ({}))
+          if (Array.isArray(parsed.data)) {
+            donations = parsed.data.map((item: any) => ({
+              id: item.id,
+              user_id: item.userId,
+              project_id: item.projectId,
+              campaign_slug: item.campaignSlug,
+              projectTitle: item.projectTitle,
+              donorName: item.donorName,
+              amount: item.amount,
+              status: item.status,
+              anonymous: item.anonymous,
+              created_at: item.createdAt,
+            }))
+          }
+        } else {
+          donations = await getDonations()
+        }
         // Contar voluntários (profiles.role = 'volunteer')
         let totalVolunteers = 0
         try {
@@ -112,8 +134,8 @@ export default function AdminRelatoriosPage() {
         const completedProjects = projectsData.filter((p: any) => p.status === 'completed')
         const completedDonations = filteredDonations.filter((d: any) => d.status === 'completed')
 
-        const totalDonations = completedDonations.reduce((sum: number, d: any) => sum + d.amount, 0)
-        const totalDonors = new Set(completedDonations.map((d: any) => d.user_id).filter(Boolean)).size
+        const totalDonations = sumDonationsBrl(completedDonations.map((d: any) => d.amount))
+        const totalDonors = new Set(completedDonations.map((d: any) => d.user_id || d.donorName).filter(Boolean)).size
         const avgDonation = completedDonations.length > 0 ? totalDonations / completedDonations.length : 0
 
         // Dados do período para o gráfico
@@ -195,15 +217,15 @@ export default function AdminRelatoriosPage() {
             return { name: p.title, amount, donors, progress }
           })
           .sort((a: any, b: any) => b.amount - a.amount)
-          .slice(5)
+          .slice(0, 5)
 
         // Top Doadores (com perfil quando disponível)
         const byDonor = new Map<string, { amount: number, count: number }>()
         completedDonations.forEach((d: any) => {
-          const key = d.user_id || `anon-${d.id}`
+          const key = d.donorName || d.user_id || `anon-${d.id}`
           if (!byDonor.has(key)) byDonor.set(key, { amount: 0, count: 0 })
           const agg = byDonor.get(key)!
-          agg.amount += d.amount
+          agg.amount = sumDonationsBrl([agg.amount, d.amount])
           agg.count += 1
         })
         const donorsArray = Array.from(byDonor.entries())
@@ -228,8 +250,12 @@ export default function AdminRelatoriosPage() {
           paymentMethods: [],
           recentDonations: completedDonations.slice(0, 10).map(d => ({
             id: d.id,
-            donor: d.anonymous ? 'Anônimo' : (d.user_id || 'Usuário'),
-            project: d.project_id,
+            donor: d.anonymous ? 'Anônimo' : (d.donorName || d.user_id || 'Doador'),
+            project: getDonationDestinationLabel({
+              projectTitle: d.projectTitle || d.projects?.title || null,
+              campaignSlug: d.campaign_slug || null,
+              projectId: d.project_id || null,
+            }),
             amount: d.amount,
             date: d.created_at
           }))

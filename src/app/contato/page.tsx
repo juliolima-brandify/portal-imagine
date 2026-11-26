@@ -255,7 +255,7 @@ export default function ContatoPage() {
                     As doações são seguras?
                   </h3>
                   <p className="text-gray-600 text-sm">
-                    Sim, utilizamos o Stripe para processar pagamentos de forma segura e criptografada.
+                    Sim, utilizamos o checkout oficial do Asaas (Pix e Cartão de Crédito) com ambiente criptografado e recibo automático.
                   </p>
                 </div>
 

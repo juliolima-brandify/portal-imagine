@@ -11,7 +11,6 @@ export default function ConditionalChat() {
   const excludePaths = [
     '/admin',
     '/embed/checkout',
-    '/prototype/checkout',
     '/doacao-sucesso',
     '/auth',
     '/entrar',

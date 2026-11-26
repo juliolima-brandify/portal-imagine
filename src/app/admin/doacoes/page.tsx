@@ -1,748 +1,720 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { adminFetch } from '@/lib/admin-api'
+import { Modal } from '@/components/ConfirmDialog'
 import { ToastContainer, useToast } from '@/components/Toast'
+import { exportToCSV } from '@/lib/export'
+import {
+  formatCurrencyBRL,
+  getDonationStatusLabelPTBR,
+  getFrequencyLabelPTBR,
+  sanitizeSpreadsheetCell,
+} from '@/lib/payments'
 
-import type { User } from '@supabase/supabase-js'
+const ADMIN_PAGE_SIZE = 25
 
-// Mock data removido - usando apenas dados reais do Supabase
+interface AdminDonationRow {
+  id: string
+  userId: string | null
+  projectId: string | null
+  campaignSlug: string | null
+  projectTitle: string
+  donorName: string
+  donorEmail: string
+  hasValidEmail: boolean
+  amount: number
+  currency: string
+  status: 'pending' | 'completed' | 'failed' | 'refunded'
+  method: string
+  rawMethod: string | null
+  isRecurring: boolean
+  recurringFrequency: string | null
+  anonymous: boolean
+  message: string | null
+  transactionId: string
+  receiptSentAt: string | null
+  createdAt: string
+}
+
+interface AdminDonationStats {
+  total: number
+  completedCount: number
+  pendingCount: number
+  failedCount: number
+  totalCompletedBrl: number
+  totalPendingBrl: number
+}
+
+async function safeReadJson(res: Response): Promise<Record<string, unknown>> {
+  try {
+    const text = await res.text()
+    if (!text) return {}
+    const parsed: unknown = JSON.parse(text)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return parsed as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
 
 export default function AdminDoacoesPage() {
-  const [user, setUser] = useState<User | null>(null)
-  // Loading removido
-  const [donations, setDonations] = useState<any[]>([])
-  const [filter, setFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all')
+  const [donations, setDonations] = useState<AdminDonationRow[]>([])
+  const [total, setTotal] = useState(0)
+  const [stats, setStats] = useState<AdminDonationStats>({
+    total: 0,
+    completedCount: 0,
+    pendingCount: 0,
+    failedCount: 0,
+    totalCompletedBrl: 0,
+    totalPendingBrl: 0,
+  })
+
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all')
+  const [methodFilter, setMethodFilter] = useState<'all' | 'pix' | 'card' | 'recurring'>('all')
   const [searchTerm, setSearchTerm] = useState('')
-  const [showDetailsModal, setShowDetailsModal] = useState(false)
-  const [selectedDonation, setSelectedDonation] = useState<any>(null)
-  const [showExportDropdown, setShowExportDropdown] = useState(false)
-  const { toasts, removeToast, success, error, warning, info } = useToast()
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [page, setPage] = useState(1)
 
-  // Função otimizada para carregar doações
-  const loadDonationsFromSupabase = useCallback(async () => {
+  const [selectedDonation, setSelectedDonation] = useState<AdminDonationRow | null>(null)
+  const [resendingId, setResendingId] = useState<string | null>(null)
+
+  const { toasts, removeToast, success, error, warning } = useToast()
+  const toastRef = useRef({ success, error, warning })
+  toastRef.current = { success, error, warning }
+  const loadSeqRef = useRef(0)
+  const operationLockRef = useRef(false)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const normalized = searchTerm.trim()
+      if (normalized !== debouncedSearch) {
+        setDebouncedSearch(normalized)
+        setPage(1)
+      }
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [searchTerm, debouncedSearch])
+
+  const loadDonations = useCallback(async () => {
+    const seq = ++loadSeqRef.current
+    setIsLoading(true)
+    setLoadError('')
     try {
-      console.log('🔄 [DOAÇÕES] Carregando doações do Supabase...')
-      
-      // Tentar carregar doações com schema básico
-      const { data, error } = await supabase
-        .from('donations')
-        .select('*')
-        .order('created_at', { ascending: false })
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(ADMIN_PAGE_SIZE),
+      })
+      if (statusFilter !== 'all') params.set('status', statusFilter)
+      if (methodFilter !== 'all') params.set('method', methodFilter)
+      if (debouncedSearch) params.set('q', debouncedSearch)
 
-      if (error) {
-        console.error('❌ [DOAÇÕES] Erro ao carregar doações:', error)
-        console.log('💡 [DOAÇÕES] Nenhum dado disponível - tabela vazia ou erro de conexão')
+      const res = await adminFetch(`/api/admin/donations?${params.toString()}`)
+      const json = await safeReadJson(res)
+      if (seq !== loadSeqRef.current) return
+
+      if (res.ok) {
+        const list = (json.data as AdminDonationRow[]) || []
+        const nextTotal = typeof json.total === 'number' ? json.total : list.length
+        setDonations(list)
+        setTotal(nextTotal)
+
+        if (json.stats && typeof json.stats === 'object') {
+          const s = json.stats as Partial<AdminDonationStats>
+          setStats({
+            total: typeof s.total === 'number' ? s.total : nextTotal,
+            completedCount: typeof s.completedCount === 'number' ? s.completedCount : 0,
+            pendingCount: typeof s.pendingCount === 'number' ? s.pendingCount : 0,
+            failedCount: typeof s.failedCount === 'number' ? s.failedCount : 0,
+            totalCompletedBrl: typeof s.totalCompletedBrl === 'number' ? s.totalCompletedBrl : 0,
+            totalPendingBrl: typeof s.totalPendingBrl === 'number' ? s.totalPendingBrl : 0,
+          })
+        }
+
+        const totalPages = Math.max(1, Math.ceil(nextTotal / ADMIN_PAGE_SIZE))
+        if (nextTotal > 0 && page > totalPages) {
+          setPage(totalPages)
+        }
+      } else {
+        const msg = String(json.error || 'Tente novamente em alguns instantes.')
         setDonations([])
+        setTotal(0)
+        setLoadError(msg)
+        toastRef.current.error('Erro ao carregar doações', msg)
+      }
+    } catch {
+      if (seq !== loadSeqRef.current) return
+      const msg = 'Não foi possível carregar as doações por falha de conexão.'
+      setDonations([])
+      setTotal(0)
+      setLoadError(msg)
+      toastRef.current.error('Erro de conexão', msg)
+    } finally {
+      if (seq === loadSeqRef.current) {
+        setIsLoading(false)
+      }
+    }
+  }, [page, statusFilter, methodFilter, debouncedSearch])
+
+  useEffect(() => {
+    void loadDonations()
+  }, [loadDonations])
+
+  const handleResendReceipt = async (row: AdminDonationRow) => {
+    if (operationLockRef.current || resendingId) return
+    if (row.status !== 'completed') {
+      toastRef.current.warning(
+        'Doação ainda não confirmada',
+        'O recibo só pode ser enviado após a confirmação do pagamento.'
+      )
+      return
+    }
+    if (!row.hasValidEmail) {
+      toastRef.current.warning(
+        'E-mail indisponível',
+        'Esta doação não possui um endereço de e-mail válido cadastrado.'
+      )
+      return
+    }
+
+    operationLockRef.current = true
+    setResendingId(row.id)
+    try {
+      const res = await adminFetch(
+        `/api/admin/donations/${encodeURIComponent(row.id)}/resend-receipt`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }
+      )
+      const json = await safeReadJson(res)
+      if (!res.ok) {
+        toastRef.current.error(
+          'Falha ao reenviar recibo',
+          String(json.error || 'Verifique a configuração do Resend e tente novamente.')
+        )
         return
       }
 
-      if (data && data.length > 0) {
-        console.log('✅ [DOAÇÕES] Doações carregadas do Supabase:', data.length)
-        
-        // Transformar dados do Supabase para o formato esperado
-        const transformedDonations = data.map(donation => ({
-          id: donation.id || `donation-${Date.now()}`,
-          donorName: donation.anonymous ? 'Doador Anônimo' : 'Doador',
-          donorEmail: 'email@exemplo.com',
-          amount: donation.amount || 0,
-          project: `Projeto ${donation.project_id || 'Geral'}`,
-          date: donation.created_at ? new Date(donation.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          status: donation.status || 'pending',
-          method: donation.payment_method || 'PIX',
-          transactionId: donation.transaction_id || 'N/A',
-          receipt: donation.receipt_sent || false
-        }))
-        
-        setDonations(transformedDonations)
-      } else {
-        console.log('📭 [DOAÇÕES] Nenhuma doação encontrada no Supabase')
-        setDonations([])
-      }
-    } catch (error) {
-      console.error('❌ [DOAÇÕES] Erro inesperado ao carregar doações:', error)
-      setDonations([])
-    }
-  }, [])
+      const sentAt = typeof json.receiptSentAt === 'string' ? json.receiptSentAt : new Date().toISOString()
+      toastRef.current.success(
+        'Recibo enviado',
+        `O recibo e o acesso ao Portal foram enviados para ${row.donorEmail}.`
+      )
 
-  useEffect(() => {
-    const getUser = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        setUser(user)
-        
-        // Verificar se é admin
-        if (user) {
-          try {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('role')
-              .eq('id', user.id)
-              .single()
-            
-            if (profile?.role !== 'admin') {
-              console.log('❌ [DOAÇÕES] Usuário não é admin, redirecionando para dashboard')
-              window.location.href = '/dashboard'
-              return
-            }
-            
-            // Carregar doações do Supabase para admin real
-            await loadDonationsFromSupabase()
-          } catch (profileError) {
-            // Se não conseguir buscar o perfil, assumir que não é admin
-            console.log('Erro ao buscar perfil:', profileError)
-            window.location.href = '/dashboard'
-            return
-          }
-        }
-      } catch (error) {
-        console.log('Erro ao obter usuário:', error)
-        window.location.href = '/dashboard'
-      }
-      // Loading removido
+      setDonations((prev) =>
+        prev.map((item) => (item.id === row.id ? { ...item, receiptSentAt: sentAt } : item))
+      )
+      setSelectedDonation((prev) =>
+        prev && prev.id === row.id ? { ...prev, receiptSentAt: sentAt } : prev
+      )
+    } catch {
+      toastRef.current.error('Erro de conexão', 'Não foi possível contatar o servidor de e-mail.')
+    } finally {
+      operationLockRef.current = false
+      setResendingId(null)
+    }
+  }
+
+  const handleExportCurrentCSV = () => {
+    if (donations.length === 0) {
+      toastRef.current.warning('Sem dados', 'Não há doações listadas neste filtro para exportar.')
+      return
     }
 
-    getUser()
-  }, [loadDonationsFromSupabase])
+    const rows = donations.map((d) => ({
+      'ID': sanitizeSpreadsheetCell(d.id),
+      'Data': new Date(d.createdAt).toLocaleString('pt-BR'),
+      'Doador': sanitizeSpreadsheetCell(d.donorName),
+      'E-mail': sanitizeSpreadsheetCell(d.donorEmail),
+      'Destino': sanitizeSpreadsheetCell(d.projectTitle),
+      'Valor (BRL)': d.amount.toFixed(2),
+      'Status': getDonationStatusLabelPTBR(d.status),
+      'Meio': sanitizeSpreadsheetCell(d.method),
+      'Modalidade': d.isRecurring
+        ? `Recorrente (${getFrequencyLabelPTBR(d.recurringFrequency)})`
+        : 'Única',
+      'ID Asaas / Gateway': sanitizeSpreadsheetCell(d.transactionId),
+      'Mensagem': sanitizeSpreadsheetCell(d.message || ''),
+    }))
 
-  // Fechar dropdown quando clicar fora
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showExportDropdown) {
-        const target = event.target as HTMLElement
-        if (!target.closest('.relative')) {
-          setShowExportDropdown(false)
-        }
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showExportDropdown])
-
-
-  const filteredDonations = donations.filter(donation => {
-    const matchesFilter = filter === 'all' || donation.status === filter
-    const matchesSearch = donation.donorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         donation.donorEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         donation.project.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         donation.transactionId.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesFilter && matchesSearch
-  })
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(amount)
+    exportToCSV(rows, `doacoes_imagine_${new Date().toISOString().split('T')[0]}`)
   }
 
-  // Função para exportar dados em CSV
-  const handleExportCSV = () => {
-    const csvContent = [
-      ['ID', 'Doador', 'Email', 'Valor', 'Projeto', 'Status', 'Método', 'Data', 'ID Transação'],
-      ...filteredDonations.map(donation => [
-        donation.id,
-        donation.donorName,
-        donation.donorEmail,
-        donation.amount.toFixed(2),
-        donation.project,
-        donation.status,
-        donation.method,
-        new Date(donation.date).toLocaleDateString('pt-BR'),
-        donation.transactionId
-      ])
-    ].map(row => row.join(',')).join('\n')
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-    link.setAttribute('href', url)
-    link.setAttribute('download', `doacoes_${new Date().toISOString().split('T')[0]}.csv`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    setShowExportDropdown(false)
+  const clearFilters = () => {
+    setStatusFilter('all')
+    setMethodFilter('all')
+    setSearchTerm('')
+    setDebouncedSearch('')
+    setPage(1)
   }
 
-  // Função para exportar dados em Excel
-  const handleExportExcel = () => {
-    // Para Excel, vamos usar CSV com extensão .xlsx (simulação)
-    const csvContent = [
-      ['ID', 'Doador', 'Email', 'Valor', 'Projeto', 'Status', 'Método', 'Data', 'ID Transação'],
-      ...filteredDonations.map(donation => [
-        donation.id,
-        donation.donorName,
-        donation.donorEmail,
-        donation.amount.toFixed(2),
-        donation.project,
-        donation.status,
-        donation.method,
-        new Date(donation.date).toLocaleDateString('pt-BR'),
-        donation.transactionId
-      ])
-    ].map(row => row.join('\t')).join('\n') // Usar tab para Excel
-
-    const blob = new Blob([csvContent], { type: 'application/vnd.ms-excel;charset=utf-8;' })
-    const link = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-    link.setAttribute('href', url)
-    link.setAttribute('download', `doacoes_${new Date().toISOString().split('T')[0]}.xlsx`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    setShowExportDropdown(false)
-  }
-
-  // Função para exportar dados em PDF
-  const handleExportPDF = () => {
-    // Simulação de PDF - na prática seria gerado com uma biblioteca como jsPDF
-    const pdfContent = `
-RELATÓRIO DE DOAÇÕES
-====================
-Data: ${new Date().toLocaleDateString('pt-BR')}
-Total de doações: ${filteredDonations.length}
-Valor total: ${formatCurrency(filteredDonations.reduce((sum, d) => sum + d.amount, 0))}
-
-DETALHES DAS DOAÇÕES:
-${filteredDonations.map(donation => `
-- ${donation.donorName} | ${formatCurrency(donation.amount)} | ${donation.project} | ${getStatusText(donation.status)}
-`).join('')}
-    `.trim()
-
-    const blob = new Blob([pdfContent], { type: 'text/plain;charset=utf-8;' })
-    const link = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-    link.setAttribute('href', url)
-    link.setAttribute('download', `doacoes_${new Date().toISOString().split('T')[0]}.pdf`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    setShowExportDropdown(false)
-  }
-
-  // Função para reenviar recibo
-  const handleResendReceipt = (donation: any) => {
-    // TODO: Implementar envio de email
-    console.log('Reenviando recibo para:', donation.donorEmail)
-    success('Recibo Reenviado', `Recibo enviado para ${donation.donorEmail}`)
-  }
-
-  // Função para processar doação pendente
-  const handleProcessDonation = (donation: any) => {
-    // TODO: Implementar processamento
-    console.log('Processando doação:', donation.id)
-    success('Doação Processada', `Doação ${donation.id} marcada como processada`)
-  }
-
-  // Função para reembolsar
-  const handleRefundDonation = (donation: any) => {
-    // TODO: Implementar reembolso
-    console.log('Reembolsando doação:', donation.id)
-    warning('Reembolso Iniciado', `Reembolso iniciado para doação ${donation.id}`)
-  }
-
-  // Função para ver detalhes da doação
-  const handleViewDetails = (donation: any) => {
-    console.log('Visualizando detalhes da doação:', donation.id)
-    setSelectedDonation(donation)
-    setShowDetailsModal(true)
-  }
-
-  // Função para aprovar doação pendente
-  const handleApproveDonation = (donation: any) => {
-    console.log('Aprovando doação:', donation.id)
-    success('Doação Aprovada', `Doação ${donation.id} aprovada com sucesso!`)
-  }
-
-  // Função para reprocessar doação falhada
-  const handleReprocessDonation = (donation: any) => {
-    console.log('Reprocessando doação:', donation.id)
-    info('Doação Reprocessada', `Doação ${donation.id} será reprocessada!`)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR')
-  }
-
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('pt-BR')
-  }
-
-  const getStatusBadge = (status: string) => {
+  const statusBadge = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-700'
+        return { label: 'Confirmada', cls: 'bg-green-100 text-green-700' }
       case 'pending':
-        return 'bg-yellow-100 text-yellow-700'
+        return { label: 'Em processamento', cls: 'bg-yellow-100 text-yellow-800' }
+      case 'refunded':
+        return { label: 'Estornada', cls: 'bg-gray-200 text-gray-700' }
       case 'failed':
-        return 'bg-red-100 text-red-700'
+        return { label: 'Não concluída', cls: 'bg-red-100 text-red-700' }
       default:
-        return 'bg-gray-100 text-gray-700'
+        return { label: status, cls: 'bg-gray-100 text-gray-700' }
     }
   }
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'Concluída'
-      case 'pending':
-        return 'Pendente'
-      case 'failed':
-        return 'Falhou'
-      default:
-        return 'Desconhecido'
+  const formatDateTime = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    } catch {
+      return iso
     }
   }
 
-  const totalAmount = donations
-    .filter(d => d.status === 'completed')
-    .reduce((sum, d) => sum + d.amount, 0)
-
-  const pendingAmount = donations
-    .filter(d => d.status === 'pending')
-    .reduce((sum, d) => sum + d.amount, 0)
-
-  // Loading removido - página carrega diretamente
-
-  // Verificação de autenticação removida - gerenciada pelo layout
+  const totalPages = Math.max(1, Math.ceil(total / ADMIN_PAGE_SIZE))
+  const hasActiveFilters =
+    statusFilter !== 'all' || methodFilter !== 'all' || debouncedSearch !== ''
 
   return (
     <div className="max-w-7xl mx-auto">
-      {/* Main Content */}
-      <main>
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Gerenciar Doações
-          </h1>
-          <p className="text-gray-600">
-            Acompanhe e gerencie todas as doações recebidas pelo Instituto.
-          </p>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="card p-6">
-            <div className="text-2xl font-bold text-gray-900 mb-1">
-              {donations.length}
-            </div>
-            <div className="text-sm text-gray-600">
-              Total de Doações
-            </div>
-          </div>
-          <div className="card p-6">
-            <div className="text-2xl font-bold text-green-600 mb-1">
-              {formatCurrency(totalAmount)}
-            </div>
-            <div className="text-sm text-gray-600">
-              Total Arrecadado
-            </div>
-          </div>
-          <div className="card p-6">
-            <div className="text-2xl font-bold text-yellow-600 mb-1">
-              {formatCurrency(pendingAmount)}
-            </div>
-            <div className="text-sm text-gray-600">
-              Pendente
-            </div>
-          </div>
-          <div className="card p-6">
-            <div className="text-2xl font-bold text-blue-600 mb-1">
-              {donations.filter(d => d.status === 'completed').length}
-            </div>
-            <div className="text-sm text-gray-600">
-              Concluídas
-            </div>
-          </div>
-        </div>
-
-        {/* Filters and Search - Melhorado */}
-        <div className="card p-6 mb-6">
-          <div className="space-y-4">
-            {/* Busca Principal */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Buscar por doador, email, projeto ou ID da transação..."
-                  className="input-modern"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <div className="flex gap-2">
-                <div className="relative">
-                  <button
-                    onClick={() => setShowExportDropdown(!showExportDropdown)}
-                    className="btn-secondary flex items-center gap-2 px-4 py-2"
-                    title="Exportar dados"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Exportar
-                    <svg className={`w-4 h-4 transition-transform ${showExportDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  
-                  {/* Dropdown de Exportação */}
-                  {showExportDropdown && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                      <div className="py-1">
-                        <button
-                          onClick={handleExportCSV}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          Exportar CSV
-                        </button>
-                        <button
-                          onClick={handleExportExcel}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          Exportar Excel
-                        </button>
-                        <button
-                          onClick={handleExportPDF}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          Exportar PDF
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Filtros por Status */}
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === 'all' 
-                    ? 'bg-gray-900 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Todas ({donations.length})
-              </button>
-              <button
-                onClick={() => setFilter('completed')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === 'completed' 
-                    ? 'bg-green-600 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Concluídas ({donations.filter(d => d.status === 'completed').length})
-              </button>
-              <button
-                onClick={() => setFilter('pending')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === 'pending' 
-                    ? 'bg-yellow-600 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Pendentes ({donations.filter(d => d.status === 'pending').length})
-              </button>
-              <button
-                onClick={() => setFilter('failed')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === 'failed' 
-                    ? 'bg-red-600 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Falharam ({donations.filter(d => d.status === 'failed').length})
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Donations Table */}
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Doador
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Projeto
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Valor
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Método
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Data
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredDonations.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center">
-                      <div className="text-gray-400 mb-4">
-                        <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        {searchTerm || filter !== 'all' ? 'Nenhuma doação encontrada' : 'Nenhuma doação registrada'}
-                      </h3>
-                      <p className="text-gray-600 mb-4">
-                        {searchTerm || filter !== 'all'
-                          ? 'Tente ajustar os filtros de busca.' 
-                          : 'Ainda não há doações no sistema. As doações aparecerão aqui quando forem registradas.'}
-                      </p>
-                      {!searchTerm && filter === 'all' && (
-                        <div className="text-sm text-gray-500">
-                          <p>💡 Dica: As doações são sincronizadas automaticamente com o Supabase.</p>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredDonations.map((donation) => (
-                    <tr key={donation.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {donation.donorName}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {donation.donorEmail}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {donation.project}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                        {formatCurrency(donation.amount)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(donation.status)}`}>
-                          {getStatusText(donation.status)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {donation.method}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(donation.date)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => handleViewDetails(donation)}
-                            className="text-blue-600 hover:text-blue-900 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-                            title="Ver detalhes da doação"
-                          >
-                            Ver Detalhes
-                          </button>
-                          {donation.status === 'pending' && (
-                            <button 
-                              onClick={() => handleApproveDonation(donation)}
-                              className="text-green-600 hover:text-green-900 px-2 py-1 rounded hover:bg-green-50 transition-colors"
-                              title="Aprovar doação pendente"
-                            >
-                              Aprovar
-                            </button>
-                          )}
-                          {donation.status === 'failed' && (
-                            <button 
-                              onClick={() => handleReprocessDonation(donation)}
-                              className="text-yellow-600 hover:text-yellow-900 px-2 py-1 rounded hover:bg-yellow-50 transition-colors"
-                              title="Reprocessar doação falhada"
-                            >
-                              Reprocessar
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </main>
-
-      {/* Modal de Detalhes da Doação */}
-      {showDetailsModal && selectedDonation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col shadow-xl">
-            {/* Header Fixo */}
-            <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white rounded-t-lg">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Detalhes da Doação
-                </h2>
-                <button
-                  onClick={() => setShowDetailsModal(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-md hover:bg-gray-100"
-                  aria-label="Fechar modal"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Conteúdo Central com Scroll */}
-            <div className="flex-1 overflow-y-auto px-6 py-4">
-              <div className="space-y-6">
-                {/* Informações Básicas */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        ID da Doação
-                      </label>
-                      <div className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-md">
-                        {selectedDonation.id}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Doador
-                      </label>
-                      <div className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-md">
-                        {selectedDonation.donorName}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Email
-                      </label>
-                      <div className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-md">
-                        {selectedDonation.donorEmail}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Valor
-                      </label>
-                      <div className="text-lg font-semibold text-green-600 bg-green-50 px-3 py-2 rounded-md">
-                        {formatCurrency(selectedDonation.amount)}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Status
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedDonation.status)}`}>
-                          {getStatusText(selectedDonation.status)}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Método de Pagamento
-                      </label>
-                      <div className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-md">
-                        {selectedDonation.method}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Informações Adicionais */}
-                <div className="border-t border-gray-200 pt-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Informações Adicionais</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Projeto
-                      </label>
-                      <div className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-md">
-                        {selectedDonation.project}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Data da Doação
-                      </label>
-                      <div className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-md">
-                        {formatDate(selectedDonation.date)}
-                      </div>
-                    </div>
-                    
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        ID da Transação
-                      </label>
-                      <div className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-md font-mono">
-                        {selectedDonation.transactionId}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Fixo */}
-            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowDetailsModal(false)}
-                  className="btn-secondary"
-                >
-                  Fechar
-                </button>
-                <button
-                  onClick={() => handleResendReceipt(selectedDonation)}
-                  className="btn-primary"
-                >
-                  Reenviar Recibo
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* Header — gabarito Tela Irmã (/admin/blog) */}
+      <div className="mb-8">
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Gerenciar Doações</h1>
+            <p className="text-gray-600">
+              Acompanhe os recebimentos via Asaas (Pix e Cartão) e reenvie recibos oficiais por e-mail.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleExportCurrentCSV}
+            disabled={isLoading || donations.length === 0}
+            className="btn-secondary whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Exportar CSV
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Cards com tabular-nums */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="card p-6">
+          <div className="text-2xl font-bold text-green-600 mb-1 tabular-nums">
+            {formatCurrencyBRL(stats.totalCompletedBrl)}
+          </div>
+          <div className="text-sm text-gray-600">Total Confirmado</div>
+        </div>
+        <div className="card p-6">
+          <div className="text-2xl font-bold text-yellow-600 mb-1 tabular-nums">
+            {formatCurrencyBRL(stats.totalPendingBrl)}
+          </div>
+          <div className="text-sm text-gray-600">Aguardando Compensação</div>
+        </div>
+        <div className="card p-6">
+          <div className="text-2xl font-bold text-gray-900 mb-1 tabular-nums">
+            {stats.completedCount}
+          </div>
+          <div className="text-sm text-gray-600">Doações Confirmadas</div>
+        </div>
+        <div className="card p-6">
+          <div className="text-2xl font-bold text-gray-700 mb-1 tabular-nums">{stats.total}</div>
+          <div className="text-sm text-gray-600">Total de Registros</div>
+        </div>
+      </div>
+
+      {/* Barra de Filtros Uniforme — h-12 !py-0 */}
+      <div className="card p-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+          <div>
+            <label
+              htmlFor="admin-don-status"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Status
+            </label>
+            <select
+              id="admin-don-status"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as any)
+                setPage(1)
+              }}
+              className="input-modern h-12 !py-0"
+            >
+              <option value="all">Todos ({stats.total})</option>
+              <option value="completed">Confirmadas ({stats.completedCount})</option>
+              <option value="pending">Em processamento ({stats.pendingCount})</option>
+              <option value="failed">Não concluídas / Estornadas ({stats.failedCount})</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="admin-don-method"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Meio / Modalidade
+            </label>
+            <select
+              id="admin-don-method"
+              value={methodFilter}
+              onChange={(e) => {
+                setMethodFilter(e.target.value as any)
+                setPage(1)
+              }}
+              className="input-modern h-12 !py-0"
+            >
+              <option value="all">Todos os Meios</option>
+              <option value="pix">Pix</option>
+              <option value="card">Cartão de Crédito</option>
+              <option value="recurring">Assinaturas Recorrentes</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="admin-don-search"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Buscar
+            </label>
+            <input
+              id="admin-don-search"
+              type="text"
+              placeholder="Doador, e-mail, projeto ou ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input-modern h-12 !py-0"
+            />
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="btn-secondary w-full h-12 !py-0 flex items-center justify-center"
+            >
+              Limpar Filtros
+            </button>
+          </div>
+        </div>
+        {!isLoading && total > 0 && (
+          <div className="mt-3 text-xs text-gray-500 tabular-nums">
+            Exibindo {donations.length} de {total} doações{hasActiveFilters ? ' neste filtro' : ''}
+          </div>
+        )}
+      </div>
+
+      {/* Tabela Principal — Alinhamento estrito th === td */}
+      <div className="card overflow-hidden">
+        {isLoading ? (
+          <div className="p-6 space-y-4">
+            {[1, 2, 3, 4, 5].map((row) => (
+              <div key={row} className="animate-pulse flex items-center gap-4">
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-1/3" />
+                  <div className="h-3 bg-gray-100 rounded w-1/4" />
+                </div>
+                <div className="h-5 bg-gray-200 rounded w-24" />
+                <div className="h-6 bg-gray-200 rounded-full w-24" />
+              </div>
+            ))}
+          </div>
+        ) : loadError ? (
+          <div className="p-12 text-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              Não foi possível carregar as doações
+            </h2>
+            <p className="text-sm text-gray-600 mb-5">{loadError}</p>
+            <button type="button" onClick={() => void loadDonations()} className="btn-secondary">
+              Tentar novamente
+            </button>
+          </div>
+        ) : donations.length === 0 ? (
+          <div className="p-12 text-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">
+              Nenhuma doação encontrada
+            </h2>
+            <p className="text-sm text-gray-600 mb-5">
+              {stats.total === 0 && !hasActiveFilters
+                ? 'As doações iniciadas pelo site ou portal aparecerão automaticamente aqui.'
+                : 'Ajuste os filtros acima para localizar outros registros.'}
+            </p>
+            {hasActiveFilters && (
+              <button type="button" onClick={clearFilters} className="btn-secondary">
+                Limpar Filtros
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Doador
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Destino / Projeto
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Valor
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Meio
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Data
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Ações
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {donations.map((row) => {
+                    const badge = statusBadge(row.status)
+                    const isResendingThis = resendingId === row.id
+
+                    return (
+                      <tr key={row.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-left">
+                          <div className="text-sm font-semibold text-gray-900 line-clamp-1">
+                            {row.donorName}
+                          </div>
+                          <div className="text-xs text-gray-500 truncate max-w-[220px]">
+                            {row.donorEmail}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-left">
+                          <div className="text-sm font-medium text-gray-900 line-clamp-1">
+                            {row.projectTitle}
+                          </div>
+                          <div className="text-xs text-gray-500 font-mono truncate max-w-[180px]">
+                            {row.transactionId}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right whitespace-nowrap tabular-nums">
+                          <div className="text-sm font-semibold text-gray-900">
+                            {formatCurrencyBRL(row.amount)}
+                          </div>
+                          {row.isRecurring && (
+                            <div className="text-xs text-blue-700 font-medium">
+                              {getFrequencyLabelPTBR(row.recurringFrequency)}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-left whitespace-nowrap text-xs font-medium text-gray-700">
+                          {row.method}
+                        </td>
+                        <td className="px-6 py-4 text-left whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}
+                          >
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-left whitespace-nowrap tabular-nums text-xs text-gray-600">
+                          {formatDateTime(row.createdAt)}
+                        </td>
+                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDonation(row)}
+                              className="inline-flex items-center text-xs font-medium text-gray-900 hover:bg-gray-100 rounded-md px-2.5 py-1.5 transition-colors"
+                            >
+                              Detalhes
+                            </button>
+                            {row.status === 'completed' && row.hasValidEmail && (
+                              <button
+                                type="button"
+                                onClick={() => void handleResendReceipt(row)}
+                                disabled={Boolean(resendingId)}
+                                className="inline-flex items-center text-xs font-medium text-blue-700 hover:bg-blue-50 rounded-md px-2.5 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isResendingThis ? 'Enviando...' : 'Reenviar Recibo'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between gap-4 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || isLoading}
+                  className="btn-secondary text-sm !py-1.5 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ← Anterior
+                </button>
+                <span className="text-xs font-medium text-gray-600 tabular-nums">
+                  Página {page} de {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || isLoading}
+                  className="btn-secondary text-sm !py-1.5 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Próxima →
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Modal 3 zonas — gabarito ConfirmDialog.tsx */}
+      <Modal
+        isOpen={Boolean(selectedDonation)}
+        onClose={() => {
+          if (!resendingId) setSelectedDonation(null)
+        }}
+        title="Detalhes da Doação"
+        size="md"
+        showCloseButton={!resendingId}
+        closeOnOverlayClick={!resendingId}
+        closeOnEscape={!resendingId}
+        footer={
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setSelectedDonation(null)}
+              disabled={Boolean(resendingId)}
+              className="btn-secondary disabled:opacity-50"
+            >
+              Fechar
+            </button>
+            {selectedDonation &&
+              selectedDonation.status === 'completed' &&
+              selectedDonation.hasValidEmail && (
+                <button
+                  type="button"
+                  onClick={() => void handleResendReceipt(selectedDonation)}
+                  disabled={Boolean(resendingId)}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {resendingId === selectedDonation.id ? 'Enviando recibo...' : 'Reenviar Recibo por E-mail'}
+                </button>
+              )}
+          </div>
+        }
+      >
+        {selectedDonation && (
+          <dl className="space-y-3 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">Status:</dt>
+              <dd>
+                <span
+                  className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${statusBadge(selectedDonation.status).cls}`}
+                >
+                  {statusBadge(selectedDonation.status).label}
+                </span>
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">Valor:</dt>
+              <dd className="font-bold text-gray-900 tabular-nums">
+                {formatCurrencyBRL(selectedDonation.amount)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">Destino / Projeto:</dt>
+              <dd className="font-medium text-gray-900 text-right">
+                {selectedDonation.projectTitle}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">Doador:</dt>
+              <dd className="font-medium text-gray-900 text-right">
+                {selectedDonation.donorName}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">E-mail:</dt>
+              <dd className="text-gray-900 break-all text-right">
+                {selectedDonation.donorEmail}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">Meio de Pagamento:</dt>
+              <dd className="text-gray-900">{selectedDonation.method}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">Modalidade:</dt>
+              <dd className="text-gray-900">
+                {selectedDonation.isRecurring
+                  ? `Recorrente (${getFrequencyLabelPTBR(selectedDonation.recurringFrequency)})`
+                  : 'Doação única'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">Data do Registro:</dt>
+              <dd className="text-gray-900 tabular-nums">
+                {formatDateTime(selectedDonation.createdAt)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">Último Recibo Enviado:</dt>
+              <dd className="text-gray-900 tabular-nums">
+                {selectedDonation.receiptSentAt
+                  ? formatDateTime(selectedDonation.receiptSentAt)
+                  : 'Aguardando / Não registrado'}
+              </dd>
+            </div>
+            <div className="pt-3 border-t border-gray-100 space-y-2">
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">ID Interno:</dt>
+                <dd className="font-mono text-xs text-gray-600 break-all text-right">
+                  {selectedDonation.id}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">ID Asaas / Gateway:</dt>
+                <dd className="font-mono text-xs text-gray-600 break-all text-right">
+                  {selectedDonation.transactionId}
+                </dd>
+              </div>
+            </div>
+            {selectedDonation.message && (
+              <div className="pt-3 border-t border-gray-100">
+                <dt className="text-xs font-semibold text-gray-500 uppercase mb-1">
+                  Mensagem do Doador
+                </dt>
+                <dd className="text-sm text-gray-800 bg-gray-50 p-3 rounded-lg">
+                  {selectedDonation.message}
+                </dd>
+              </div>
+            )}
+          </dl>
+        )}
+      </Modal>
     </div>
   )
 }
