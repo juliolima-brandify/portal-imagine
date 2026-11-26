@@ -25,29 +25,39 @@ export async function GET(request: NextRequest) {
     const statusFilter = (searchParams.get('status') || 'all').trim().toLowerCase()
     const methodFilter = (searchParams.get('method') || 'all').trim().toLowerCase()
     const searchQuery = (searchParams.get('q') || '').trim().toLowerCase()
+    const includeStats = searchParams.get('stats') !== 'false'
+    const all = searchParams.get('all') === 'true'
 
-    // Carregar métricas globais exatas, paginando para não bater no teto de 1.000 do PostgREST
+    // Carregar métricas globais exatas, paginando para não bater no teto de 1.000 do PostgREST.
+    // Nas páginas seguintes o cliente passa stats=false para não recalcular tudo a cada lote.
     const [statsRows, projectsRes] = await Promise.all([
-      loadAllStatsRows(),
+      includeStats && !all ? loadAllStatsRows() : Promise.resolve([]),
       supabaseAdmin.from('projects').select('id, title, slug'),
     ])
 
-    const stats = {
-      total: statsRows.length,
-      completedCount: statsRows.filter((r) => r.status === 'completed').length,
-      pendingCount: statsRows.filter((r) => r.status === 'pending').length,
-      failedCount: statsRows.filter((r) => r.status === 'failed' || r.status === 'refunded').length,
-      totalCompletedBrl: sumDonationsBrl(
-        statsRows.filter((r) => r.status === 'completed').map((r) => r.amount)
-      ),
-      totalPendingBrl: sumDonationsBrl(
-        statsRows.filter((r) => r.status === 'pending').map((r) => r.amount)
-      ),
+    const stats = computeStats(statsRows)
+
+    if (projectsRes.error) {
+      console.error('[AdminDonations] Erro ao buscar projetos:', projectsRes.error)
     }
 
     const projectMap = new Map<string, { title: string; slug: string | null }>()
     for (const p of projectsRes.data || []) {
       projectMap.set(p.id, { title: p.title, slug: p.slug || null })
+    }
+
+    // Modo "tudo": devolve todas as linhas filtradas numa única resposta.
+    // Evita dezenas de idas e voltas do cliente para montar relatórios (R16).
+    if (all) {
+      const rows = await loadAllDonations(statusFilter, methodFilter, searchQuery)
+      const items = await hydrateDonations(rows, projectMap)
+      return jsonNoStore({
+        data: items,
+        total: items.length,
+        page: 1,
+        pageSize: items.length,
+        stats: includeStats ? computeStats(rows) : stats,
+      })
     }
 
     const from = (page - 1) * pageSize
@@ -164,9 +174,92 @@ async function loadAllStatsRows(): Promise<
     if (error) throw error
     const batch = data || []
     rows.push(...batch)
-    if (batch.length < pageSize) break
-    from += pageSize
+    if (batch.length === 0) break
+    from += batch.length
   }
+  return rows
+}
+
+function computeStats(rows: Array<{ amount: any; status: string | null }>) {
+  return {
+    total: rows.length,
+    completedCount: rows.filter((r) => r.status === 'completed').length,
+    pendingCount: rows.filter((r) => r.status === 'pending').length,
+    failedCount: rows.filter((r) => r.status === 'failed' || r.status === 'refunded').length,
+    totalCompletedBrl: sumDonationsBrl(
+      rows.filter((r) => r.status === 'completed').map((r) => r.amount)
+    ),
+    totalPendingBrl: sumDonationsBrl(
+      rows.filter((r) => r.status === 'pending').map((r) => r.amount)
+    ),
+  }
+}
+
+/**
+ * Carrega todas as doações que casam com os filtros, paginando internamente
+ * para não bater no teto de 1.000 linhas do PostgREST. Usado pelo modo `all=true`.
+ */
+async function loadAllDonations(
+  statusFilter: string,
+  methodFilter: string,
+  searchQuery: string
+): Promise<DonationRow[]> {
+  const rows: DonationRow[] = []
+  const batchSize = 1000
+  let safeTerm = ''
+  let matchedProjectIds: string[] = []
+
+  if (searchQuery) {
+    safeTerm = sanitizeSearchTerm(searchQuery)
+    if (!safeTerm) return []
+    matchedProjectIds = await findProjectIdsByQuery(safeTerm)
+  }
+
+  let offset = 0
+  for (;;) {
+    let query = supabaseAdmin
+      .from('donations')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+
+    if (searchQuery) {
+      const searchPattern = `%${safeTerm}%`
+      const orFilters = [
+        `donor_name.ilike.${searchPattern}`,
+        `donor_email.ilike.${searchPattern}`,
+        `id.ilike.${searchPattern}`,
+        `asaas_payment_id.ilike.${searchPattern}`,
+        `asaas_checkout_id.ilike.${searchPattern}`,
+      ]
+      if (matchedProjectIds.length > 0) {
+        orFilters.push(`project_id.in.(${matchedProjectIds.join(',')})`)
+      }
+      query = query.or(orFilters.join(','))
+    }
+
+    if (statusFilter === 'failed') {
+      query = query.in('status', ['failed', 'refunded'])
+    } else if (['completed', 'pending', 'refunded', 'partially_refunded'].includes(statusFilter)) {
+      query = query.eq('status', statusFilter)
+    }
+
+    if (methodFilter === 'recurring') {
+      query = query.eq('is_recurring', true)
+    } else if (methodFilter === 'pix') {
+      query = query.ilike('payment_method', '%pix%')
+    } else if (methodFilter === 'card') {
+      query = query.ilike('payment_method', '%credit%')
+    }
+
+    const { data, error } = await query.range(offset, offset + batchSize - 1)
+    if (error) throw error
+    const batch = (data || []) as DonationRow[]
+    rows.push(...batch)
+    if (batch.length === 0) break
+    offset += batch.length
+  }
+
   return rows
 }
 
@@ -190,8 +283,29 @@ async function findProjectIdsByQuery(query: string): Promise<string[]> {
   return (data || []).map((p) => p.id)
 }
 
+interface DonationRow {
+  id: string
+  user_id: string | null
+  project_id: string | null
+  campaign_slug: string | null
+  donor_name: string | null
+  donor_email: string | null
+  anonymous: boolean | null
+  asaas_payment_id: string | null
+  asaas_checkout_id: string | null
+  amount: number | string | null
+  currency: string | null
+  status: string | null
+  payment_method: string | null
+  is_recurring: boolean | null
+  recurring_frequency: string | null
+  message: string | null
+  receipt_sent_at: string | null
+  created_at: string
+}
+
 async function hydrateDonations(
-  rows: Array<Record<string, any>>,
+  rows: DonationRow[],
   projectMap: Map<string, { title: string; slug: string | null }>
 ) {
   const userIds = Array.from(
@@ -237,7 +351,7 @@ async function hydrateDonations(
         projectId: row.project_id || null,
       }),
       donorName: displayDonorName,
-      donorEmail: resolvedEmail || '—',
+      donorEmail: resolvedEmail || 'Não informado',
       hasValidEmail: Boolean(resolvedEmail && resolvedEmail.includes('@')),
       amount: Number(row.amount) || 0,
       currency: row.currency || 'BRL',

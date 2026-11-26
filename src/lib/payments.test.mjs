@@ -44,6 +44,14 @@ test('R4: cálculos monetários em centavos inteiros eliminam erro de ponto flut
 
   const tooHigh = validateCheckoutAmountBrl(500_000.01)
   assert.equal(tooHigh.ok, false)
+
+  // Arredondamento não pode transformar valor abaixo do mínimo em R$ 5,00.
+  const roundedBelowMin = validateCheckoutAmountBrl(4.999)
+  assert.equal(roundedBelowMin.ok, false)
+
+  // Nem aceitar mais de duas casas decimais acima do mínimo.
+  const threeDecimals = validateCheckoutAmountBrl(5.001)
+  assert.equal(threeDecimals.ok, false)
 })
 
 test('R4: buildAsaasCheckoutPayload respeita limite rígido de 30 chars no name, callback HTTPS e modos DETACHED vs RECURRENT', () => {
@@ -287,6 +295,23 @@ test('R1: se dist/client existir, garante zero vazamento de segredos ou endpoint
 
   const jsFiles = walk(distClientDir)
   assert.ok(jsFiles.length > 0, 'dist/client existe mas nenhum bundle JS foi encontrado')
+
+  // O bundle precisa ser mais novo que o código auditado; senão o teste aprova um build antigo.
+  const auditedSources = [
+    'src/lib/payments.ts',
+    'src/lib/admin-api.ts',
+    'src/app/admin/dashboard/page.tsx',
+    'src/app/admin/relatorios/page.tsx',
+    'src/app/api/webhooks/asaas/route.ts',
+  ]
+  const newestBundle = Math.max(...jsFiles.map((file) => fs.statSync(file).mtimeMs))
+  const newestSource = Math.max(
+    ...auditedSources.map((rel) => fs.statSync(path.join(repoRoot, rel)).mtimeMs)
+  )
+  assert.ok(
+    newestBundle >= newestSource,
+    'dist/client está mais antigo que o código-fonte auditado. Rode o build antes de validar o bundle.'
+  )
 
   for (const file of jsFiles) {
     const text = fs.readFileSync(file, 'utf8')

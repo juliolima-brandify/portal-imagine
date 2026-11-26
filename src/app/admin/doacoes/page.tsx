@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { adminFetch } from '@/lib/admin-api'
+import { adminFetch, fetchAllAdminDonations } from '@/lib/admin-api'
 import ConfirmDialog, { Modal } from '@/components/ConfirmDialog'
 import { ToastContainer, useToast } from '@/components/Toast'
 import { exportToCSV, todayInSaoPaulo } from '@/lib/export'
@@ -221,29 +221,47 @@ export default function AdminDoacoesPage() {
     }
   }
 
-  const handleExportCurrentCSV = () => {
-    if (donations.length === 0) {
-      toastRef.current.warning('Sem dados', 'Não há doações listadas neste filtro para exportar.')
-      return
+  const handleExportAllCSV = async () => {
+    if (operationLockRef.current) return
+    operationLockRef.current = true
+
+    try {
+      const query: Record<string, string> = {}
+      if (statusFilter !== 'all') query.status = statusFilter
+      if (methodFilter !== 'all') query.method = methodFilter
+      if (debouncedSearch) query.q = debouncedSearch
+
+      const payload = await fetchAllAdminDonations('/api/admin/donations', query)
+      const all = (payload.data as AdminDonationRow[]) || []
+
+      if (all.length === 0) {
+        toastRef.current.warning('Sem dados', 'Não há doações neste filtro para exportar.')
+        return
+      }
+
+      const rows = all.map((d) => ({
+        'ID': sanitizeSpreadsheetCell(d.id),
+        'Data': new Date(d.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+        'Doador': sanitizeSpreadsheetCell(d.donorName),
+        'E-mail': sanitizeSpreadsheetCell(d.donorEmail),
+        'Destino': sanitizeSpreadsheetCell(d.projectTitle),
+        'Valor (BRL)': d.amount.toFixed(2),
+        'Status': getDonationStatusLabelPTBR(d.status),
+        'Meio': sanitizeSpreadsheetCell(d.method),
+        'Modalidade': d.isRecurring
+          ? `Recorrente (${getFrequencyLabelPTBR(d.recurringFrequency)})`
+          : 'Única',
+        'ID Asaas / Gateway': sanitizeSpreadsheetCell(d.transactionId),
+        'Mensagem': sanitizeSpreadsheetCell(d.message || ''),
+      }))
+
+      exportToCSV(rows, `doacoes_imagine_${todayInSaoPaulo()}`)
+      toastRef.current.success('Exportação concluída', `${all.length} doações exportadas.`)
+    } catch {
+      toastRef.current.error('Erro ao exportar', 'Não foi possível carregar todas as doações.')
+    } finally {
+      operationLockRef.current = false
     }
-
-    const rows = donations.map((d) => ({
-      'ID': sanitizeSpreadsheetCell(d.id),
-      'Data': new Date(d.createdAt).toLocaleString('pt-BR'),
-      'Doador': sanitizeSpreadsheetCell(d.donorName),
-      'E-mail': sanitizeSpreadsheetCell(d.donorEmail),
-      'Destino': sanitizeSpreadsheetCell(d.projectTitle),
-      'Valor (BRL)': d.amount.toFixed(2),
-      'Status': getDonationStatusLabelPTBR(d.status),
-      'Meio': sanitizeSpreadsheetCell(d.method),
-      'Modalidade': d.isRecurring
-        ? `Recorrente (${getFrequencyLabelPTBR(d.recurringFrequency)})`
-        : 'Única',
-      'ID Asaas / Gateway': sanitizeSpreadsheetCell(d.transactionId),
-      'Mensagem': sanitizeSpreadsheetCell(d.message || ''),
-    }))
-
-    exportToCSV(rows, `doacoes_imagine_${todayInSaoPaulo()}`)
   }
 
   const clearFilters = () => {
@@ -304,7 +322,7 @@ export default function AdminDoacoesPage() {
           </div>
           <button
             type="button"
-            onClick={handleExportCurrentCSV}
+            onClick={handleExportAllCSV}
             disabled={isLoading || donations.length === 0}
             className="btn-secondary whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -353,7 +371,7 @@ export default function AdminDoacoesPage() {
               id="admin-don-status"
               value={statusFilter}
               onChange={(e) => {
-                setStatusFilter(e.target.value as any)
+                setStatusFilter(e.target.value as 'all' | 'completed' | 'pending' | 'failed')
                 setPage(1)
               }}
               className="input-modern h-12 !py-0"
@@ -376,7 +394,7 @@ export default function AdminDoacoesPage() {
               id="admin-don-method"
               value={methodFilter}
               onChange={(e) => {
-                setMethodFilter(e.target.value as any)
+                setMethodFilter(e.target.value as 'all' | 'pix' | 'card' | 'recurring')
                 setPage(1)
               }}
               className="input-modern h-12 !py-0"

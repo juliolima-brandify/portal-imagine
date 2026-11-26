@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { adminFetch } from '@/lib/admin-api'
-import { formatCurrencyBRL, sumDonationsBrl } from '@/lib/payments'
+import { fetchAllAdminDonations } from '@/lib/admin-api'
+import {
+  formatCurrencyBRL,
+  getSaoPauloDateParts,
+  saoPauloMidnightUtc,
+  sumDonationsBrl,
+} from '@/lib/payments'
 import DonationTrendChart from '@/components/DonationTrendChart'
 import DateRangePickerWithPresets, { PresetId } from '@/components/DateRangePicker'
 
@@ -39,12 +44,12 @@ export default function AdminDashboard() {
               .order('created_at', { ascending: false })
               .limit(5),
             supabase.from('profiles').select('id'),
-            adminFetch('/api/admin/donations?page=1&pageSize=100'),
+            fetchAllAdminDonations('/api/admin/donations'),
           ])
 
         if (!active) return
 
-        const donationsPayload = await adminDonationsRes.json().catch(() => ({}))
+        const donationsPayload = adminDonationsRes || {}
         const hydratedList: any[] = Array.isArray(donationsPayload?.data)
           ? donationsPayload.data
           : []
@@ -81,8 +86,8 @@ export default function AdminDashboard() {
           if (d.status !== 'completed') continue
           if (d.createdAt && new Date(d.createdAt) < since) continue
           const key = d.anonymous
-            ? 'anon'
-            : d.donorEmail && d.donorEmail !== '—'
+            ? `anon:${d.id}`
+            : d.hasValidEmail
               ? d.donorEmail
               : d.userId || d.donorName || 'anon'
           const label = d.anonymous ? 'Doador Anônimo' : d.donorName || key
@@ -112,44 +117,53 @@ export default function AdminDashboard() {
           Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}h`)
         const fillDays = () => {
           const labels: string[] = []
-          const cur = new Date(start)
-          cur.setHours(0, 0, 0, 0)
-          const last = new Date(end)
-          last.setHours(23, 59, 59, 999)
-          while (cur <= last) {
-            labels.push(
-              `${String(cur.getDate()).padStart(2, '0')}/${String(cur.getMonth() + 1).padStart(2, '0')}`
-            )
-            cur.setDate(cur.getDate() + 1)
+          const startTs = saoPauloMidnightUtc(start)
+          const endTs = saoPauloMidnightUtc(end)
+          for (let t = startTs; t <= endTs; t += 86400000) {
+            const { day, month } = getSaoPauloDateParts(new Date(t))
+            labels.push(`${day}/${month}`)
           }
           return labels
         }
         const fillMonths = () => {
           const labels: string[] = []
-          const cur = new Date(start.getFullYear(), start.getMonth(), 1)
-          const last = new Date(end.getFullYear(), end.getMonth(), 1)
-          while (cur <= last) {
-            labels.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`)
-            cur.setMonth(cur.getMonth() + 1)
+          const startParts = getSaoPauloDateParts(start)
+          const endParts = getSaoPauloDateParts(end)
+          let year = Number(startParts.year)
+          let month = Number(startParts.month)
+          const endYear = Number(endParts.year)
+          const endMonth = Number(endParts.month)
+          while (year < endYear || (year === endYear && month <= endMonth)) {
+            labels.push(`${year}-${String(month).padStart(2, '0')}`)
+            month += 1
+            if (month > 12) {
+              month = 1
+              year += 1
+            }
           }
           return labels
         }
 
-        const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+        const diffDays = Math.ceil(
+          (saoPauloMidnightUtc(end) - saoPauloMidnightUtc(start)) / (1000 * 60 * 60 * 24)
+        )
         const labels =
           diffDays <= 1 ? fillHours() : diffDays > 90 ? fillMonths() : fillDays()
 
+        const startTs = saoPauloMidnightUtc(start)
+        const endTs = saoPauloMidnightUtc(end) + 86400000 - 1
         const buckets = new Map<string, number>(labels.map((l) => [l, 0]))
         for (const d of hydratedList) {
           if (d.status !== 'completed' || !d.createdAt) continue
           const dt = new Date(d.createdAt)
-          if (dt < start || dt > end) continue
+          if (dt.getTime() < startTs || dt.getTime() > endTs) continue
+          const parts = getSaoPauloDateParts(dt)
           const key =
             diffDays <= 1
-              ? `${String(dt.getHours()).padStart(2, '0')}h`
+              ? `${parts.hour}h`
               : diffDays > 90
-                ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
-                : `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`
+                ? `${parts.year}-${parts.month}`
+                : `${parts.day}/${parts.month}`
           buckets.set(key, sumDonationsBrl([buckets.get(key) || 0, d.amount]))
         }
 
@@ -241,7 +255,7 @@ export default function AdminDashboard() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{project.title}</p>
                     <p className="text-xs text-gray-500 tabular-nums">
-                      Criado em {new Date(project.created_at).toLocaleDateString('pt-BR')}
+                      Criado em {new Date(project.created_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
                     </p>
                   </div>
                   <span
@@ -272,12 +286,12 @@ export default function AdminDashboard() {
                       {formatCurrencyBRL(donation.amount)}
                     </p>
                     <p className="text-xs text-gray-500 truncate">
-                      {donation.donorName || 'Anônimo'} — {donation.projectTitle || 'Instituto Imagine'}
+                      {donation.anonymous ? 'Doador Anônimo' : donation.donorName || 'Não identificado'} — {donation.projectTitle || 'Instituto Imagine'}
                     </p>
                   </div>
                   <span className="text-xs text-gray-500 tabular-nums flex-shrink-0">
                     {donation.createdAt
-                      ? new Date(donation.createdAt).toLocaleDateString('pt-BR')
+                      ? new Date(donation.createdAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
                       : '—'}
                   </span>
                 </div>

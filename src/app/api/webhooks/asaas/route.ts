@@ -252,28 +252,68 @@ async function handlePostWebhookSideEffects(params: {
     }
 
     if (effectiveDonorEmail && !row.receipt_sent_at) {
-      const receipt = await sendDonorReceiptEmail({
-        to: effectiveDonorEmail,
-        donorName: effectiveDonorName,
-        anonymous: Boolean(row.anonymous),
-        amount,
-        projectTitle,
-        donationId: params.donationId,
-        transactionId: txId,
-        paymentMethod: method,
-        isRecurring: Boolean(row.is_recurring),
-        recurringFrequency: row.recurring_frequency,
-        message: row.message,
-        createdAt: row.created_at,
-        isNewAccount: provision.isNewAccount,
-        portalAccessUrl: provision.portalAccessUrl,
-      })
+      const lockAt = new Date().toISOString()
+      const lockThreshold = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+      const { data: claimed, error: claimErr } = await supabaseAdmin
+        .from('donations')
+        .update({ receipt_lock_at: lockAt })
+        .eq('id', params.donationId)
+        .is('receipt_sent_at', null)
+        .or(`receipt_lock_at.is.null,receipt_lock_at.lt.${lockThreshold}`)
+        .select('id')
+        .maybeSingle()
 
-      if (receipt.sent) {
-        await supabaseAdmin
-          .from('donations')
-          .update({ receipt_sent_at: new Date().toISOString() })
-          .eq('id', params.donationId)
+      if (claimErr) {
+        console.error('[AsaasWebhook] Erro ao obter lock de recibo:', claimErr)
+      } else if (claimed) {
+        try {
+          const receipt = await sendDonorReceiptEmail({
+            to: effectiveDonorEmail,
+            donorName: effectiveDonorName,
+            anonymous: Boolean(row.anonymous),
+            amount,
+            projectTitle,
+            donationId: params.donationId,
+            transactionId: txId,
+            paymentMethod: method,
+            isRecurring: Boolean(row.is_recurring),
+            recurringFrequency: row.recurring_frequency,
+            message: row.message,
+            createdAt: row.created_at,
+            isNewAccount: provision.isNewAccount,
+            portalAccessUrl: provision.portalAccessUrl,
+          })
+
+          if (receipt.sent) {
+            const { error: sentErr } = await supabaseAdmin
+              .from('donations')
+              .update({
+                receipt_sent_at: new Date().toISOString(),
+                receipt_lock_at: null,
+              })
+              .eq('id', params.donationId)
+              .eq('receipt_lock_at', lockAt)
+            if (sentErr) {
+              console.error('[AsaasWebhook] Erro ao gravar receipt_sent_at:', sentErr)
+            }
+          } else {
+            const { error: releaseErr } = await supabaseAdmin
+              .from('donations')
+              .update({ receipt_lock_at: null })
+              .eq('id', params.donationId)
+              .eq('receipt_lock_at', lockAt)
+            if (releaseErr) {
+              console.error('[AsaasWebhook] Erro ao liberar lock de recibo:', releaseErr)
+            }
+          }
+        } catch (err) {
+          console.error('[AsaasWebhook] Erro ao enviar recibo:', err)
+          await supabaseAdmin
+            .from('donations')
+            .update({ receipt_lock_at: null })
+            .eq('id', params.donationId)
+            .eq('receipt_lock_at', lockAt)
+        }
       }
     }
 

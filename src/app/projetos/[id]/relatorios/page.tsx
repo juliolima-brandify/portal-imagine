@@ -82,7 +82,7 @@ export default function ProjectReportsPage() {
             target_amount: projectData.target_amount,
             current_amount: projectData.current_amount,
             total_donations: projectDonationsFiltered.length,
-            total_donors: new Set(projectDonationsFiltered.map(d => d.user_id)).size,
+            total_donors: new Set(projectDonationsFiltered.map(d => d.user_id).filter(Boolean)).size,
             average_donation: projectDonationsFiltered.length > 0 ? 
               projectDonationsFiltered.reduce((sum, d) => sum + d.amount, 0) / projectDonationsFiltered.length : 0,
             completion_percentage:

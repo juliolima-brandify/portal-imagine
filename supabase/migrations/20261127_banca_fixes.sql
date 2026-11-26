@@ -14,7 +14,23 @@ ALTER TABLE public.donations
   ADD COLUMN IF NOT EXISTS refunded_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS receipt_lock_at TIMESTAMPTZ;
 
-ALTER TABLE public.donations DROP CONSTRAINT IF EXISTS donations_status_chk;
+-- Remove qualquer CHECK legado que restrinja status, independentemente do nome.
+-- (A tabela donations não é criada neste repositório; o nome em produção pode variar.)
+DO $$
+DECLARE
+  v_constraint RECORD;
+BEGIN
+  FOR v_constraint IN
+    SELECT conname
+    FROM pg_constraint
+    WHERE conrelid = 'public.donations'::regclass
+      AND contype = 'c'
+      AND pg_get_constraintdef(oid) ILIKE '%status%'
+  LOOP
+    EXECUTE format('ALTER TABLE public.donations DROP CONSTRAINT %I', v_constraint.conname);
+  END LOOP;
+END $$;
+
 ALTER TABLE public.donations
   ADD CONSTRAINT donations_status_chk
   CHECK (status IN ('pending', 'completed', 'failed', 'refunded', 'partially_refunded'))
@@ -396,3 +412,9 @@ GRANT EXECUTE ON FUNCTION public.apply_asaas_webhook_event(
 -- 5. Grants de leitura (sem coluna interna de lock)
 -- ============================================================
 GRANT SELECT (refunded_amount) ON public.donations TO authenticated;
+
+-- ============================================================
+-- 6. Hardening de schema (R8)
+-- ============================================================
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+REVOKE CREATE ON SCHEMA public FROM anon, authenticated;

@@ -4,8 +4,13 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getProjects, getDonations } from '@/lib/database'
-import { adminFetch } from '@/lib/admin-api'
-import { getDonationDestinationLabel, sumDonationsBrl } from '@/lib/payments'
+import { fetchAllAdminDonations } from '@/lib/admin-api'
+import {
+  getDonationDestinationLabel,
+  getSaoPauloDateParts,
+  saoPauloMidnightUtc,
+  sumDonationsBrl,
+} from '@/lib/payments'
 
 import ExportDropdown from '@/components/ExportDropdown'
 import DonationTrendChart from '@/components/DonationTrendChart'
@@ -69,34 +74,33 @@ export default function AdminRelatoriosPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR')
+    return new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
   }
 
   // Carregar dados dinâmicos do banco
   useEffect(() => {
     const loadReports = async () => {
       try {
-        const [projectsData, adminDonRes] = await Promise.all([
+        const [projectsData, donationsPayload] = await Promise.all([
           getProjects(),
-          adminFetch('/api/admin/donations?page=1&pageSize=100').catch(() => null),
+          fetchAllAdminDonations('/api/admin/donations').catch(() => null),
         ])
         let donations: any[] = []
-        if (adminDonRes && adminDonRes.ok) {
-          const parsed = await adminDonRes.json().catch(() => ({}))
-          if (Array.isArray(parsed.data)) {
-            donations = parsed.data.map((item: any) => ({
-              id: item.id,
-              user_id: item.userId,
-              project_id: item.projectId,
-              campaign_slug: item.campaignSlug,
-              projectTitle: item.projectTitle,
-              donorName: item.donorName,
-              amount: item.amount,
-              status: item.status,
-              anonymous: item.anonymous,
-              created_at: item.createdAt,
-            }))
-          }
+        if (donationsPayload && Array.isArray(donationsPayload.data)) {
+          donations = donationsPayload.data.map((item: any) => ({
+            id: item.id,
+            user_id: item.userId,
+            project_id: item.projectId,
+            campaign_slug: item.campaignSlug,
+            projectTitle: item.projectTitle,
+            donorName: item.donorName,
+            donorEmail: item.donorEmail,
+            hasValidEmail: item.hasValidEmail,
+            amount: item.amount,
+            status: item.status,
+            anonymous: item.anonymous,
+            created_at: item.createdAt,
+          }))
         } else {
           donations = await getDonations()
         }
@@ -123,11 +127,17 @@ export default function AdminRelatoriosPage() {
         let filteredDonations = selectedProjectId === 'all'
           ? donations
           : donations.filter((d: any) => d.project_id === selectedProjectId)
-        if (startDate) {
-          filteredDonations = filteredDonations.filter((d: any) => new Date(d.created_at) >= startDate!)
+        const startTs = startDate ? saoPauloMidnightUtc(startDate) : null
+        const endTs = endDate ? saoPauloMidnightUtc(endDate) + 86400000 - 1 : null
+        if (startTs !== null) {
+          filteredDonations = filteredDonations.filter(
+            (d: any) => new Date(d.created_at).getTime() >= startTs
+          )
         }
-        if (endDate) {
-          filteredDonations = filteredDonations.filter((d: any) => new Date(d.created_at) <= endDate!)
+        if (endTs !== null) {
+          filteredDonations = filteredDonations.filter(
+            (d: any) => new Date(d.created_at).getTime() <= endTs
+          )
         }
 
         const activeProjects = projectsData.filter((p: any) => p.status === 'active')
@@ -135,7 +145,14 @@ export default function AdminRelatoriosPage() {
         const completedDonations = filteredDonations.filter((d: any) => d.status === 'completed')
 
         const totalDonations = sumDonationsBrl(completedDonations.map((d: any) => d.amount))
-        const totalDonors = new Set(completedDonations.map((d: any) => d.user_id || d.donorName).filter(Boolean)).size
+        const totalDonors = new Set(
+          completedDonations
+            .map((d: any) =>
+              d.user_id ||
+              (d.donorName && d.donorName !== 'Não identificado' ? d.donorName : null)
+            )
+            .filter(Boolean)
+        ).size
         const avgDonation = completedDonations.length > 0 ? totalDonations / completedDonations.length : 0
 
         // Dados do período para o gráfico
@@ -143,31 +160,42 @@ export default function AdminRelatoriosPage() {
         const fillHours = () => Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2,'0')}h`)
         const fillDays = () => {
           const labels: string[] = []
-          const cur = new Date(startDate || new Date())
-          cur.setHours(0,0,0,0)
-          const last = new Date(endDate)
-          last.setHours(23,59,59,999)
-          while (cur <= last) {
-            labels.push(`${String(cur.getDate()).padStart(2,'0')}/${String(cur.getMonth()+1).padStart(2,'0')}`)
-            cur.setDate(cur.getDate()+1)
+          const baseStart = startDate || new Date()
+          const baseEnd = endDate || new Date()
+          const from = saoPauloMidnightUtc(baseStart)
+          const to = saoPauloMidnightUtc(baseEnd)
+          for (let t = from; t <= to; t += 86400000) {
+            const { day, month } = getSaoPauloDateParts(new Date(t))
+            labels.push(`${day}/${month}`)
           }
           return labels
         }
         const fillMonths = () => {
-          const s = startDate || new Date()
+          const baseStart = startDate || new Date()
+          const baseEnd = endDate || new Date()
+          const startParts = getSaoPauloDateParts(baseStart)
+          const endParts = getSaoPauloDateParts(baseEnd)
+          let year = Number(startParts.year)
+          let month = Number(startParts.month)
+          const endYear = Number(endParts.year)
+          const endMonth = Number(endParts.month)
           const labels: string[] = []
-          const cur = new Date(s.getFullYear(), s.getMonth(), 1)
-          const last = new Date(endDate.getFullYear(), endDate.getMonth(), 1)
-          while (cur <= last) {
-            labels.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`)
-            cur.setMonth(cur.getMonth()+1)
+          while (year < endYear || (year === endYear && month <= endMonth)) {
+            labels.push(`${year}-${String(month).padStart(2, '0')}`)
+            month += 1
+            if (month > 12) {
+              month = 1
+              year += 1
+            }
           }
           return labels
         }
 
         // Determinar granularidade baseado no intervalo
-        const diffDays = startDate && endDate ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) : 30
-        
+        const diffDays = startDate && endDate
+          ? Math.ceil((saoPauloMidnightUtc(endDate) - saoPauloMidnightUtc(startDate)) / (1000 * 60 * 60 * 24))
+          : 30
+
         let labels: string[] = []
         if (diffDays <= 1) {
           // 1 dia ou menos: por hora
@@ -183,14 +211,16 @@ export default function AdminRelatoriosPage() {
         const buckets = new Map<string, number>(labels.map(l => [l, 0]))
         completedDonations.forEach((d: any) => {
           const dt = new Date(d.created_at)
-          if (dt < (startDate || new Date()) || dt > endDate) return
+          if (startTs !== null && dt.getTime() < startTs) return
+          if (endTs !== null && dt.getTime() > endTs) return
+          const parts = getSaoPauloDateParts(dt)
           let key = ''
           if (diffDays <= 1) {
-            key = `${String(dt.getHours()).padStart(2,'0')}h`
+            key = `${parts.hour}h`
           } else if (diffDays > 90) {
-            key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`
+            key = `${parts.year}-${parts.month}`
           } else {
-            key = `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}`
+            key = `${parts.day}/${parts.month}`
           }
           buckets.set(key, (buckets.get(key) || 0) + d.amount)
         })
@@ -220,10 +250,15 @@ export default function AdminRelatoriosPage() {
           .slice(0, 5)
 
         // Top Doadores (com perfil quando disponível)
-        const byDonor = new Map<string, { amount: number, count: number }>()
+        const byDonor = new Map<string, { amount: number, count: number, label: string }>()
         completedDonations.forEach((d: any) => {
-          const key = d.donorName || d.user_id || `anon-${d.id}`
-          if (!byDonor.has(key)) byDonor.set(key, { amount: 0, count: 0 })
+          const key = d.anonymous
+            ? `anon:${d.id}`
+            : d.hasValidEmail
+              ? d.donorEmail
+              : d.user_id || d.donorName || 'anon'
+          const label = d.anonymous ? 'Anônimo' : d.donorName || key
+          if (!byDonor.has(key)) byDonor.set(key, { amount: 0, count: 0, label })
           const agg = byDonor.get(key)!
           agg.amount = sumDonationsBrl([agg.amount, d.amount])
           agg.count += 1
@@ -287,7 +322,7 @@ export default function AdminRelatoriosPage() {
             </div>
             <div className="mt-4 sm:mt-0">
               <ExportDropdown 
-                data={{ ...reports, __chartImage: chartImageRef.current, __chartCaption: (dateStart && dateEnd) ? `Período: ${new Date(dateStart).toLocaleDateString('pt-BR')} – ${new Date(dateEnd).toLocaleDateString('pt-BR')}` : undefined }} 
+                data={{ ...reports, __chartImage: chartImageRef.current, __chartCaption: (dateStart && dateEnd) ? `Período: ${new Date(dateStart).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} – ${new Date(dateEnd).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : undefined }}
                 filename="relatorio_completo"
               />
             </div>
@@ -594,7 +629,7 @@ export default function AdminRelatoriosPage() {
                   <div className="flex items-center space-x-3">
                     <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(d.userId)}`} alt="Avatar" className="w-8 h-8 rounded-full" />
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{d.userId.startsWith('anon-') ? 'Anônimo' : d.userId}</div>
+                      <div className="text-sm font-medium text-gray-900">{d.label || (d.userId.startsWith('anon') ? 'Anônimo' : d.userId)}</div>
                       <div className="text-xs text-gray-500">{d.count} doações</div>
                     </div>
                   </div>

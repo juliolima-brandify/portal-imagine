@@ -12,6 +12,7 @@ export const INSTITUTE_ADDRESS = 'R. Rui de Castro Santos, 1991 — Grand Ville,
 export const MIN_DONATION_CENTS = 500 // R$ 5,00 (mínimo regulatório do Asaas)
 export const MAX_DONATION_CENTS = 50_000_000 // R$ 500.000,00 (teto PJ do Asaas)
 export const MIN_DONATION_BRL = MIN_DONATION_CENTS / 100
+export const MAX_DONATION_BRL = MAX_DONATION_CENTS / 100
 
 export const ASAAS_ITEM_NAME_MAX_LEN = 30
 export const ASAAS_ITEM_DESC_MAX_LEN = 100
@@ -220,6 +221,30 @@ export type CheckoutRequestInput = z.infer<typeof checkoutRequestSchema>
 export function validateCheckoutAmountBrl(
   amount: number
 ): { ok: true; cents: number; valueBrl: number } | { ok: false; error: string } {
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+    return { ok: false, error: 'Informe um valor de doação válido.' }
+  }
+
+  // Rejeita valores com mais de duas casas decimais antes de arredondar.
+  // Sem isso, 4.999 viraria R$ 5,00 e passaria pelo mínimo.
+  const rounded = Math.round(amount * 100) / 100
+  if (Math.abs(amount - rounded) > 1e-9) {
+    return { ok: false, error: 'O valor deve ter no máximo duas casas decimais.' }
+  }
+
+  if (amount < MIN_DONATION_BRL) {
+    return {
+      ok: false,
+      error: `O valor mínimo para doação online é ${formatCurrencyBRL(MIN_DONATION_BRL)}.`,
+    }
+  }
+  if (amount > MAX_DONATION_BRL) {
+    return {
+      ok: false,
+      error: 'O valor informado excede o limite máximo permitido por transação.',
+    }
+  }
+
   const cents = brlToCents(amount)
   if (cents < MIN_DONATION_CENTS) {
     return {
@@ -338,6 +363,40 @@ export function resolvePublicCallbackBaseUrl(
  * Calcula a data da primeira cobrança de assinatura no fuso America/Sao_Paulo.
  * O Asaas documenta `subscription.nextDueDate` no formato `YYYY-MM-DD`.
  */
+export const SAO_PAULO_TIME_ZONE = 'America/Sao_Paulo'
+
+export interface SaoPauloDateParts {
+  year: string
+  month: string
+  day: string
+  hour: string
+}
+
+/** Partes de data/hora no fuso de São Paulo, independentes do fuso do navegador. */
+export function getSaoPauloDateParts(date: Date): SaoPauloDateParts {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SAO_PAULO_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || ''
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: get('hour'),
+  }
+}
+
+/** Meia-noite de São Paulo (UTC-3) como timestamp UTC. */
+export function saoPauloMidnightUtc(date: Date): number {
+  const { year, month, day } = getSaoPauloDateParts(date)
+  return Date.UTC(Number(year), Number(month) - 1, Number(day), 3)
+}
+
 export function calculateNextDueDateSaoPaulo(now: Date = new Date()): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo',

@@ -6,6 +6,26 @@ import { getDonationDestinationLabel, isValidUuid } from '@/lib/payments'
 import { ensureDonorAccountAndAccessLink } from '@/lib/server/donor-provision'
 import { sendDonorReceiptEmail } from '@/lib/server/email'
 
+interface DonationRow {
+  id: string
+  user_id: string | null
+  project_id: string | null
+  campaign_slug: string | null
+  donor_email: string | null
+  donor_name: string | null
+  amount: number | null
+  status: string
+  anonymous: boolean | null
+  asaas_payment_id: string | null
+  asaas_checkout_id: string | null
+  payment_method: string | null
+  is_recurring: boolean | null
+  recurring_frequency: string | null
+  message: string | null
+  created_at: string | null
+  projects?: { title?: string } | null
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -33,21 +53,23 @@ export async function POST(
       return jsonNoStore({ error: 'Doação não encontrada.' }, { status: 404 })
     }
 
-    if (row.status !== 'completed') {
+    const donation = row as DonationRow
+
+    if (donation.status !== 'completed') {
       return jsonNoStore(
         { error: 'Só é possível enviar recibo para doações já confirmadas.' },
         { status: 422 }
       )
     }
 
-    let donorEmail: string | null = (row as any).donor_email || null
-    let donorName: string | null = (row as any).donor_name || null
+    let donorEmail: string | null = donation.donor_email || null
+    let donorName: string | null = donation.donor_name || null
 
-    if (row.user_id && (!donorEmail || !donorName)) {
+    if (donation.user_id && (!donorEmail || !donorName)) {
       const { data: prof } = await supabaseAdmin
         .from('profiles')
         .select('email, name')
-        .eq('id', row.user_id)
+        .eq('id', donation.user_id)
         .maybeSingle()
       if (prof) {
         donorEmail = donorEmail || prof.email || null
@@ -64,10 +86,11 @@ export async function POST(
 
     // Lock no servidor: evita dois e-mails em duplo clique/duas abas (R7).
     // O UPDATE condicional é atômico no Postgres; o segundo pedido não acha a linha.
+    const lockAt = new Date().toISOString()
     const lockThreshold = new Date(Date.now() - 2 * 60 * 1000).toISOString()
     const { data: claimed, error: lockErr } = await supabaseAdmin
       .from('donations')
-      .update({ receipt_lock_at: new Date().toISOString() })
+      .update({ receipt_lock_at: lockAt })
       .eq('id', donationId)
       .or(`receipt_lock_at.is.null,receipt_lock_at.lt.${lockThreshold}`)
       .select('id')
@@ -85,16 +108,18 @@ export async function POST(
       )
     }
 
+    let releaseLock = true
+
     try {
       const projectObj =
-        row.projects && typeof row.projects === 'object' && !Array.isArray(row.projects)
-          ? (row.projects as { title?: string })
+        donation.projects && typeof donation.projects === 'object' && !Array.isArray(donation.projects)
+          ? donation.projects
           : null
 
       const projectTitle = getDonationDestinationLabel({
         projectTitle: projectObj?.title || null,
-        campaignSlug: (row as any).campaign_slug || null,
-        projectId: row.project_id,
+        campaignSlug: donation.campaign_slug || null,
+        projectId: donation.project_id,
       })
 
       const provision = await ensureDonorAccountAndAccessLink({
@@ -105,19 +130,16 @@ export async function POST(
       const sendRes = await sendDonorReceiptEmail({
         to: donorEmail,
         donorName,
-        anonymous: Boolean(row.anonymous),
-        amount: Number(row.amount) || 0,
+        anonymous: Boolean(donation.anonymous),
+        amount: Number(donation.amount) || 0,
         projectTitle,
-        donationId: row.id,
-        transactionId:
-          (row as any).asaas_payment_id ||
-          (row as any).asaas_checkout_id ||
-          null,
-        paymentMethod: row.payment_method,
-        isRecurring: Boolean(row.is_recurring),
-        recurringFrequency: row.recurring_frequency,
-        message: row.message,
-        createdAt: row.created_at,
+        donationId: donation.id,
+        transactionId: donation.asaas_payment_id || donation.asaas_checkout_id || null,
+        paymentMethod: donation.payment_method,
+        isRecurring: Boolean(donation.is_recurring),
+        recurringFrequency: donation.recurring_frequency,
+        message: donation.message,
+        createdAt: donation.created_at,
         portalAccessUrl: provision.portalAccessUrl,
         isNewAccount: provision.isNewAccount,
       })
@@ -130,11 +152,23 @@ export async function POST(
       }
 
       const sentAt = new Date().toISOString()
-      await supabaseAdmin
+      const { error: sentErr } = await supabaseAdmin
         .from('donations')
         .update({ receipt_sent_at: sentAt })
-        .eq('id', row.id)
-        .then(() => undefined, () => undefined)
+        .eq('id', donation.id)
+
+      if (sentErr) {
+        // Mantém o lock até expirar para evitar duplicidade se o admin clicar de novo.
+        releaseLock = false
+        console.error('[AdminResendReceipt] Erro ao gravar receipt_sent_at:', sentErr)
+        return jsonNoStore(
+          {
+            error:
+              'E-mail enviado, mas não foi possível registrar o envio. Tente novamente em alguns minutos.',
+          },
+          { status: 500 }
+        )
+      }
 
       return jsonNoStore({
         success: true,
@@ -142,12 +176,16 @@ export async function POST(
         receiptSentAt: sentAt,
       })
     } finally {
-      // Libera o lock sempre, mesmo em erro, para não travar o reenvio.
-      await supabaseAdmin
-        .from('donations')
-        .update({ receipt_lock_at: null })
-        .eq('id', donationId)
-        .then(() => undefined, () => undefined)
+      if (releaseLock) {
+        const { error: releaseErr } = await supabaseAdmin
+          .from('donations')
+          .update({ receipt_lock_at: null })
+          .eq('id', donationId)
+          .eq('receipt_lock_at', lockAt)
+        if (releaseErr) {
+          console.error('[AdminResendReceipt] Erro ao liberar lock:', releaseErr)
+        }
+      }
     }
   } catch (err) {
     console.error('[AdminResendReceipt] Erro ao reenviar recibo:', err)

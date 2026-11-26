@@ -134,7 +134,9 @@ export interface DonorReceiptEmailInput {
 export async function sendDonorReceiptEmail(
   input: DonorReceiptEmailInput
 ): Promise<SendEmailResult> {
-  const safeName = escapeHtml((input.donorName || '').trim() || 'Apoiador(a)')
+  const safeName = escapeHtml(
+    input.anonymous ? 'Apoiador(a)' : (input.donorName || '').trim() || 'Apoiador(a)'
+  )
   const safeProject = escapeHtml(input.projectTitle || 'Instituto Imagine')
   const safeAmount = escapeHtml(formatCurrencyBRL(input.amount))
   const safeDonationId = escapeHtml(input.donationId)

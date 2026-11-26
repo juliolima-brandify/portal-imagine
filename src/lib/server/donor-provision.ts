@@ -46,11 +46,18 @@ export async function ensureDonorAccountAndAccessLink(input: {
       console.error('[DonorProvision] Erro ao buscar perfil por e-mail:', profileError)
     }
 
-    const existingProfile = matches?.[0]
     if (matches && matches.length > 1) {
-      // Ambiguidade: não escolhe conta no escuro. Cria/segue sem vínculo.
+      // Ambiguidade: não escolhe conta no escuro. Devolve sem vínculo para não
+      // creditar a doação no histórico de outra pessoa (R5/R6).
       console.error('[DonorProvision] Mais de um perfil casou com o e-mail; vínculo ignorado.')
+      return {
+        userId: null,
+        isNewAccount: false,
+        portalAccessUrl: defaultLoginUrl,
+      }
     }
+
+    const existingProfile = matches?.[0]
 
     if (existingProfile?.id) {
       await linkOrphanDonationsByEmail(cleanEmail, existingProfile.id)
