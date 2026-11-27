@@ -162,7 +162,7 @@ export async function sendDonorReceiptEmail(
   })()
 
   const safeAccessUrl =
-    input.portalAccessUrl && input.portalAccessUrl.startsWith('https://')
+    input.isNewAccount && input.portalAccessUrl && input.portalAccessUrl.startsWith('https://')
       ? escapeHtml(input.portalAccessUrl)
       : escapeHtml(`${getPortalOrigin()}/entrar`)
 

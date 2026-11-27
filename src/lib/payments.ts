@@ -53,12 +53,37 @@ export function escapeLikePattern(value: string | null | undefined): string {
 }
 
 /**
- * Trunca por code points (nunca parte pares substitutos/emoji) e sem cortar no meio.
+ * Trunca texto por grafemas (`Intl.Segmenter` com fallback para code points),
+ * garantindo que o resultado respeite `.length <= maxLength` em UTF-16 e
+ * nunca parta emojis simples, pares substitutos ou sequências ZWJ.
  */
 export function truncateGraphemes(value: string, maxLength: number): string {
-  const codePoints = Array.from(value)
-  if (codePoints.length <= maxLength) return value
-  return codePoints.slice(0, maxLength).join('').trimEnd()
+  if (!value || maxLength <= 0) return ''
+  if (value.length <= maxLength) return value
+
+  const SegmenterCtor = (
+    Intl as unknown as {
+      Segmenter?: new (
+        locale?: string,
+        opts?: { granularity: 'grapheme' }
+      ) => { segment: (input: string) => Iterable<{ segment: string }> }
+    }
+  )?.Segmenter
+
+  const segments: string[] =
+    typeof SegmenterCtor === 'function'
+      ? Array.from(
+          new SegmenterCtor('pt-BR', { granularity: 'grapheme' }).segment(value),
+          (s) => s.segment
+        )
+      : Array.from(value)
+
+  let out = ''
+  for (const seg of segments) {
+    if (out.length + seg.length > maxLength) break
+    out += seg
+  }
+  return out.trimEnd()
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -84,6 +109,58 @@ export function sumDonationsBrl(amounts: Array<number | string | null | undefine
     const num = typeof raw === 'string' ? Number(raw) : raw
     if (typeof num === 'number' && Number.isFinite(num) && num > 0) {
       totalCents += Math.round(num * 100)
+    }
+  }
+  return centsToBrl(totalCents)
+}
+
+/**
+ * Calcula o valor líquido reconhecido de uma doação em reais, igual ao trigger SQL `update_project_amount`:
+ * - `completed`: valor integral (`amount`)
+ * - `partially_refunded`: `max(0, amount - refunded_amount)` em centavos
+ * - demais status (`pending`, `failed`, `refunded`): `0`
+ */
+export function getRecognizedDonationAmountBrl(row: {
+  amount?: number | string | null
+  refunded_amount?: number | string | null
+  refundedAmount?: number | string | null
+  status?: string | null
+}): number {
+  const status = row.status || ''
+  if (status !== 'completed' && status !== 'partially_refunded') {
+    return 0
+  }
+  const rawAmount = typeof row.amount === 'string' ? Number(row.amount) : row.amount
+  const amountCents =
+    typeof rawAmount === 'number' && Number.isFinite(rawAmount) && rawAmount > 0
+      ? brlToCents(rawAmount)
+      : 0
+  if (status === 'completed') {
+    return centsToBrl(amountCents)
+  }
+  const rawRefunded =
+    row.refundedAmount !== undefined ? row.refundedAmount : row.refunded_amount
+  const numRefunded = typeof rawRefunded === 'string' ? Number(rawRefunded) : rawRefunded
+  const refundedCents =
+    typeof numRefunded === 'number' && Number.isFinite(numRefunded) && numRefunded > 0
+      ? brlToCents(numRefunded)
+      : 0
+  return centsToBrl(Math.max(0, amountCents - refundedCents))
+}
+
+export function sumRecognizedDonationsBrl(
+  rows: Array<{
+    amount?: number | string | null
+    refunded_amount?: number | string | null
+    refundedAmount?: number | string | null
+    status?: string | null
+  }>
+): number {
+  let totalCents = 0
+  for (const row of rows) {
+    const recognized = getRecognizedDonationAmountBrl(row)
+    if (recognized > 0) {
+      totalCents += brlToCents(recognized)
     }
   }
   return centsToBrl(totalCents)
@@ -184,13 +261,13 @@ export function escapeHtml(raw: string | null | undefined): string {
 
 /**
  * Previne CSV / Excel Formula Injection neutralizando células iniciadas com =, +, -, @, \t ou \r.
+ * Remove quebras de linha (\r, \n, \u2028, \u2029), caracteres de controle e marcas invisíveis/bidi.
  */
 export function sanitizeSpreadsheetCell(value: unknown): string {
   if (value === null || value === undefined) return ''
-  // Remove caracteres invisíveis de largura zero/BOM que podem esconder uma fórmula.
   const str = String(value)
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/\r?\n/g, ' ')
+    .replace(/[\r\n\t\u2028\u2029]+/g, ' ')
+    .replace(/[\x00-\x1F\x7F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
     .trim()
   if (!str) return ''
   if (/^[=+\-@\t\r]/.test(str)) {
@@ -262,7 +339,7 @@ export function validateCheckoutAmountBrl(
 }
 
 /**
- * Trunca texto ASCII/UTF-8 sem cortar palavras de forma feia e respeitando o limite rígido de 30 chars do Asaas em items[0].name.
+ * Trunca texto respeitando o limite rígido de 30 code units UTF-16 do Asaas em items[0].name, sem partir emojis/grafemas.
  */
 export function buildAsaasItemName(destinationTitle: string, isRecurring: boolean): string {
   const cleanTitle = (destinationTitle || 'Instituto Imagine')
@@ -272,7 +349,7 @@ export function buildAsaasItemName(destinationTitle: string, isRecurring: boolea
 
   const prefix = isRecurring ? 'Mensal - ' : 'Doacao - '
   const full = `${prefix}${cleanTitle}`
-  if (Array.from(full).length <= ASAAS_ITEM_NAME_MAX_LEN) {
+  if (full.length <= ASAAS_ITEM_NAME_MAX_LEN) {
     return full
   }
   return truncateGraphemes(full, ASAAS_ITEM_NAME_MAX_LEN)
@@ -294,11 +371,11 @@ export function buildAsaasItemDescription(
   const full = `${titleWithPrefix}${suffix}`
 
   // Prioridade: manter o título completo do projeto. Se não couber, remove o sufixo
-  // e, por último, trunca o título por code points (nunca parte emoji).
-  if (Array.from(full).length <= ASAAS_ITEM_DESC_MAX_LEN) {
+  // e, por último, trunca o título por grafemas respeitando UTF-16.
+  if (full.length <= ASAAS_ITEM_DESC_MAX_LEN) {
     return full
   }
-  if (Array.from(titleWithPrefix).length <= ASAAS_ITEM_DESC_MAX_LEN) {
+  if (titleWithPrefix.length <= ASAAS_ITEM_DESC_MAX_LEN) {
     return titleWithPrefix
   }
   return truncateGraphemes(titleWithPrefix, ASAAS_ITEM_DESC_MAX_LEN)
@@ -331,21 +408,17 @@ export function resolvePublicCallbackBaseUrl(
   allowedHosts: string[] = DEFAULT_PUBLIC_CALLBACK_HOSTS
 ): string {
   const DEFAULT_PUBLIC = 'https://imagineinstituto.com'
-  const allowed = allowedHosts.map((host) => host.toLowerCase())
-
-  const isAllowedHost = (hostname: string): boolean => {
-    const host = hostname.toLowerCase()
-    return allowed.some((domain) => host === domain || host.endsWith(`.${domain}`))
-  }
+  const allowed = new Set(allowedHosts.map((host) => host.toLowerCase()))
 
   const tryParsePublicHttps = (raw?: string | null): string | null => {
     if (!raw) return null
     try {
       const parsed = new URL(raw.trim())
       if (parsed.protocol !== 'https:') return null
+      if (parsed.port !== '') return null
       const host = parsed.hostname.toLowerCase()
       if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')) return null
-      if (!isAllowedHost(host)) return null
+      if (!allowed.has(host)) return null
       return parsed.origin
     } catch {
       return null
@@ -642,21 +715,51 @@ export function classifyAsaasWebhookEvent(rawPayload: unknown): ClassifiedAsaasW
         ? checkout.items[0].value
         : null
 
-  // O Asaas informa o valor estornado em `refundedValue` (estornos parciais).
-  // Para estorno total, o valor estornado é o próprio valor da cobrança.
-  const rawRefundedValue =
+  // O Asaas envia estornos em `payment.refunds[]` (status: 'DONE', value), com fallback para
+  // `refundedValue`/`refundValue`. Valores negativos ou zerados em eventos atrasados são ignorados.
+  let refundsArrayCents = 0
+  let hasNegativeRefund = false
+  if (Array.isArray(payment?.refunds)) {
+    for (const item of payment.refunds) {
+      if (!item || typeof item !== 'object') continue
+      const itemStatus = typeof item.status === 'string' ? item.status.trim().toUpperCase() : ''
+      if (itemStatus !== 'DONE') continue
+      if (typeof item.value !== 'number' || !Number.isFinite(item.value)) continue
+      if (item.value < 0) {
+        hasNegativeRefund = true
+        break
+      }
+      if (item.value > 0) {
+        refundsArrayCents += brlToCents(item.value)
+      }
+    }
+  }
+
+  const rawRefundedCandidate =
     typeof payment?.refundedValue === 'number'
       ? payment.refundedValue
       : typeof payment?.refundValue === 'number'
         ? payment.refundValue
         : null
+  if (rawRefundedCandidate !== null && Number.isFinite(rawRefundedCandidate) && rawRefundedCandidate < 0) {
+    hasNegativeRefund = true
+  }
+
+  const partialRefundBrl = hasNegativeRefund
+    ? null
+    : refundsArrayCents > 0
+      ? centsToBrl(refundsArrayCents)
+      : rawRefundedCandidate !== null && Number.isFinite(rawRefundedCandidate) && rawRefundedCandidate > 0
+        ? centsToBrl(brlToCents(rawRefundedCandidate))
+        : null
+
   const refundedAmountBrl =
     eventType === 'PAYMENT_REFUNDED'
-      ? rawValue !== null && Number.isFinite(rawValue)
+      ? rawValue !== null && Number.isFinite(rawValue) && rawValue > 0
         ? centsToBrl(brlToCents(rawValue))
-        : null
-      : rawRefundedValue !== null && Number.isFinite(rawRefundedValue)
-        ? centsToBrl(brlToCents(rawRefundedValue))
+        : partialRefundBrl
+      : targetStatus === 'partially_refunded'
+        ? partialRefundBrl
         : null
 
   const customerData =
@@ -721,6 +824,7 @@ export function sanitizePublicSessionResponse(row: {
   campaign_slug?: string | null
   projectTitle?: string | null
   amount: number | string
+  refunded_amount?: number | string | null
   status?: string | null
   payment_method?: string | null
   is_recurring?: boolean | null
@@ -728,6 +832,12 @@ export function sanitizePublicSessionResponse(row: {
   receipt_sent_at?: string | null
 }) {
   const numAmount = typeof row.amount === 'string' ? Number(row.amount) : row.amount
+  const numRefunded =
+    typeof row.refunded_amount === 'string' ? Number(row.refunded_amount) : row.refunded_amount
+  const safeRefunded =
+    typeof numRefunded === 'number' && Number.isFinite(numRefunded) && numRefunded > 0
+      ? centsToBrl(brlToCents(numRefunded))
+      : 0
   const safeStatus: DonationStatus =
     row.status === 'completed' ||
     row.status === 'failed' ||
@@ -747,6 +857,8 @@ export function sanitizePublicSessionResponse(row: {
     }),
     amount: (Number.isFinite(numAmount) ? numAmount : 0).toFixed(2),
     amountFormatted: formatCurrencyBRL(Number.isFinite(numAmount) ? numAmount : 0),
+    refundedAmount: safeRefunded,
+    refundedAmountFormatted: safeRefunded > 0 ? formatCurrencyBRL(safeRefunded) : null,
     paymentStatus: safeStatus,
     paymentMethod: normalizePaymentMethodLabel(row.payment_method),
     isRecurring: Boolean(row.is_recurring),
@@ -761,6 +873,7 @@ export function buildReceiptText(input: {
   donorEmail?: string | null
   anonymous?: boolean
   amount: number
+  refundedAmount?: number | null
   projectTitle: string
   status: string
   paymentMethod?: string | null
@@ -782,6 +895,16 @@ export function buildReceiptText(input: {
     }
   })()
 
+  const refundedNum =
+    typeof input.refundedAmount === 'number' && Number.isFinite(input.refundedAmount) && input.refundedAmount > 0
+      ? input.refundedAmount
+      : 0
+  const netAmount = getRecognizedDonationAmountBrl({
+    amount: input.amount,
+    refundedAmount: refundedNum,
+    status: input.status,
+  })
+
   const lines = [
     '====================================================',
     '            RECIBO DE DOAÇÃO — INSTITUTO IMAGINE',
@@ -797,6 +920,12 @@ export function buildReceiptText(input: {
     ...(!input.anonymous && input.donorEmail ? [`E-mail: ${input.donorEmail}`] : []),
     `Destino / Projeto: ${input.projectTitle}`,
     `Valor: ${formatCurrencyBRL(input.amount)}`,
+    ...(refundedNum > 0
+      ? [
+          `Valor Estornado: ${formatCurrencyBRL(refundedNum)}`,
+          `Valor Líquido Reconhecido: ${formatCurrencyBRL(netAmount)}`,
+        ]
+      : []),
     `Status: ${getDonationStatusLabelPTBR(input.status)}`,
     `Meio de Pagamento: ${normalizePaymentMethodLabel(input.paymentMethod)}`,
     `Modalidade: ${input.isRecurring ? `Recorrente (${getFrequencyLabelPTBR(input.recurringFrequency)})` : 'Doação única'}`,

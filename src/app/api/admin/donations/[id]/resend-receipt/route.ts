@@ -55,9 +55,9 @@ export async function POST(
 
     const donation = row as DonationRow
 
-    if (donation.status !== 'completed') {
+    if (donation.status !== 'completed' && donation.status !== 'partially_refunded') {
       return jsonNoStore(
-        { error: 'Só é possível enviar recibo para doações já confirmadas.' },
+        { error: 'Só é possível enviar recibo para doações confirmadas ou parcialmente estornadas.' },
         { status: 422 }
       )
     }
@@ -92,6 +92,7 @@ export async function POST(
       .from('donations')
       .update({ receipt_lock_at: lockAt })
       .eq('id', donationId)
+      .in('status', ['completed', 'partially_refunded'])
       .or(`receipt_lock_at.is.null,receipt_lock_at.lt.${lockThreshold}`)
       .select('id')
       .maybeSingle()

@@ -21,13 +21,24 @@ const RATE_LIMIT_MAX_REQUESTS = 10
 const rateBuckets = new Map<string, { count: number; resetAt: number }>()
 
 function getClientIp(request: NextRequest): string {
+  const cfIp = request.headers.get('cf-connecting-ip')?.trim()
+  if (cfIp) return cfIp
+  const realIp = request.headers.get('x-real-ip')?.trim()
+  if (realIp) return realIp
   const forwarded = request.headers.get('x-forwarded-for')
   if (forwarded) return forwarded.split(',')[0].trim()
-  return request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || 'unknown'
+  return 'unknown'
 }
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now()
+  if (rateBuckets.size > 100) {
+    rateBuckets.forEach((entry, key) => {
+      if (now >= entry.resetAt) {
+        rateBuckets.delete(key)
+      }
+    })
+  }
   const bucket = rateBuckets.get(ip)
   if (!bucket || now >= bucket.resetAt) {
     rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })

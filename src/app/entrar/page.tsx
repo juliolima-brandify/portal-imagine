@@ -20,8 +20,12 @@ function EntrarContent() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const stored = window.localStorage.getItem('imagine.rememberMe')
-    if (stored === 'false') setRememberMe(false)
+    try {
+      const stored = window.localStorage.getItem('imagine.rememberMe')
+      if (stored === 'false') setRememberMe(false)
+    } catch {
+      // Storage indisponível
+    }
   }, [])
 
   const [showForgotPassword, setShowForgotPassword] = useState(false)
@@ -163,6 +167,14 @@ function EntrarContent() {
 
       if (isLogin) {
         const validatedData = loginSchema.parse({ email, password })
+
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.setItem('imagine.rememberMe', rememberMe ? 'true' : 'false')
+          } catch {
+            // Storage indisponível
+          }
+        }
 
         const authPromise = supabase.auth.signInWithPassword({
           email: validatedData.email,
@@ -463,11 +475,7 @@ function EntrarContent() {
                         type="checkbox"
                         checked={rememberMe}
                         onChange={(e) => {
-                          const next = e.target.checked
-                          setRememberMe(next)
-                          if (typeof window !== 'undefined') {
-                            window.localStorage.setItem('imagine.rememberMe', next ? 'true' : 'false')
-                          }
+                          setRememberMe(e.target.checked)
                         }}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />

@@ -7,11 +7,13 @@ import { supabase } from '@/lib/supabase'
 import { getUserDonationById, type Donation } from '@/lib/database'
 import {
   INSTITUTE_CNPJ,
+  SAO_PAULO_TIME_ZONE,
   buildReceiptText,
   formatCurrencyBRL,
   getDonationDestinationLabel,
   getDonationStatusLabelPTBR,
   getFrequencyLabelPTBR,
+  getRecognizedDonationAmountBrl,
   normalizePaymentMethodLabel,
 } from '@/lib/payments'
 import type { User } from '@supabase/supabase-js'
@@ -59,8 +61,12 @@ export default function DoacaoDetailPage() {
         return 'bg-green-100 text-green-700'
       case 'pending':
         return 'bg-yellow-100 text-yellow-800'
+      case 'partially_refunded':
+        return 'bg-amber-100 text-amber-800'
       case 'failed':
         return 'bg-red-100 text-red-700'
+      case 'refunded':
+        return 'bg-gray-200 text-gray-700'
       default:
         return 'bg-gray-200 text-gray-700'
     }
@@ -68,7 +74,7 @@ export default function DoacaoDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="text-sm text-gray-600">Carregando detalhes da doação...</div>
       </div>
     )
@@ -76,7 +82,7 @@ export default function DoacaoDetailPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-3 text-gray-900">Acesso Restrito</h1>
           <p className="mb-5 text-gray-600">Faça login para acessar os detalhes da sua doação.</p>
@@ -90,7 +96,7 @@ export default function DoacaoDetailPage() {
 
   if (!donation) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="min-h-[50vh] flex items-center justify-center p-4">
         <div className="max-w-md w-full card p-8 text-center">
           <h1 className="text-xl font-bold text-gray-900 mb-2">Doação não encontrada</h1>
           <p className="text-sm text-gray-600 mb-6">
@@ -122,6 +128,7 @@ export default function DoacaoDetailPage() {
       donorEmail: user.email || null,
       anonymous: donation.anonymous,
       amount: Number(donation.amount) || 0,
+      refundedAmount: Number(donation.refunded_amount) || 0,
       projectTitle: destinationTitle,
       status: donation.status,
       paymentMethod: donation.payment_method,
@@ -143,9 +150,12 @@ export default function DoacaoDetailPage() {
     URL.revokeObjectURL(url)
   }
 
+  const refundedAmount = Number(donation.refunded_amount) || 0
+  const netAmount = getRecognizedDonationAmountBrl(donation)
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <main className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-4xl mx-auto">
+      <main>
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-1">
@@ -181,9 +191,31 @@ export default function DoacaoDetailPage() {
                 <div>
                   <span className="text-xs font-medium text-gray-500 uppercase">Data</span>
                   <p className="text-sm font-medium text-gray-900 tabular-nums mt-1">
-                    {new Date(donation.created_at).toLocaleString('pt-BR')}
+                    {new Date(donation.created_at).toLocaleString('pt-BR', {
+                      timeZone: SAO_PAULO_TIME_ZONE,
+                    })}
                   </p>
                 </div>
+                {refundedAmount > 0 && (
+                  <>
+                    <div>
+                      <span className="text-xs font-medium text-gray-500 uppercase">
+                        Valor Estornado
+                      </span>
+                      <p className="text-lg font-semibold text-amber-700 tabular-nums mt-0.5">
+                        -{formatCurrencyBRL(refundedAmount)}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-gray-500 uppercase">
+                        Valor Líquido Reconhecido
+                      </span>
+                      <p className="text-lg font-semibold text-green-700 tabular-nums mt-0.5">
+                        {formatCurrencyBRL(netAmount)}
+                      </p>
+                    </div>
+                  </>
+                )}
                 <div>
                   <span className="text-xs font-medium text-gray-500 uppercase">
                     Meio de Pagamento

@@ -16,13 +16,16 @@ export async function GET(
     return jsonNoStore({ success: false, error: 'Serviço indisponível.' }, { status: 503 })
   }
 
+  const publicSelectColumns =
+    'id, project_id, campaign_slug, amount, refunded_amount, status, payment_method, is_recurring, recurring_frequency, receipt_sent_at, projects:project_id(title)'
+
   try {
     let row: any = null
 
     if (isValidUuid(rawId)) {
       const { data } = await supabaseAdmin
         .from('donations')
-        .select('id, project_id, amount, status, payment_method, is_recurring, recurring_frequency, projects:project_id(title), *')
+        .select(publicSelectColumns)
         .eq('id', rawId)
         .maybeSingle()
       row = data
@@ -31,7 +34,7 @@ export async function GET(
     if (!row) {
       const { data } = await supabaseAdmin
         .from('donations')
-        .select('id, project_id, amount, status, payment_method, is_recurring, recurring_frequency, projects:project_id(title), *')
+        .select(publicSelectColumns)
         .eq('asaas_checkout_id', rawId)
         .maybeSingle()
       row = data
@@ -53,6 +56,7 @@ export async function GET(
         campaign_slug: row.campaign_slug,
         projectTitle,
         amount: row.amount,
+        refunded_amount: row.refunded_amount,
         status: row.status,
         payment_method: row.payment_method,
         is_recurring: row.is_recurring,

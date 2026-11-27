@@ -3,7 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { getProject, getDonations, getProjectStats } from '@/lib/database'
+import { getProject, getDonations } from '@/lib/database'
+import {
+  SAO_PAULO_TIME_ZONE,
+  formatCurrencyBRL,
+  getRecognizedDonationAmountBrl,
+  sumDonationsBrl,
+  sumRecognizedDonationsBrl,
+} from '@/lib/payments'
 
 interface ProjectReport {
   id: string
@@ -67,12 +74,13 @@ export default function ProjectReportsPage() {
             throw new Error('Projeto não encontrado')
           }
 
-          // Carregar estatísticas do projeto
-          const projectStats = await getProjectStats(projectId)
-          
-          // Carregar doações do projeto
+          // Carregar doações reconhecidas do projeto (confirmadas ou estornadas parcialmente)
           const projectDonations = await getDonations()
-          const projectDonationsFiltered = projectDonations.filter(d => d.project_id === projectId)
+          const projectDonationsFiltered = projectDonations.filter(
+            (d) => d.project_id === projectId && getRecognizedDonationAmountBrl(d) > 0
+          )
+
+          const recognizedTotal = sumRecognizedDonationsBrl(projectDonationsFiltered)
 
           // Transformar dados para o formato do relatório
           const projectReport: ProjectReport = {
@@ -82,15 +90,21 @@ export default function ProjectReportsPage() {
             target_amount: projectData.target_amount,
             current_amount: projectData.current_amount,
             total_donations: projectDonationsFiltered.length,
-            total_donors: new Set(projectDonationsFiltered.map(d => d.user_id).filter(Boolean)).size,
-            average_donation: projectDonationsFiltered.length > 0 ? 
-              projectDonationsFiltered.reduce((sum, d) => sum + d.amount, 0) / projectDonationsFiltered.length : 0,
+            total_donors: new Set(
+              projectDonationsFiltered.map((d) =>
+                d.user_id ? `user:${d.user_id}` : `don:${d.id}`
+              )
+            ).size,
+            average_donation:
+              projectDonationsFiltered.length > 0
+                ? recognizedTotal / projectDonationsFiltered.length
+                : 0,
             completion_percentage:
               Number(projectData.target_amount) > 0
                 ? Math.min(Math.round((Number(projectData.current_amount || 0) / Number(projectData.target_amount)) * 100), 100)
                 : 0,
             start_date: projectData.created_at,
-            end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1 ano a partir de agora
+            end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             status: projectData.status,
             location: projectData.location || '',
             category: projectData.category,
@@ -103,17 +117,20 @@ export default function ProjectReportsPage() {
           
           projectDonationsFiltered.forEach(donation => {
             const date = new Date(donation.created_at)
-            const monthKey = `${date.toLocaleDateString('pt-BR', { month: 'short' })} ${date.getFullYear()}`
+            const monthKey = `${date.toLocaleDateString('pt-BR', { month: 'short', timeZone: SAO_PAULO_TIME_ZONE })} ${date.toLocaleDateString('pt-BR', { year: 'numeric', timeZone: SAO_PAULO_TIME_ZONE })}`
             
             if (!monthlyData.has(monthKey)) {
               monthlyData.set(monthKey, { amount: 0, donors: new Set() })
             }
             
             const monthData = monthlyData.get(monthKey)!
-            monthData.amount += donation.amount
-            if (donation.user_id) {
-              monthData.donors.add(donation.user_id)
-            }
+            monthData.amount = sumDonationsBrl([
+              monthData.amount,
+              getRecognizedDonationAmountBrl(donation),
+            ])
+            monthData.donors.add(
+              donation.user_id ? `user:${donation.user_id}` : `don:${donation.id}`
+            )
           })
 
           monthlyData.forEach((data, month) => {
@@ -138,7 +155,7 @@ export default function ProjectReportsPage() {
             .slice(0, 5)
             .map(donation => ({
               name: donation.anonymous ? 'Doador Anônimo' : 'Doador',
-              amount: donation.amount,
+              amount: getRecognizedDonationAmountBrl(donation),
               date: donation.created_at,
               anonymous: donation.anonymous
             }))
@@ -164,20 +181,15 @@ export default function ProjectReportsPage() {
     loadReportData()
   }, [projectId])
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(amount)
-  }
+  const formatCurrency = (amount: number) => formatCurrencyBRL(amount)
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR')
+    return new Date(dateString).toLocaleDateString('pt-BR', { timeZone: SAO_PAULO_TIME_ZONE })
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="text-lg text-gray-600">Carregando relatório...</div>
       </div>
     )
@@ -185,7 +197,7 @@ export default function ProjectReportsPage() {
 
   if (error || !project) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Erro</h1>
           <p className="text-gray-600 mb-4">{error || 'Projeto não encontrado'}</p>
@@ -198,8 +210,7 @@ export default function ProjectReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
@@ -270,19 +281,19 @@ export default function ProjectReportsPage() {
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-2xl font-bold text-green-600 mb-2">{formatCurrency(project.current_amount)}</div>
+            <div className="text-2xl font-bold text-green-600 mb-2 tabular-nums">{formatCurrency(project.current_amount)}</div>
             <div className="text-sm text-gray-500">Total Arrecadado</div>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-2xl font-bold text-blue-600 mb-2">{project.total_donations}</div>
+            <div className="text-2xl font-bold text-blue-600 mb-2 tabular-nums">{project.total_donations}</div>
             <div className="text-sm text-gray-500">Total de Doações</div>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-2xl font-bold text-purple-600 mb-2">{project.total_donors}</div>
+            <div className="text-2xl font-bold text-purple-600 mb-2 tabular-nums">{project.total_donors}</div>
             <div className="text-sm text-gray-500">Doadores Únicos</div>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-2xl font-bold text-orange-600 mb-2">{formatCurrency(project.average_donation)}</div>
+            <div className="text-2xl font-bold text-orange-600 mb-2 tabular-nums">{formatCurrency(project.average_donation)}</div>
             <div className="text-sm text-gray-500">Doação Média</div>
           </div>
         </div>
@@ -347,7 +358,7 @@ export default function ProjectReportsPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Doador
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Valor
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -358,17 +369,17 @@ export default function ProjectReportsPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {recentDonors.map((donor, index) => (
                   <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap text-left">
                       <div className="text-sm font-medium text-gray-900">
                         {donor.anonymous ? 'Doador Anônimo' : donor.name}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap text-right tabular-nums">
                       <div className="text-sm font-medium text-gray-900">
                         {formatCurrency(donor.amount)}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-left tabular-nums text-sm text-gray-900">
                       {formatDate(donor.date)}
                     </td>
                   </tr>
@@ -389,7 +400,6 @@ export default function ProjectReportsPage() {
             <p>• Dados pessoais dos doadores são protegidos conforme LGPD</p>
           </div>
         </div>
-      </div>
     </div>
   )
 }

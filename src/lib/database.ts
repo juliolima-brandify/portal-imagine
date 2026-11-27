@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { sumDonationsBrl } from './payments'
+import { sumRecognizedDonationsBrl } from './payments'
 
 // =============================================
 // TIPOS (Client-Safe — Zero SDKs de Servidor)
@@ -399,9 +399,9 @@ export async function getUserStats(userId: string): Promise<{
   try {
     const { data: donations, error: donationsError } = await supabase
       .from('donations')
-      .select('amount, status, created_at')
+      .select('amount, refunded_amount, status, created_at')
       .eq('user_id', userId)
-      .eq('status', 'completed')
+      .in('status', ['completed', 'partially_refunded'])
       .order('created_at', { ascending: false })
 
     if (donationsError) {
@@ -409,7 +409,7 @@ export async function getUserStats(userId: string): Promise<{
       return null
     }
 
-    const totalDonated = sumDonationsBrl((donations || []).map((d) => d.amount))
+    const totalDonated = sumRecognizedDonationsBrl(donations || [])
     const totalDonations = donations?.length || 0
 
     return {
@@ -431,17 +431,19 @@ export async function getProjectStats(projectId: string): Promise<{
   try {
     const { data: donations, error: donationsError } = await supabase
       .from('donations')
-      .select('amount, status, user_id')
+      .select('id, amount, refunded_amount, status, user_id')
       .eq('project_id', projectId)
-      .eq('status', 'completed')
+      .in('status', ['completed', 'partially_refunded'])
 
     if (donationsError) {
       console.error('Erro ao buscar estatísticas do projeto:', donationsError)
       return null
     }
 
-    const totalRaised = sumDonationsBrl((donations || []).map((d) => d.amount))
-    const totalDonors = new Set((donations || []).map((d) => d.user_id).filter(Boolean)).size
+    const totalRaised = sumRecognizedDonationsBrl(donations || [])
+    const totalDonors = new Set(
+      (donations || []).map((d) => (d.user_id ? `user:${d.user_id}` : `don:${d.id}`))
+    ).size
 
     return {
       totalRaised,

@@ -160,10 +160,10 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
       <button
         type="button"
         className="
-          w-full px-4 py-2.5 
+          w-full h-12 px-4 !py-0
           bg-white 
           border border-gray-300 
-          rounded-xl 
+          rounded-lg
           shadow-sm hover:shadow-md 
           transition-all duration-200
           flex items-center justify-between gap-3

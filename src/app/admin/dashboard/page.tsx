@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchAllAdminDonations } from '@/lib/admin-api'
 import {
   formatCurrencyBRL,
+  getRecognizedDonationAmountBrl,
   getSaoPauloDateParts,
   saoPauloMidnightUtc,
   sumDonationsBrl,
+  sumRecognizedDonationsBrl,
 } from '@/lib/payments'
 import DonationTrendChart from '@/components/DonationTrendChart'
 import DateRangePickerWithPresets, { PresetId } from '@/components/DateRangePicker'
@@ -20,13 +22,8 @@ export default function AdminDashboard() {
     totalUsers: 0,
   })
   const [recentProjects, setRecentProjects] = useState<any[]>([])
-  const [recentDonations, setRecentDonations] = useState<any[]>([])
-  const [topDonors, setTopDonors] = useState<any[]>([])
+  const [allDonations, setAllDonations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [trend, setTrend] = useState<{ labels: string[]; values: number[] }>({
-    labels: [],
-    values: [],
-  })
   const [dateStart, setDateStart] = useState<Date | undefined>(undefined)
   const [dateEnd, setDateEnd] = useState<Date | undefined>(undefined)
   const [presetId, setPresetId] = useState<PresetId>('custom')
@@ -35,16 +32,16 @@ export default function AdminDashboard() {
     let active = true
     const loadStats = async () => {
       try {
-        const [projectsActiveRes, recentProjectsRes, usersRes, adminDonationsRes] =
+        const [projectsCountRes, recentProjectsRes, usersCountRes, adminDonationsRes] =
           await Promise.all([
-            supabase.from('projects').select('id').eq('status', 'active'),
+            supabase.from('projects').select('id', { count: 'exact', head: true }).eq('status', 'active'),
             supabase
               .from('projects')
               .select('id, title, created_at, status')
               .order('created_at', { ascending: false })
               .limit(5),
-            supabase.from('profiles').select('id'),
-            fetchAllAdminDonations('/api/admin/donations'),
+            supabase.from('profiles').select('id', { count: 'exact', head: true }),
+            fetchAllAdminDonations('/api/admin/donations', { maskAnonymous: 'true' }),
           ])
 
         if (!active) return
@@ -55,18 +52,18 @@ export default function AdminDashboard() {
           : []
         const donationStats = donationsPayload?.stats || {}
 
-        const totalProjects = projectsActiveRes.data?.length || 0
-        const totalUsers = usersRes.data?.length || 0
+        const totalProjects = projectsCountRes.count ?? 0
+        const totalUsers = usersCountRes.count ?? 0
         const totalDonated =
           typeof donationStats.totalCompletedBrl === 'number'
             ? donationStats.totalCompletedBrl
-            : sumDonationsBrl(
-                hydratedList.filter((d) => d.status === 'completed').map((d) => d.amount)
-              )
+            : sumRecognizedDonationsBrl(hydratedList)
         const totalDonations =
           typeof donationStats.completedCount === 'number'
-            ? donationStats.completedCount
-            : hydratedList.filter((d) => d.status === 'completed').length
+            ? donationStats.completedCount + (Number(donationStats.partiallyRefundedCount) || 0)
+            : hydratedList.filter(
+                (d) => d.status === 'completed' || d.status === 'partially_refunded'
+              ).length
 
         setStats({
           totalProjects,
@@ -76,102 +73,7 @@ export default function AdminDashboard() {
         })
 
         setRecentProjects(recentProjectsRes.data || [])
-        setRecentDonations(hydratedList.slice(0, 5))
-
-        // Top Doadores (últimos 90 dias sobre doações confirmadas)
-        const since = new Date()
-        since.setDate(since.getDate() - 90)
-        const byDonor = new Map<string, { label: string; amount: number; count: number }>()
-        for (const d of hydratedList) {
-          if (d.status !== 'completed') continue
-          if (d.createdAt && new Date(d.createdAt) < since) continue
-          const key = d.anonymous
-            ? `anon:${d.id}`
-            : d.hasValidEmail
-              ? d.donorEmail
-              : d.userId || d.donorName || 'anon'
-          const label = d.anonymous ? 'Doador Anônimo' : d.donorName || key
-          const prev = byDonor.get(key)
-          if (!prev) {
-            byDonor.set(key, { label, amount: Number(d.amount) || 0, count: 1 })
-          } else {
-            prev.amount = sumDonationsBrl([prev.amount, d.amount])
-            prev.count += 1
-          }
-        }
-
-        const ranking = Array.from(byDonor.entries())
-          .map(([id, info]) => ({ id, ...info }))
-          .sort((a, b) => b.amount - a.amount)
-          .slice(0, 5)
-        setTopDonors(ranking)
-
-        // Evolução conforme intervalo selecionado
-        const now = new Date()
-        const start = dateStart
-          ? new Date(dateStart)
-          : new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)
-        const end = dateEnd ? new Date(dateEnd) : now
-
-        const fillHours = () =>
-          Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}h`)
-        const fillDays = () => {
-          const labels: string[] = []
-          const startTs = saoPauloMidnightUtc(start)
-          const endTs = saoPauloMidnightUtc(end)
-          for (let t = startTs; t <= endTs; t += 86400000) {
-            const { day, month } = getSaoPauloDateParts(new Date(t))
-            labels.push(`${day}/${month}`)
-          }
-          return labels
-        }
-        const fillMonths = () => {
-          const labels: string[] = []
-          const startParts = getSaoPauloDateParts(start)
-          const endParts = getSaoPauloDateParts(end)
-          let year = Number(startParts.year)
-          let month = Number(startParts.month)
-          const endYear = Number(endParts.year)
-          const endMonth = Number(endParts.month)
-          while (year < endYear || (year === endYear && month <= endMonth)) {
-            labels.push(`${year}-${String(month).padStart(2, '0')}`)
-            month += 1
-            if (month > 12) {
-              month = 1
-              year += 1
-            }
-          }
-          return labels
-        }
-
-        const diffDays = Math.ceil(
-          (saoPauloMidnightUtc(end) - saoPauloMidnightUtc(start)) / (1000 * 60 * 60 * 24)
-        )
-        const labels =
-          diffDays <= 1 ? fillHours() : diffDays > 90 ? fillMonths() : fillDays()
-
-        const startTs = saoPauloMidnightUtc(start)
-        const endTs = saoPauloMidnightUtc(end) + 86400000 - 1
-        const buckets = new Map<string, number>(labels.map((l) => [l, 0]))
-        for (const d of hydratedList) {
-          if (d.status !== 'completed' || !d.createdAt) continue
-          const dt = new Date(d.createdAt)
-          if (dt.getTime() < startTs || dt.getTime() > endTs) continue
-          const parts = getSaoPauloDateParts(dt)
-          const key =
-            diffDays <= 1
-              ? `${parts.hour}h`
-              : diffDays > 90
-                ? `${parts.year}-${parts.month}`
-                : `${parts.day}/${parts.month}`
-          buckets.set(key, sumDonationsBrl([buckets.get(key) || 0, d.amount]))
-        }
-
-        const series = labels.map((label) => [label, buckets.get(label) || 0]) as [string, number][]
-        setTrend({
-          labels: series.map(([l]) => (diffDays > 90 ? l.split('-').reverse().join('/') : l)),
-          values: series.map(([, v]) => v),
-        })
+        setAllDonations(hydratedList)
       } catch (error) {
         console.error('Erro ao carregar estatísticas:', error)
       } finally {
@@ -183,11 +85,118 @@ export default function AdminDashboard() {
     return () => {
       active = false
     }
-  }, [dateStart, dateEnd, presetId])
+  }, [])
+
+  const recentDonations = useMemo(() => allDonations.slice(0, 5), [allDonations])
+
+  const topDonors = useMemo(() => {
+    const since = new Date()
+    since.setDate(since.getDate() - 90)
+    const byDonor = new Map<string, { label: string; amount: number; count: number }>()
+
+    for (const d of allDonations) {
+      const recognized = getRecognizedDonationAmountBrl(d)
+      if (recognized <= 0) continue
+      if (d.createdAt && new Date(d.createdAt) < since) continue
+      const key = d.anonymous
+        ? `anon:${d.id}`
+        : d.hasValidEmail
+          ? `email:${String(d.donorEmail).toLowerCase()}`
+          : d.userId
+            ? `user:${d.userId}`
+            : `guest:${d.id}`
+      const label = d.anonymous
+        ? 'Doador Anônimo'
+        : d.donorName && d.donorName !== 'Não identificado'
+          ? d.donorName
+          : 'Não identificado'
+      const prev = byDonor.get(key)
+      if (!prev) {
+        byDonor.set(key, { label, amount: recognized, count: 1 })
+      } else {
+        prev.amount = sumDonationsBrl([prev.amount, recognized])
+        prev.count += 1
+      }
+    }
+
+    return Array.from(byDonor.entries())
+      .map(([id, info]) => ({ id, ...info }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5)
+  }, [allDonations])
+
+  const trend = useMemo(() => {
+    const now = new Date()
+    const start = dateStart
+      ? new Date(dateStart)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)
+    const end = dateEnd ? new Date(dateEnd) : now
+
+    const fillHours = () =>
+      Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}h`)
+    const fillDays = () => {
+      const labels: string[] = []
+      const startTs = saoPauloMidnightUtc(start)
+      const endTs = saoPauloMidnightUtc(end)
+      for (let t = startTs; t <= endTs; t += 86400000) {
+        const { day, month } = getSaoPauloDateParts(new Date(t))
+        labels.push(`${day}/${month}`)
+      }
+      return labels
+    }
+    const fillMonths = () => {
+      const labels: string[] = []
+      const startParts = getSaoPauloDateParts(start)
+      const endParts = getSaoPauloDateParts(end)
+      let year = Number(startParts.year)
+      let month = Number(startParts.month)
+      const endYear = Number(endParts.year)
+      const endMonth = Number(endParts.month)
+      while (year < endYear || (year === endYear && month <= endMonth)) {
+        labels.push(`${year}-${String(month).padStart(2, '0')}`)
+        month += 1
+        if (month > 12) {
+          month = 1
+          year += 1
+        }
+      }
+      return labels
+    }
+
+    const diffDays = Math.round(
+      (saoPauloMidnightUtc(end) - saoPauloMidnightUtc(start)) / (1000 * 60 * 60 * 24)
+    )
+    const labels =
+      diffDays === 0 ? fillHours() : diffDays > 90 ? fillMonths() : fillDays()
+
+    const startTs = saoPauloMidnightUtc(start)
+    const endTs = saoPauloMidnightUtc(end) + 86400000 - 1
+    const buckets = new Map<string, number>(labels.map((l) => [l, 0]))
+    for (const d of allDonations) {
+      const recognized = getRecognizedDonationAmountBrl(d)
+      if (recognized <= 0 || !d.createdAt) continue
+      const dt = new Date(d.createdAt)
+      if (dt.getTime() < startTs || dt.getTime() > endTs) continue
+      const parts = getSaoPauloDateParts(dt)
+      const key =
+        diffDays === 0
+          ? `${parts.hour}h`
+          : diffDays > 90
+            ? `${parts.year}-${parts.month}`
+            : `${parts.day}/${parts.month}`
+      buckets.set(key, sumDonationsBrl([buckets.get(key) || 0, recognized]))
+    }
+
+    const series = labels.map((label) => [label, buckets.get(label) || 0]) as [string, number][]
+    return {
+      labels: series.map(([l]) => (diffDays > 90 ? l.split('-').reverse().join('/') : l)),
+      values: series.map(([, v]) => v),
+    }
+  }, [allDonations, dateStart, dateEnd, presetId])
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     )
@@ -284,6 +293,11 @@ export default function AdminDashboard() {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 tabular-nums">
                       {formatCurrencyBRL(donation.amount)}
+                      {donation.status === 'partially_refunded' && donation.refundedAmount > 0 && (
+                        <span className="ml-1.5 text-xs font-medium text-amber-700">
+                          (Líq. {formatCurrencyBRL(getRecognizedDonationAmountBrl(donation))})
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-gray-500 truncate">
                       {donation.anonymous ? 'Doador Anônimo' : donation.donorName || 'Não identificado'} — {donation.projectTitle || 'Instituto Imagine'}

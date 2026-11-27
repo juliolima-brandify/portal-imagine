@@ -28,6 +28,7 @@ interface AppliedWebhookOutcome {
   previousStatus: DonationStatus | null
   currentStatus: DonationStatus | null
   statusChanged: boolean
+  refundChanged: boolean
 }
 
 const VALID_STATUSES = new Set<DonationStatus>([
@@ -53,6 +54,7 @@ function parseRpcOutcome(data: unknown): AppliedWebhookOutcome {
     previousStatus: asStatus(d.previous_status),
     currentStatus: asStatus(d.current_status),
     statusChanged: Boolean(d.status_changed),
+    refundChanged: Boolean(d.refund_changed),
   }
 }
 
@@ -113,7 +115,8 @@ export async function POST(request: NextRequest) {
 
   const becameCompleted =
     outcome.currentStatus === 'completed' && (outcome.statusChanged || outcome.createdRenewal)
-  const becameAlertState = classified.shouldNotifyFailureOrRefund && outcome.statusChanged
+  const becameAlertState =
+    classified.shouldNotifyFailureOrRefund && (outcome.statusChanged || outcome.refundChanged)
 
   if (becameCompleted || becameAlertState) {
     const donationId = outcome.donationId
@@ -239,18 +242,6 @@ async function handlePostWebhookSideEffects(params: {
   const method = row.payment_method || billingType || 'PIX'
 
   if (params.becameCompleted) {
-    const provision = await ensureDonorAccountAndAccessLink({
-      email: effectiveDonorEmail,
-      name: effectiveDonorName,
-    })
-
-    if (provision.userId && !row.user_id) {
-      await supabaseAdmin
-        .from('donations')
-        .update({ user_id: provision.userId })
-        .eq('id', params.donationId)
-    }
-
     if (effectiveDonorEmail && !row.receipt_sent_at) {
       const lockAt = new Date().toISOString()
       const lockThreshold = new Date(Date.now() - 2 * 60 * 1000).toISOString()
@@ -267,6 +258,18 @@ async function handlePostWebhookSideEffects(params: {
         console.error('[AsaasWebhook] Erro ao obter lock de recibo:', claimErr)
       } else if (claimed) {
         try {
+          const provision = await ensureDonorAccountAndAccessLink({
+            email: effectiveDonorEmail,
+            name: effectiveDonorName,
+          })
+
+          if (provision.userId && !row.user_id) {
+            await supabaseAdmin
+              .from('donations')
+              .update({ user_id: provision.userId })
+              .eq('id', params.donationId)
+          }
+
           const receipt = await sendDonorReceiptEmail({
             to: effectiveDonorEmail,
             donorName: effectiveDonorName,
@@ -314,6 +317,18 @@ async function handlePostWebhookSideEffects(params: {
             .eq('id', params.donationId)
             .eq('receipt_lock_at', lockAt)
         }
+      }
+    } else if (effectiveDonorEmail && !row.user_id) {
+      const provision = await ensureDonorAccountAndAccessLink({
+        email: effectiveDonorEmail,
+        name: effectiveDonorName,
+      })
+
+      if (provision.userId) {
+        await supabaseAdmin
+          .from('donations')
+          .update({ user_id: provision.userId })
+          .eq('id', params.donationId)
       }
     }
 

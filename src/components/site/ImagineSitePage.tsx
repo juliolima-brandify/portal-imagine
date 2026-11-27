@@ -117,6 +117,8 @@ export default function ImagineSitePage({
   const [doarLoading, setDoarLoading] = useState(false)
   const [doarErro, setDoarErro] = useState('')
   const doarLockRef = useRef(false)
+  const doarLoadingRef = useRef(false)
+  doarLoadingRef.current = doarLoading
   const galRef = useRef<HTMLDivElement | null>(null)
 
   // Simulador IR
@@ -180,7 +182,9 @@ export default function ImagineSitePage({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setModalOpen(false)
+        if (!doarLoadingRef.current && !doarLockRef.current) {
+          setModalOpen(false)
+        }
         setMenuOpen(false)
       }
     }

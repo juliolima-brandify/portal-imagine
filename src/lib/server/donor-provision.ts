@@ -43,7 +43,12 @@ export async function ensureDonorAccountAndAccessLink(input: {
       .limit(2)
 
     if (profileError) {
-      console.error('[DonorProvision] Erro ao buscar perfil por e-mail:', profileError)
+      console.error('[DonorProvision] Erro ao buscar perfil por e-mail; abortando provisionamento:', profileError)
+      return {
+        userId: null,
+        isNewAccount: false,
+        portalAccessUrl: defaultLoginUrl,
+      }
     }
 
     if (matches && matches.length > 1) {
@@ -70,7 +75,6 @@ export async function ensureDonorAccountAndAccessLink(input: {
 
     // 2) Criar novo usuário no Supabase Auth (sem senha exposta — uma entropia interna forte é definida apenas no Auth)
     const internalBootstrapSecret = `${crypto.randomUUID()}Aa1!${crypto.randomUUID()}`
-    let authUserId: string | null = null
 
     const { data: createdAuth, error: createErr } = await supabaseAdmin.auth.admin.createUser({
       email: cleanEmail,
@@ -82,11 +86,35 @@ export async function ensureDonorAccountAndAccessLink(input: {
       },
     })
 
-    if (!createErr && createdAuth?.user?.id) {
-      authUserId = createdAuth.user.id
+    // Falha fechada (R6): se createUser falhar (ex.: usuário já existente em auth.users
+    // sem linha em profiles), NUNCA gera link PASSWORD_RECOVERY.
+    if (createErr || !createdAuth?.user?.id) {
+      if (createErr) {
+        console.warn('[DonorProvision] createUser não criou nova conta; mantendo login padrão:', createErr.message)
+      }
+      return {
+        userId: null,
+        isNewAccount: false,
+        portalAccessUrl: defaultLoginUrl,
+      }
     }
 
-    // 3) Gerar link seguro de definição de senha (também resolve user.id caso o usuário já existisse apenas em auth.users)
+    const authUserId = createdAuth.user.id
+
+    // Garantir linha em public.profiles sem sobrescrever role caso o trigger on_auth_user_created já tenha criado
+    await supabaseAdmin.from('profiles').upsert(
+      {
+        id: authUserId,
+        email: cleanEmail,
+        name: cleanName,
+        role: 'donor',
+      },
+      { onConflict: 'id', ignoreDuplicates: true }
+    )
+
+    await linkOrphanDonationsByEmail(cleanEmail, authUserId)
+
+    // 3) Gerar link seguro de definição de senha exclusivamente para conta recém-criada
     const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
       email: cleanEmail,
@@ -94,25 +122,6 @@ export async function ensureDonorAccountAndAccessLink(input: {
         redirectTo: `${portalBase}/entrar?reset=true`,
       },
     })
-
-    if (!authUserId && linkData?.user?.id) {
-      authUserId = linkData.user.id
-    }
-
-    if (authUserId) {
-      // Garantir linha em public.profiles sem sobrescrever role caso o trigger on_auth_user_created já tenha criado
-      await supabaseAdmin.from('profiles').upsert(
-        {
-          id: authUserId,
-          email: cleanEmail,
-          name: cleanName,
-          role: 'donor',
-        },
-        { onConflict: 'id', ignoreDuplicates: true }
-      )
-
-      await linkOrphanDonationsByEmail(cleanEmail, authUserId)
-    }
 
     const actionLink =
       !linkErr &&
@@ -123,7 +132,7 @@ export async function ensureDonorAccountAndAccessLink(input: {
 
     return {
       userId: authUserId,
-      isNewAccount: Boolean(createdAuth?.user?.id),
+      isNewAccount: true,
       portalAccessUrl: actionLink,
     }
   } catch (err) {

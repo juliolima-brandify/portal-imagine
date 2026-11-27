@@ -6,10 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { getDonations, getUserStats, type Donation } from '@/lib/database'
 import {
   INSTITUTE_CNPJ,
+  SAO_PAULO_TIME_ZONE,
   buildReceiptText,
   formatCurrencyBRL,
   getDonationDestinationLabel,
   getDonationStatusLabelPTBR,
+  getRecognizedDonationAmountBrl,
   normalizePaymentMethodLabel,
 } from '@/lib/payments'
 import { Modal } from '@/components/ConfirmDialog'
@@ -20,7 +22,9 @@ export default function DoacoesPage() {
   const [loading, setLoading] = useState(true)
   const [donations, setDonations] = useState<Donation[]>([])
   const [userStats, setUserStats] = useState<{ totalDonated: number; totalDonations: number } | null>(null)
-  const [filter, setFilter] = useState<'all' | 'completed' | 'pending' | 'recurring'>('all')
+  const [filter, setFilter] = useState<
+    'all' | 'completed' | 'pending' | 'partially_refunded' | 'recurring'
+  >('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedDonation, setSelectedDonation] = useState<Donation | null>(null)
 
@@ -66,6 +70,7 @@ export default function DoacoesPage() {
     let matchesFilter = true
     if (filter === 'completed') matchesFilter = donation.status === 'completed'
     else if (filter === 'pending') matchesFilter = donation.status === 'pending'
+    else if (filter === 'partially_refunded') matchesFilter = donation.status === 'partially_refunded'
     else if (filter === 'recurring') matchesFilter = donation.is_recurring === true
 
     const q = searchTerm.trim().toLowerCase()
@@ -81,6 +86,7 @@ export default function DoacoesPage() {
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('pt-BR', {
+      timeZone: SAO_PAULO_TIME_ZONE,
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -95,6 +101,7 @@ export default function DoacoesPage() {
       donorEmail: user?.email || null,
       anonymous: donation.anonymous,
       amount: Number(donation.amount) || 0,
+      refundedAmount: Number(donation.refunded_amount) || 0,
       projectTitle: getDestination(donation),
       status: donation.status,
       paymentMethod: donation.payment_method,
@@ -122,6 +129,8 @@ export default function DoacoesPage() {
         return 'bg-green-100 text-green-700'
       case 'pending':
         return 'bg-yellow-100 text-yellow-800'
+      case 'partially_refunded':
+        return 'bg-amber-100 text-amber-800'
       case 'failed':
         return 'bg-red-100 text-red-700'
       case 'refunded':
@@ -133,7 +142,7 @@ export default function DoacoesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="text-sm text-gray-600">Carregando doações...</div>
       </div>
     )
@@ -141,7 +150,7 @@ export default function DoacoesPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-3">Acesso Restrito</h1>
           <p className="mb-5 text-gray-600">Faça login para visualizar suas doações e recibos.</p>
@@ -154,8 +163,8 @@ export default function DoacoesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx-auto">
+      <main>
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Minhas Doações</h1>
@@ -182,7 +191,7 @@ export default function DoacoesPage() {
             <div className="text-sm text-gray-600">Doações Confirmadas</div>
           </div>
           <div className="card p-6">
-            <div className="text-2xl font-bold text-yellow-600 mb-1 tabular-nums">
+            <div className="text-2xl font-bold text-amber-700 mb-1 tabular-nums">
               {donations.filter((d) => d.status === 'pending').length}
             </div>
             <div className="text-sm text-gray-600">Em Processamento</div>
@@ -217,6 +226,7 @@ export default function DoacoesPage() {
                 <option value="all">Todas ({donations.length})</option>
                 <option value="completed">Confirmadas</option>
                 <option value="pending">Em processamento</option>
+                <option value="partially_refunded">Estornadas parcialmente</option>
                 <option value="recurring">Recorrentes</option>
               </select>
             </div>
@@ -277,7 +287,13 @@ export default function DoacoesPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right whitespace-nowrap tabular-nums text-sm font-semibold text-gray-900">
-                        {formatCurrencyBRL(donation.amount)}
+                        <div>{formatCurrencyBRL(donation.amount)}</div>
+                        {Number(donation.refunded_amount) > 0 && (
+                          <div className="text-xs text-amber-700 font-medium">
+                            Estornado {formatCurrencyBRL(Number(donation.refunded_amount))} · Líq.{' '}
+                            {formatCurrencyBRL(getRecognizedDonationAmountBrl(donation))}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-left whitespace-nowrap">
                         <span
@@ -371,6 +387,22 @@ export default function DoacoesPage() {
                 {formatCurrencyBRL(selectedDonation.amount)}
               </dd>
             </div>
+            {Number(selectedDonation.refunded_amount) > 0 && (
+              <>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Valor Estornado:</dt>
+                  <dd className="font-semibold text-amber-700 tabular-nums">
+                    -{formatCurrencyBRL(Number(selectedDonation.refunded_amount))}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Valor Líquido:</dt>
+                  <dd className="font-semibold text-green-700 tabular-nums">
+                    {formatCurrencyBRL(getRecognizedDonationAmountBrl(selectedDonation))}
+                  </dd>
+                </div>
+              </>
+            )}
             <div className="flex justify-between gap-4">
               <dt className="text-gray-500">Status:</dt>
               <dd className="font-medium text-gray-900">

@@ -17,6 +17,7 @@ interface PublicSessionState {
   projectId: string
   projectTitle: string
   amountFormatted: string
+  refundedAmountFormatted: string | null
   paymentStatus: DonationStatus
   paymentMethod: string
   isRecurring: boolean
@@ -34,6 +35,7 @@ function DoacaoSucessoContent() {
     projectId: 'geral',
     projectTitle: 'Instituto Imagine',
     amountFormatted: '',
+    refundedAmountFormatted: null,
     paymentStatus: 'pending',
     paymentMethod: 'Pix / Cartão',
     isRecurring: false,
@@ -88,6 +90,10 @@ function DoacaoSucessoContent() {
             projectId: data.projectId || 'geral',
             projectTitle: data.projectTitle || 'Instituto Imagine',
             amountFormatted: data.amountFormatted || formatCurrencyBRL(Number(data.amount) || 0),
+            refundedAmountFormatted:
+              typeof data.refundedAmountFormatted === 'string'
+                ? data.refundedAmountFormatted
+                : null,
             paymentStatus: nextStatus,
             paymentMethod: data.paymentMethod || 'Pix / Cartão',
             isRecurring: Boolean(data.isRecurring),
@@ -127,10 +133,10 @@ function DoacaoSucessoContent() {
   }, [searchParams])
 
   const isCompleted = state.paymentStatus === 'completed'
+  const isPartiallyRefunded = state.paymentStatus === 'partially_refunded'
   const isFailedOrRefunded =
     state.paymentStatus === 'failed' ||
-    state.paymentStatus === 'refunded' ||
-    state.paymentStatus === 'partially_refunded'
+    state.paymentStatus === 'refunded'
 
   const shareText = `Acabei de apoiar o projeto "${state.projectTitle}" do Instituto Imagine em Uberlândia! Conheça e apoie também: https://imagineinstituto.com/#projetos`
 
@@ -173,6 +179,12 @@ function DoacaoSucessoContent() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
+                ) : isPartiallyRefunded ? (
+                  <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
+                    <svg className="w-9 h-9 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                    </svg>
+                  </div>
                 ) : isFailedOrRefunded ? (
                   <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
                     <svg className="w-9 h-9 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -181,7 +193,7 @@ function DoacaoSucessoContent() {
                   </div>
                 ) : (
                   <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
-                    <svg className="w-9 h-9 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-9 h-9 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
@@ -191,9 +203,11 @@ function DoacaoSucessoContent() {
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">
                 {isCompleted
                   ? 'Doação Confirmada!'
-                  : isFailedOrRefunded
-                    ? 'Pagamento não concluído'
-                    : 'Pagamento em Processamento'}
+                  : isPartiallyRefunded
+                    ? 'Doação Parcialmente Estornada'
+                    : isFailedOrRefunded
+                      ? 'Pagamento não concluído'
+                      : 'Pagamento em Processamento'}
               </h1>
 
               <p className="text-base text-gray-600 mb-6">
@@ -210,9 +224,20 @@ function DoacaoSucessoContent() {
                       ? '! Seu recibo oficial e o link de acesso ao Portal do Doador já foram enviados para o seu e-mail.'
                       : '! Assim que o recibo for processado, ele e o link de acesso ao Portal do Doador chegarão no seu e-mail.'}
                   </>
+                ) : isPartiallyRefunded ? (
+                  <>
+                    Esta doação para <strong>{state.projectTitle}</strong> foi confirmada e recebeu um estorno parcial
+                    {state.refundedAmountFormatted ? (
+                      <>
+                        {' '}
+                        de <strong>{state.refundedAmountFormatted}</strong>
+                      </>
+                    ) : null}
+                    . Você pode consultar os valores detalhados e o recibo atualizado no Portal do Doador.
+                  </>
                 ) : isFailedOrRefunded ? (
                   <>
-                    O pagamento desta tentativa não foi concluído ou expirou. Nenhuma cobrança indevida será mantida — você pode iniciar uma nova doação quando quiser.
+                    O pagamento desta tentativa não foi concluído, foi estornado ou expirou. Nenhuma cobrança indevida será mantida — você pode iniciar uma nova doação quando quiser.
                   </>
                 ) : (
                   <>
@@ -249,15 +274,25 @@ function DoacaoSucessoContent() {
                         </dd>
                       </div>
                     )}
+                    {state.refundedAmountFormatted && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-600">Valor estornado:</dt>
+                        <dd className="font-semibold text-amber-700 tabular-nums">
+                          -{state.refundedAmountFormatted}
+                        </dd>
+                      </div>
+                    )}
                     <div className="flex justify-between gap-4">
                       <dt className="text-gray-600">Status atual:</dt>
                       <dd
                         className={`font-semibold ${
                           isCompleted
                             ? 'text-green-700'
-                            : isFailedOrRefunded
-                              ? 'text-red-700'
-                              : 'text-amber-700'
+                            : isPartiallyRefunded
+                              ? 'text-amber-700'
+                              : isFailedOrRefunded
+                                ? 'text-red-700'
+                                : 'text-amber-700'
                         }`}
                       >
                         {getDonationStatusLabelPTBR(state.paymentStatus)}
@@ -279,14 +314,16 @@ function DoacaoSucessoContent() {
                 </div>
               )}
 
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 text-left">
-                <h3 className="text-sm font-semibold text-blue-900 mb-1">
-                  Acesso automático ao Portal do Doador
-                </h3>
-                <p className="text-xs text-blue-800 leading-relaxed">
-                  No mesmo e-mail do recibo, você recebe um botão seguro para definir sua senha (caso seja sua primeira doação) e acompanhar seu histórico de recibos e prestações de contas em um só lugar.
-                </p>
-              </div>
+              {!state.notFound && !isFailedOrRefunded && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 text-left">
+                  <h3 className="text-sm font-semibold text-blue-900 mb-1">
+                    Acesso automático ao Portal do Doador
+                  </h3>
+                  <p className="text-xs text-blue-800 leading-relaxed">
+                    No mesmo e-mail do recibo, você recebe um botão seguro para definir sua senha (caso seja sua primeira doação) e acompanhar seu histórico de recibos e prestações de contas em um só lugar.
+                  </p>
+                </div>
+              )}
 
               <div className="flex flex-col sm:flex-row gap-3">
                 <Link href="/#projetos" className="flex-1 btn-secondary text-center">

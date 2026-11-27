@@ -613,8 +613,8 @@ export default function ProjectForm({
 
         {/* Links e incorporações */}
         <div className="pt-4 border-t border-gray-200">
-          <div className="border-b border-gray-200 mb-4 overflow-x-auto">
-            <div className="-mb-px flex items-center gap-4" role="tablist">
+          <div className="border-b border-gray-200 mb-4">
+            <div className="-mb-px flex flex-wrap items-center gap-4" role="tablist">
               <button
                 type="button"
                 role="tab"

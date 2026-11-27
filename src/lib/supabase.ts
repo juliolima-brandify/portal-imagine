@@ -15,28 +15,52 @@ const REMEMBER_KEY = 'imagine.rememberMe'
 
 function createRememberAwareStorage() {
   const safe = () => typeof window !== 'undefined'
+  const readRemember = (): boolean => {
+    try {
+      return window.localStorage.getItem(REMEMBER_KEY) !== 'false'
+    } catch {
+      return true
+    }
+  }
+
   return {
     getItem(key: string) {
       if (!safe()) return null
-      const remember = window.localStorage.getItem(REMEMBER_KEY)
-      if (remember === 'false') return window.sessionStorage.getItem(key)
-      return window.localStorage.getItem(key)
+      try {
+        if (!readRemember()) {
+          return window.sessionStorage.getItem(key)
+        }
+        return window.localStorage.getItem(key)
+      } catch {
+        return null
+      }
     },
     setItem(key: string, value: string) {
       if (!safe()) return
-      const remember = window.localStorage.getItem(REMEMBER_KEY)
-      if (remember === 'false') {
-        window.sessionStorage.setItem(key, value)
-        window.localStorage.removeItem(key)
-      } else {
-        window.localStorage.setItem(key, value)
-        window.sessionStorage.removeItem(key)
+      try {
+        if (!readRemember()) {
+          window.sessionStorage.setItem(key, value)
+          window.localStorage.removeItem(key)
+        } else {
+          window.localStorage.setItem(key, value)
+          window.sessionStorage.removeItem(key)
+        }
+      } catch {
+        // Storage indisponível (navegação privada/restrição do navegador)
       }
     },
     removeItem(key: string) {
       if (!safe()) return
-      window.localStorage.removeItem(key)
-      window.sessionStorage.removeItem(key)
+      try {
+        window.localStorage.removeItem(key)
+      } catch {
+        // ignora
+      }
+      try {
+        window.sessionStorage.removeItem(key)
+      } catch {
+        // ignora
+      }
     },
   }
 }

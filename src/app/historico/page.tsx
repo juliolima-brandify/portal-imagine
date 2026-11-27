@@ -6,11 +6,13 @@ import { supabase } from '@/lib/supabase'
 import { getDonations, getUserStats, type Donation } from '@/lib/database'
 import { exportDonations } from '@/lib/export'
 import {
+  SAO_PAULO_TIME_ZONE,
   formatCurrencyBRL,
   getDonationDestinationLabel,
   getDonationStatusLabelPTBR,
+  getRecognizedDonationAmountBrl,
   normalizePaymentMethodLabel,
-  sumDonationsBrl,
+  sumRecognizedDonationsBrl,
 } from '@/lib/payments'
 import type { User } from '@supabase/supabase-js'
 
@@ -19,7 +21,9 @@ export default function HistoricoPage() {
   const [loading, setLoading] = useState(true)
   const [donations, setDonations] = useState<Donation[]>([])
   const [userStats, setUserStats] = useState<any>(null)
-  const [filter, setFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all')
+  const [filter, setFilter] = useState<
+    'all' | 'completed' | 'pending' | 'partially_refunded' | 'failed'
+  >('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [dateRange, setDateRange] = useState<'all' | 'week' | 'month' | 'year'>('all')
   const [sortBy, setSortBy] = useState<'date' | 'amount' | 'project'>('date')
@@ -108,6 +112,7 @@ export default function HistoricoPage() {
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('pt-BR', {
+      timeZone: SAO_PAULO_TIME_ZONE,
       year: 'numeric',
       month: 'short',
       day: '2-digit',
@@ -121,8 +126,12 @@ export default function HistoricoPage() {
         return 'bg-green-100 text-green-800'
       case 'pending':
         return 'bg-yellow-100 text-yellow-800'
+      case 'partially_refunded':
+        return 'bg-amber-100 text-amber-800'
       case 'failed':
         return 'bg-red-100 text-red-800'
+      case 'refunded':
+        return 'bg-gray-200 text-gray-800'
       default:
         return 'bg-gray-200 text-gray-800'
     }
@@ -130,7 +139,7 @@ export default function HistoricoPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-[50vh] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-gray-900 mx-auto mb-3" />
           <p className="text-gray-600 text-sm">Carregando histórico...</p>
@@ -141,13 +150,11 @@ export default function HistoricoPage() {
 
   if (!user) return null
 
-  const completedSum = sumDonationsBrl(
-    donations.filter((d) => d.status === 'completed').map((d) => d.amount)
-  )
+  const completedSum = sumRecognizedDonationsBrl(donations)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx-auto">
+      <main>
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Histórico Detalhado de Doações
@@ -160,18 +167,21 @@ export default function HistoricoPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="card p-6">
             <div className="text-2xl font-bold text-gray-900 mb-1 tabular-nums">
-              {formatCurrencyBRL(userStats?.totalDonated || completedSum)}
+              {formatCurrencyBRL(userStats?.totalDonated ?? completedSum)}
             </div>
             <div className="text-sm text-gray-600">Total Confirmado</div>
           </div>
           <div className="card p-6">
             <div className="text-2xl font-bold text-green-600 mb-1 tabular-nums">
-              {userStats?.totalDonations || donations.filter((d) => d.status === 'completed').length}
+              {userStats?.totalDonations ??
+                donations.filter(
+                  (d) => d.status === 'completed' || d.status === 'partially_refunded'
+                ).length}
             </div>
             <div className="text-sm text-gray-600">Doações Confirmadas</div>
           </div>
           <div className="card p-6">
-            <div className="text-2xl font-bold text-yellow-600 mb-1 tabular-nums">
+            <div className="text-2xl font-bold text-amber-700 mb-1 tabular-nums">
               {donations.filter((d) => d.status === 'pending').length}
             </div>
             <div className="text-sm text-gray-600">Em Processamento</div>
@@ -213,6 +223,7 @@ export default function HistoricoPage() {
                 <option value="all">Todos</option>
                 <option value="completed">Confirmadas</option>
                 <option value="pending">Em processamento</option>
+                <option value="partially_refunded">Estornadas parcialmente</option>
                 <option value="failed">Não concluídas</option>
               </select>
             </div>
@@ -301,6 +312,12 @@ export default function HistoricoPage() {
                           <p className="text-base font-semibold text-gray-900 tabular-nums">
                             {formatCurrencyBRL(donation.amount)}
                           </p>
+                          {Number(donation.refunded_amount) > 0 && (
+                            <p className="text-xs text-amber-700 font-medium tabular-nums">
+                              Estornado {formatCurrencyBRL(Number(donation.refunded_amount))} · Líq.{' '}
+                              {formatCurrencyBRL(getRecognizedDonationAmountBrl(donation))}
+                            </p>
+                          )}
                         </div>
                         <div>
                           <span className="text-xs text-gray-500">Meio</span>
@@ -353,21 +370,21 @@ export default function HistoricoPage() {
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => exportDonations(filteredDonations, { format: 'csv' })}
+                onClick={() => void exportDonations(filteredDonations, { format: 'csv' })}
               >
                 Exportar CSV
               </button>
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => exportDonations(filteredDonations, { format: 'pdf' })}
+                onClick={() => void exportDonations(filteredDonations, { format: 'pdf' })}
               >
                 Gerar PDF
               </button>
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => exportDonations(filteredDonations, { format: 'excel' })}
+                onClick={() => void exportDonations(filteredDonations, { format: 'excel' })}
               >
                 Exportar Excel
               </button>

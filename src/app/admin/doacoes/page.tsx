@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { adminFetch, fetchAllAdminDonations } from '@/lib/admin-api'
 import ConfirmDialog, { Modal } from '@/components/ConfirmDialog'
 import { ToastContainer, useToast } from '@/components/Toast'
-import { exportToCSV, todayInSaoPaulo } from '@/lib/export'
+import { exportToCSV, todayInSaoPaulo } from '@/lib/export-csv'
 import {
+  SAO_PAULO_TIME_ZONE,
   formatCurrencyBRL,
   getDonationStatusLabelPTBR,
   getFrequencyLabelPTBR,
+  getRecognizedDonationAmountBrl,
   sanitizeSpreadsheetCell,
 } from '@/lib/payments'
 
@@ -24,6 +26,8 @@ interface AdminDonationRow {
   donorEmail: string
   hasValidEmail: boolean
   amount: number
+  refundedAmount: number
+  netAmount: number
   currency: string
   status: 'pending' | 'completed' | 'failed' | 'refunded' | 'partially_refunded'
   method: string
@@ -40,6 +44,7 @@ interface AdminDonationRow {
 interface AdminDonationStats {
   total: number
   completedCount: number
+  partiallyRefundedCount: number
   pendingCount: number
   failedCount: number
   totalCompletedBrl: number
@@ -64,6 +69,7 @@ export default function AdminDoacoesPage() {
   const [stats, setStats] = useState<AdminDonationStats>({
     total: 0,
     completedCount: 0,
+    partiallyRefundedCount: 0,
     pendingCount: 0,
     failedCount: 0,
     totalCompletedBrl: 0,
@@ -71,9 +77,12 @@ export default function AdminDoacoesPage() {
   })
 
   const [isLoading, setIsLoading] = useState(true)
+  const [isExporting, setIsExporting] = useState(false)
   const [loadError, setLoadError] = useState('')
 
-  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all')
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'completed' | 'pending' | 'partially_refunded' | 'failed'
+  >('all')
   const [methodFilter, setMethodFilter] = useState<'all' | 'pix' | 'card' | 'recurring'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -128,6 +137,8 @@ export default function AdminDoacoesPage() {
           setStats({
             total: typeof s.total === 'number' ? s.total : nextTotal,
             completedCount: typeof s.completedCount === 'number' ? s.completedCount : 0,
+            partiallyRefundedCount:
+              typeof s.partiallyRefundedCount === 'number' ? s.partiallyRefundedCount : 0,
             pendingCount: typeof s.pendingCount === 'number' ? s.pendingCount : 0,
             failedCount: typeof s.failedCount === 'number' ? s.failedCount : 0,
             totalCompletedBrl: typeof s.totalCompletedBrl === 'number' ? s.totalCompletedBrl : 0,
@@ -166,7 +177,7 @@ export default function AdminDoacoesPage() {
 
   const handleResendReceipt = async (row: AdminDonationRow) => {
     if (operationLockRef.current || resendingId) return
-    if (row.status !== 'completed') {
+    if (row.status !== 'completed' && row.status !== 'partially_refunded') {
       toastRef.current.warning(
         'Doação ainda não confirmada',
         'O recibo só pode ser enviado após a confirmação do pagamento.'
@@ -222,14 +233,16 @@ export default function AdminDoacoesPage() {
   }
 
   const handleExportAllCSV = async () => {
-    if (operationLockRef.current) return
+    if (operationLockRef.current || isExporting) return
     operationLockRef.current = true
+    setIsExporting(true)
 
     try {
       const query: Record<string, string> = {}
       if (statusFilter !== 'all') query.status = statusFilter
       if (methodFilter !== 'all') query.method = methodFilter
-      if (debouncedSearch) query.q = debouncedSearch
+      const liveSearch = searchTerm.trim()
+      if (liveSearch) query.q = liveSearch
 
       const payload = await fetchAllAdminDonations('/api/admin/donations', query)
       const all = (payload.data as AdminDonationRow[]) || []
@@ -239,21 +252,31 @@ export default function AdminDoacoesPage() {
         return
       }
 
-      const rows = all.map((d) => ({
-        'ID': sanitizeSpreadsheetCell(d.id),
-        'Data': new Date(d.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-        'Doador': sanitizeSpreadsheetCell(d.donorName),
-        'E-mail': sanitizeSpreadsheetCell(d.donorEmail),
-        'Destino': sanitizeSpreadsheetCell(d.projectTitle),
-        'Valor (BRL)': d.amount.toFixed(2),
-        'Status': getDonationStatusLabelPTBR(d.status),
-        'Meio': sanitizeSpreadsheetCell(d.method),
-        'Modalidade': d.isRecurring
-          ? `Recorrente (${getFrequencyLabelPTBR(d.recurringFrequency)})`
-          : 'Única',
-        'ID Asaas / Gateway': sanitizeSpreadsheetCell(d.transactionId),
-        'Mensagem': sanitizeSpreadsheetCell(d.message || ''),
-      }))
+      const rows = all.map((d) => {
+        const refunded = Number(d.refundedAmount) || 0
+        const net = getRecognizedDonationAmountBrl({
+          amount: d.amount,
+          refundedAmount: refunded,
+          status: d.status,
+        })
+        return {
+          'ID': sanitizeSpreadsheetCell(d.id),
+          'Data': new Date(d.createdAt).toLocaleString('pt-BR', { timeZone: SAO_PAULO_TIME_ZONE }),
+          'Doador': sanitizeSpreadsheetCell(d.donorName),
+          'E-mail': sanitizeSpreadsheetCell(d.donorEmail),
+          'Destino': sanitizeSpreadsheetCell(d.projectTitle),
+          'Valor (BRL)': d.amount.toFixed(2),
+          'Estornado (BRL)': refunded.toFixed(2),
+          'Líquido (BRL)': net.toFixed(2),
+          'Status': getDonationStatusLabelPTBR(d.status),
+          'Meio': sanitizeSpreadsheetCell(d.method),
+          'Modalidade': d.isRecurring
+            ? `Recorrente (${getFrequencyLabelPTBR(d.recurringFrequency)})`
+            : 'Única',
+          'ID Asaas / Gateway': sanitizeSpreadsheetCell(d.transactionId),
+          'Mensagem': sanitizeSpreadsheetCell(d.message || ''),
+        }
+      })
 
       exportToCSV(rows, `doacoes_imagine_${todayInSaoPaulo()}`)
       toastRef.current.success('Exportação concluída', `${all.length} doações exportadas.`)
@@ -261,6 +284,7 @@ export default function AdminDoacoesPage() {
       toastRef.current.error('Erro ao exportar', 'Não foi possível carregar todas as doações.')
     } finally {
       operationLockRef.current = false
+      setIsExporting(false)
     }
   }
 
@@ -292,6 +316,7 @@ export default function AdminDoacoesPage() {
   const formatDateTime = (iso: string) => {
     try {
       return new Date(iso).toLocaleString('pt-BR', {
+        timeZone: SAO_PAULO_TIME_ZONE,
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -323,10 +348,10 @@ export default function AdminDoacoesPage() {
           <button
             type="button"
             onClick={handleExportAllCSV}
-            disabled={isLoading || donations.length === 0}
+            disabled={isLoading || isExporting || donations.length === 0}
             className="btn-secondary whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Exportar CSV
+            {isExporting ? 'Exportando...' : 'Exportar CSV'}
           </button>
         </div>
       </div>
@@ -337,10 +362,10 @@ export default function AdminDoacoesPage() {
           <div className="text-2xl font-bold text-green-600 mb-1 tabular-nums">
             {formatCurrencyBRL(stats.totalCompletedBrl)}
           </div>
-          <div className="text-sm text-gray-600">Total Confirmado</div>
+          <div className="text-sm text-gray-600">Total Confirmado (Líquido)</div>
         </div>
         <div className="card p-6">
-          <div className="text-2xl font-bold text-yellow-600 mb-1 tabular-nums">
+          <div className="text-2xl font-bold text-amber-700 mb-1 tabular-nums">
             {formatCurrencyBRL(stats.totalPendingBrl)}
           </div>
           <div className="text-sm text-gray-600">Aguardando Compensação</div>
@@ -371,7 +396,9 @@ export default function AdminDoacoesPage() {
               id="admin-don-status"
               value={statusFilter}
               onChange={(e) => {
-                setStatusFilter(e.target.value as 'all' | 'completed' | 'pending' | 'failed')
+                setStatusFilter(
+                  e.target.value as 'all' | 'completed' | 'pending' | 'partially_refunded' | 'failed'
+                )
                 setPage(1)
               }}
               className="input-modern h-12 !py-0"
@@ -379,6 +406,9 @@ export default function AdminDoacoesPage() {
               <option value="all">Todos ({stats.total})</option>
               <option value="completed">Confirmadas ({stats.completedCount})</option>
               <option value="pending">Em processamento ({stats.pendingCount})</option>
+              <option value="partially_refunded">
+                Estornadas parcialmente ({stats.partiallyRefundedCount})
+              </option>
               <option value="failed">Não concluídas / Estornadas ({stats.failedCount})</option>
             </select>
           </div>
@@ -537,6 +567,12 @@ export default function AdminDoacoesPage() {
                           <div className="text-sm font-semibold text-gray-900">
                             {formatCurrencyBRL(row.amount)}
                           </div>
+                          {row.refundedAmount > 0 && (
+                            <div className="text-xs text-amber-700 font-medium">
+                              Estornado {formatCurrencyBRL(row.refundedAmount)} · Líq.{' '}
+                              {formatCurrencyBRL(row.netAmount)}
+                            </div>
+                          )}
                           {row.isRecurring && (
                             <div className="text-xs text-blue-700 font-medium">
                               {getFrequencyLabelPTBR(row.recurringFrequency)}
@@ -565,16 +601,20 @@ export default function AdminDoacoesPage() {
                             >
                               Detalhes
                             </button>
-                            {row.status === 'completed' && row.hasValidEmail && (
-                              <button
-                                type="button"
-                                onClick={() => setPendingResend(row)}
-                                disabled={Boolean(resendingId)}
-                                className="inline-flex items-center text-xs font-medium text-blue-700 hover:bg-blue-50 rounded-md px-2.5 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {isResendingThis ? 'Enviando...' : 'Reenviar Recibo'}
-                              </button>
-                            )}
+                            {(row.status === 'completed' || row.status === 'partially_refunded') &&
+                              row.hasValidEmail && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedDonation(null)
+                                    setPendingResend(row)
+                                  }}
+                                  disabled={Boolean(resendingId)}
+                                  className="inline-flex items-center text-xs font-medium text-blue-700 hover:bg-blue-50 rounded-md px-2.5 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {isResendingThis ? 'Enviando...' : 'Reenviar Recibo'}
+                                </button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -633,11 +673,16 @@ export default function AdminDoacoesPage() {
               Fechar
             </button>
             {selectedDonation &&
-              selectedDonation.status === 'completed' &&
+              (selectedDonation.status === 'completed' ||
+                selectedDonation.status === 'partially_refunded') &&
               selectedDonation.hasValidEmail && (
                 <button
                   type="button"
-                  onClick={() => setPendingResend(selectedDonation)}
+                  onClick={() => {
+                    const target = selectedDonation
+                    setSelectedDonation(null)
+                    setPendingResend(target)
+                  }}
                   disabled={Boolean(resendingId)}
                   className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -665,6 +710,22 @@ export default function AdminDoacoesPage() {
                 {formatCurrencyBRL(selectedDonation.amount)}
               </dd>
             </div>
+            {selectedDonation.refundedAmount > 0 && (
+              <>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Valor Estornado:</dt>
+                  <dd className="font-semibold text-amber-700 tabular-nums">
+                    -{formatCurrencyBRL(selectedDonation.refundedAmount)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Valor Líquido Reconhecido:</dt>
+                  <dd className="font-bold text-green-700 tabular-nums">
+                    {formatCurrencyBRL(selectedDonation.netAmount)}
+                  </dd>
+                </div>
+              </>
+            )}
             <div className="flex justify-between gap-4">
               <dt className="text-gray-500">Destino / Projeto:</dt>
               <dd className="font-medium text-gray-900 text-right">
@@ -742,7 +803,11 @@ export default function AdminDoacoesPage() {
         title="Reenviar recibo por e-mail?"
         message={
           pendingResend
-            ? `O recibo e o link de acesso ao Portal do Doador serão enviados para ${pendingResend.donorEmail}. Confirme que o endereço está correto.`
+            ? `Enviar recibo para ${pendingResend.donorEmail}. Status atual: ${getDonationStatusLabelPTBR(pendingResend.status)}. Último envio: ${
+                pendingResend.receiptSentAt
+                  ? formatDateTime(pendingResend.receiptSentAt)
+                  : 'Ainda não enviado'
+              }.`
             : ''
         }
         confirmText="Sim, reenviar recibo"
@@ -755,8 +820,9 @@ export default function AdminDoacoesPage() {
         onConfirm={() => {
           if (pendingResend && !resendingId) {
             const target = pendingResend
-            setPendingResend(null)
-            void handleResendReceipt(target)
+            void handleResendReceipt(target).finally(() => {
+              setPendingResend(null)
+            })
           }
         }}
       />

@@ -10,6 +10,8 @@ import {
   brlToCents,
   centsToBrl,
   sumDonationsBrl,
+  getRecognizedDonationAmountBrl,
+  sumRecognizedDonationsBrl,
   validateCheckoutAmountBrl,
   buildAsaasItemName,
   buildAsaasItemDescription,
@@ -388,6 +390,129 @@ test('R9-R17: correções da banca (webhook 503, estorno parcial, e-mail exato, 
   // R17: reenvio de recibo com lock no servidor e confirmação no admin
   const resendSource = read('src/app/api/admin/donations/[id]/resend-receipt/route.ts')
   assert.ok(resendSource.includes('receipt_lock_at'))
+  assert.ok(resendSource.includes("'partially_refunded'"))
   const adminPageSource = read('src/app/admin/doacoes/page.tsx')
   assert.ok(adminPageSource.includes('ConfirmDialog'))
+  assert.ok(adminPageSource.includes('@/lib/export-csv'))
+})
+
+test('Correções Banca 86d1ca9: payment.refunds[], reconhecido líquido, CSV \r/bidi, allowlist sem porta/wildcard e corte UTF-16 de emojis', () => {
+  const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8')
+
+  // 1) payment.refunds[] com soma em centavos (DONE vs PENDING), fallback e rejeição de negativos
+  const partialRefunds = classifyAsaasWebhookEvent({
+    id: 'evt_ref_1',
+    event: 'PAYMENT_PARTIALLY_REFUNDED',
+    payment: {
+      id: 'pay_ref_1',
+      value: 100,
+      refunds: [
+        { status: 'DONE', value: 19.99 },
+        { status: 'DONE', value: 10.01 },
+        { status: 'PENDING', value: 20 },
+      ],
+    },
+  })
+  assert.ok(partialRefunds)
+  assert.equal(partialRefunds.targetStatus, 'partially_refunded')
+  assert.equal(partialRefunds.refundedAmountBrl, 30)
+
+  // Fallback para refundedValue > 0 quando refunds[] não existe
+  const partialFallback = classifyAsaasWebhookEvent({
+    id: 'evt_ref_2',
+    event: 'PAYMENT_PARTIALLY_REFUNDED',
+    payment: { id: 'pay_ref_2', value: 100, refundedValue: 25.5 },
+  })
+  assert.equal(partialFallback?.refundedAmountBrl, 25.5)
+
+  // Valores negativos (< 0) ou zero (0) não podem ser gravados
+  const negativeRefund = classifyAsaasWebhookEvent({
+    id: 'evt_ref_3',
+    event: 'PAYMENT_PARTIALLY_REFUNDED',
+    payment: {
+      id: 'pay_ref_3',
+      value: 100,
+      refunds: [{ status: 'DONE', value: -10 }],
+    },
+  })
+  assert.equal(negativeRefund?.refundedAmountBrl, null)
+
+  const zeroRefund = classifyAsaasWebhookEvent({
+    id: 'evt_ref_4',
+    event: 'PAYMENT_PARTIALLY_REFUNDED',
+    payment: { id: 'pay_ref_4', value: 100, refundedValue: 0 },
+  })
+  assert.equal(zeroRefund?.refundedAmountBrl, null)
+
+  // Líquido reconhecido em centavos
+  assert.equal(
+    getRecognizedDonationAmountBrl({ amount: 100, refundedAmount: 19.99, status: 'partially_refunded' }),
+    80.01
+  )
+  assert.equal(
+    sumRecognizedDonationsBrl([
+      { amount: 50, status: 'completed' },
+      { amount: 100, refundedAmount: 30, status: 'partially_refunded' },
+      { amount: 80, refundedAmount: 80, status: 'refunded' },
+      { amount: 40, status: 'pending' },
+    ]),
+    120
+  )
+
+  // 2) sanitizeSpreadsheetCell contra \r isolado, \u2028/\u2029 e marca bidi \u200E
+  assert.equal(sanitizeSpreadsheetCell('ok\r=CMD()'), 'ok =CMD()')
+  assert.equal(sanitizeSpreadsheetCell('\r=SUM(A1:A2)'), "'=SUM(A1:A2)")
+  assert.equal(sanitizeSpreadsheetCell('\u200E=HYPERLINK("http://evil")'), '\'=HYPERLINK("http://evil")')
+  assert.equal(sanitizeSpreadsheetCell('linha1\u2028+1+1'), 'linha1 +1+1')
+
+  // 3) resolvePublicCallbackBaseUrl (R14): bloqueia porta explícita (:8443) e subdomínio arbitrário
+  assert.equal(
+    resolvePublicCallbackBaseUrl('https://portal.imagineinstituto.com:8443'),
+    'https://imagineinstituto.com'
+  )
+  assert.equal(
+    resolvePublicCallbackBaseUrl('https://atacante.imagineinstituto.com'),
+    'https://imagineinstituto.com'
+  )
+  assert.equal(
+    resolvePublicCallbackBaseUrl('https://portal.imagineinstituto.com'),
+    'https://portal.imagineinstituto.com'
+  )
+
+  // 4) buildAsaasItemName (R4): limite exato de 30 code units UTF-16 sem quebrar emoji/ZWJ
+  const withSimpleEmojis = buildAsaasItemName('Projeto Amarelinha ❤️🎉✨ Educação', false)
+  assert.ok(withSimpleEmojis.length <= 30, `UTF-16 length excedeu 30: ${withSimpleEmojis.length}`)
+  assert.equal(/[\uD800-\uDBFF]$/.test(withSimpleEmojis), false, 'não pode terminar com high surrogate isolado')
+
+  // Prefixo 'Doacao - ' (9) + 'Família ' (8) + ZWJ emoji 👨‍👩‍👧‍👦 (11) = 28 <= 30; + outro ZWJ passaria de 30
+  const withZwj = buildAsaasItemName('Família 👨‍👩‍👧‍👦👨‍👩‍👧‍👦 Apoio', false)
+  assert.ok(withZwj.length <= 30, `UTF-16 length ZWJ excedeu 30: ${withZwj.length}`)
+  assert.equal(/[\uD800-\uDBFF\u200D]$/.test(withZwj), false, 'não pode cortar sequência ZWJ no meio')
+
+  // 5) Auditorias estáticas de hardening nas rotas e migrações
+  const adminRoute = read('src/app/api/admin/donations/route.ts')
+  assert.equal(/\bid\.ilike\b/.test(adminRoute), false, 'não pode aplicar ilike em coluna uuid id')
+  assert.ok(adminRoute.includes('isValidUuid'), 'busca por id deve checar UUID válido')
+  assert.ok(adminRoute.includes('maskAnonymous'), 'deve suportar máscara de anônimos fora de /admin/doacoes')
+
+  const createSessionRoute = read('src/app/api/checkout/create-session/route.ts')
+  assert.ok(
+    createSessionRoute.indexOf("get('cf-connecting-ip')") <
+      createSessionRoute.indexOf("get('x-forwarded-for')"),
+    'cf-connecting-ip deve ter prioridade sobre x-forwarded-for'
+  )
+
+  const sessionRoute = read('src/app/api/checkout/session/[sessionId]/route.ts')
+  assert.equal(/,\s*\*/.test(sessionRoute), false, 'session route não pode usar ", *"')
+
+  const mig26 = read('supabase/migrations/20261126_asaas_payments_and_webhooks.sql')
+  assert.equal(
+    /GRANT SELECT\s*\([^)]*stripe_payment_intent_id/s.test(mig26),
+    false,
+    'GRANT SELECT em 20261126 não pode referenciar coluna dropada em 20261127'
+  )
+  const mig27 = read('supabase/migrations/20261127_banca_fixes.sql')
+  assert.ok(mig27.includes('VALIDATE CONSTRAINT donations_status_chk'))
+  assert.ok(mig27.includes('VALIDATE CONSTRAINT donations_refunded_amount_chk'))
+  assert.ok(mig27.includes('refund_changed'))
 })

@@ -36,11 +36,15 @@ ALTER TABLE public.donations
   CHECK (status IN ('pending', 'completed', 'failed', 'refunded', 'partially_refunded'))
   NOT VALID;
 
+ALTER TABLE public.donations VALIDATE CONSTRAINT donations_status_chk;
+
 ALTER TABLE public.donations DROP CONSTRAINT IF EXISTS donations_refunded_amount_chk;
 ALTER TABLE public.donations
   ADD CONSTRAINT donations_refunded_amount_chk
   CHECK (refunded_amount >= 0 AND refunded_amount <= amount)
   NOT VALID;
+
+ALTER TABLE public.donations VALIDATE CONSTRAINT donations_refunded_amount_chk;
 
 -- ============================================================
 -- 2. Zero Stripe: migrar dados da coluna legada e removê-la
@@ -161,6 +165,25 @@ REVOKE EXECUTE ON FUNCTION public.update_project_amount() FROM PUBLIC, anon, aut
 DROP FUNCTION IF EXISTS public.apply_asaas_webhook_event(
   TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, NUMERIC, TEXT, TEXT, JSONB
 );
+DROP FUNCTION IF EXISTS public.apply_asaas_webhook_event(
+  TEXT, TEXT, TEXT, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, NUMERIC, TEXT, TEXT, JSONB
+);
+
+DO $$
+DECLARE
+  v_sig TEXT;
+BEGIN
+  FOR v_sig IN
+    SELECT p.oid::regprocedure::text
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'apply_asaas_webhook_event'
+      AND p.pronargs <> 14
+  LOOP
+    EXECUTE format('DROP FUNCTION IF EXISTS %s', v_sig);
+  END LOOP;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.apply_asaas_webhook_event(
   p_event_id TEXT,
@@ -187,6 +210,7 @@ DECLARE
   v_row public.donations%ROWTYPE;
   v_found BOOLEAN := false;
   v_next_status TEXT;
+  v_eff_amount NUMERIC;
   v_refunded NUMERIC := 0;
   v_new_donation_id UUID;
 BEGIN
@@ -255,6 +279,11 @@ BEGIN
   END IF;
 
   IF NOT v_found THEN
+    -- Não envenena webhook_events quando a doação ainda não existe / asaas_checkout_id está em corrida inicial
+    DELETE FROM public.webhook_events
+    WHERE event_id = trim(p_event_id)
+      AND donation_id IS NULL;
+
     RETURN jsonb_build_object(
       'duplicate', false,
       'matched', false,
@@ -273,9 +302,10 @@ BEGIN
      AND trim(p_target_status) IN ('pending', 'completed', 'failed', 'refunded', 'partially_refunded') THEN
 
     v_next_status := trim(p_target_status);
+    v_eff_amount := CASE WHEN p_amount IS NOT NULL AND p_amount > 0 THEN p_amount ELSE v_row.amount END;
     v_refunded := CASE
-      WHEN v_next_status = 'refunded' THEN COALESCE(p_refunded_amount, p_amount, v_row.amount)
-      WHEN v_next_status = 'partially_refunded' THEN LEAST(COALESCE(p_refunded_amount, 0), v_row.amount)
+      WHEN v_next_status = 'refunded' THEN LEAST(GREATEST(COALESCE(p_refunded_amount, v_eff_amount), 0), v_eff_amount)
+      WHEN v_next_status = 'partially_refunded' THEN LEAST(GREATEST(COALESCE(p_refunded_amount, 0), 0), v_eff_amount)
       ELSE 0
     END;
 
@@ -301,7 +331,7 @@ BEGIN
       v_row.user_id,
       v_row.project_id,
       v_row.campaign_slug,
-      COALESCE(p_amount, v_row.amount),
+      v_eff_amount,
       v_row.currency,
       v_next_status,
       COALESCE(NULLIF(trim(p_payment_method), ''), v_row.payment_method),
@@ -331,7 +361,8 @@ BEGIN
         'donation_id', v_new_donation_id,
         'previous_status', 'pending',
         'current_status', v_next_status,
-        'status_changed', true
+        'status_changed', true,
+        'refund_changed', (v_refunded > 0)
       );
     END IF;
 
@@ -342,6 +373,10 @@ BEGIN
     FOR UPDATE;
     v_found := FOUND;
     IF NOT v_found THEN
+      DELETE FROM public.webhook_events
+      WHERE event_id = trim(p_event_id)
+        AND donation_id IS NULL;
+
       RETURN jsonb_build_object(
         'duplicate', false,
         'matched', false,
@@ -366,9 +401,19 @@ BEGIN
     v_next_status := trim(p_target_status);
   END IF;
 
+  v_eff_amount := COALESCE(
+    LEAST(CASE WHEN p_amount IS NOT NULL AND p_amount > 0 THEN p_amount ELSE NULL END, v_row.amount),
+    v_row.amount
+  );
+
   v_refunded := CASE
-    WHEN v_next_status = 'refunded' THEN COALESCE(p_refunded_amount, v_row.amount)
-    WHEN v_next_status = 'partially_refunded' THEN LEAST(COALESCE(p_refunded_amount, v_row.refunded_amount, 0), v_row.amount)
+    WHEN v_next_status = 'refunded' THEN
+      LEAST(GREATEST(COALESCE(p_refunded_amount, v_row.amount), 0), v_row.amount)
+    WHEN v_next_status = 'partially_refunded' THEN
+      GREATEST(
+        COALESCE(v_row.refunded_amount, 0),
+        LEAST(GREATEST(COALESCE(p_refunded_amount, 0), 0), v_eff_amount)
+      )
     ELSE COALESCE(v_row.refunded_amount, 0)
   END;
 
@@ -396,7 +441,8 @@ BEGIN
     'donation_id', v_row.id,
     'previous_status', v_row.status,
     'current_status', v_next_status,
-    'status_changed', v_row.status IS DISTINCT FROM v_next_status
+    'status_changed', v_row.status IS DISTINCT FROM v_next_status,
+    'refund_changed', v_row.refunded_amount IS DISTINCT FROM v_refunded
   );
 END;
 $$;
