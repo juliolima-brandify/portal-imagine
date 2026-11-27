@@ -1,6 +1,6 @@
 import 'server-only'
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase-admin'
-import { escapeLikePattern } from '@/lib/payments'
+import { normalizeDonorEmail } from '@/lib/payments'
 import { getPortalOrigin } from './email'
 
 export interface DonorProvisionResult {
@@ -33,17 +33,15 @@ export async function ensureDonorAccountAndAccessLink(input: {
   const cleanName = (input.name || '').trim().slice(0, 100) || cleanEmail.split('@')[0]
 
   try {
-    // 1) Checar se já existe perfil para este e-mail.
-    // `ilike` com curingas escapados: `_` e `%` digitados pelo pagador não podem
-    // virar padrão de busca (risco de vincular a doação à conta errada).
-    const { data: matches, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('id, email, name, role')
-      .ilike('email', escapeLikePattern(cleanEmail))
-      .limit(2)
+    // 1) Identificar a conta pelo e-mail de auth.users (só e-mail confirmado, comparação exata
+    // normalizada). Nunca por profiles.email: o próprio usuário pode alterá-lo na tabela de perfis.
+    const { data: matches, error: lookupError } = await supabaseAdmin.rpc(
+      'find_confirmed_auth_user_ids_by_email',
+      { p_email: cleanEmail }
+    )
 
-    if (profileError) {
-      console.error('[DonorProvision] Erro ao buscar perfil por e-mail; abortando provisionamento:', profileError)
+    if (lookupError) {
+      console.error('[DonorProvision] Erro ao buscar conta por e-mail; abortando provisionamento:', lookupError)
       return {
         userId: null,
         isNewAccount: false,
@@ -51,10 +49,10 @@ export async function ensureDonorAccountAndAccessLink(input: {
       }
     }
 
-    if (matches && matches.length > 1) {
+    if (Array.isArray(matches) && matches.length > 1) {
       // Ambiguidade: não escolhe conta no escuro. Devolve sem vínculo para não
       // creditar a doação no histórico de outra pessoa (R5/R6).
-      console.error('[DonorProvision] Mais de um perfil casou com o e-mail; vínculo ignorado.')
+      console.error('[DonorProvision] Mais de uma conta casou com o e-mail; vínculo ignorado.')
       return {
         userId: null,
         isNewAccount: false,
@@ -62,12 +60,12 @@ export async function ensureDonorAccountAndAccessLink(input: {
       }
     }
 
-    const existingProfile = matches?.[0]
+    const existingUserId = Array.isArray(matches) ? (matches[0]?.user_id as string | undefined) : undefined
 
-    if (existingProfile?.id) {
-      await linkOrphanDonationsByEmail(cleanEmail, existingProfile.id)
+    if (existingUserId) {
+      await linkOrphanDonationsByEmail(cleanEmail, existingUserId)
       return {
-        userId: existingProfile.id,
+        userId: existingUserId,
         isNewAccount: false,
         portalAccessUrl: defaultLoginUrl,
       }
@@ -147,10 +145,11 @@ export async function ensureDonorAccountAndAccessLink(input: {
 
 async function linkOrphanDonationsByEmail(email: string, userId: string): Promise<void> {
   try {
+    // Igualdade exata: e-mails são gravados normalizados (lower/trim) pela migração 20261128.
     await supabaseAdmin
       .from('donations')
       .update({ user_id: userId })
-      .ilike('donor_email', escapeLikePattern(email))
+      .eq('donor_email', normalizeDonorEmail(email) ?? '')
       .is('user_id', null)
   } catch {
     // Caso a migração ainda não tenha sido aplicada no ambiente local, ignora sem falhar

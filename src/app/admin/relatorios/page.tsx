@@ -17,7 +17,7 @@ import {
 
 import ExportDropdown from '@/components/ExportDropdown'
 import DonationTrendChart from '@/components/DonationTrendChart'
-import DateRangePickerWithPresets from '@/components/DateRangePicker'
+import DateRangePickerWithPresets, { getPresetRange } from '@/components/DateRangePicker'
 import type { User } from '@supabase/supabase-js'
 
 export default function AdminRelatoriosPage() {
@@ -28,9 +28,10 @@ export default function AdminRelatoriosPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
 
-  const [dateStart, setDateStart] = useState<Date | undefined>(undefined)
-  const [dateEnd, setDateEnd] = useState<Date | undefined>(undefined)
-  const [presetId, setPresetId] = useState<string>('custom')
+  // Métricas, gráficos e tabelas usam o mesmo escopo do seletor: começa em "Últimos 30 dias".
+  const [dateStart, setDateStart] = useState<Date | undefined>(() => getPresetRange('last30Days').start)
+  const [dateEnd, setDateEnd] = useState<Date | undefined>(() => getPresetRange('last30Days').end)
+  const [presetId, setPresetId] = useState<string>('last30Days')
   const [selectedReport, setSelectedReport] = useState<'overview' | 'donations' | 'projects' | 'donors'>('overview')
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all')
   const chartImageRef = useRef<string | undefined>(undefined)
@@ -327,6 +328,7 @@ export default function AdminRelatoriosPage() {
                       : undefined,
                 }}
                 filename="relatorio_completo"
+                disabled={Boolean(loadError)}
               />
             </div>
           </div>
@@ -361,6 +363,12 @@ export default function AdminRelatoriosPage() {
                   setDateEnd(end)
                   setPresetId(nextPreset)
                 }}
+                onClear={({ start, end, presetId: nextPreset }) => {
+                  setDateStart(start)
+                  setDateEnd(end)
+                  setPresetId(nextPreset)
+                }}
+                initialPresetId="last30Days"
               />
             </div>
             <div>
@@ -406,6 +414,9 @@ export default function AdminRelatoriosPage() {
           </div>
         </div>
 
+        {/* Com erro de carga, métricas, gráficos e tabelas somem em vez de mostrar zeros enganosos. */}
+        {!loadError && (
+        <>
         {/* Key Metrics */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Métricas Principais</h2>
@@ -712,6 +723,8 @@ export default function AdminRelatoriosPage() {
             </table>
           </div>
         </div>
+        </>
+        )}
       </main>
     </div>
   )

@@ -453,6 +453,21 @@ GRANT SELECT (
   updated_at
 ) ON public.donations TO authenticated;
 
+-- Banca R3 (item 6): se 20261127 já criou donations.refunded_amount, reconceder a coluna
+-- aqui. Sem isso, a reexecução desta migração depois da 20261127 revogaria o SELECT do
+-- valor estornado que o painel e o recibo usam.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'donations'
+      AND column_name = 'refunded_amount'
+  ) THEN
+    GRANT SELECT (refunded_amount) ON public.donations TO authenticated;
+  END IF;
+END $$;
+
 GRANT ALL ON public.donations TO service_role;
 GRANT ALL ON public.webhook_events TO service_role;
 

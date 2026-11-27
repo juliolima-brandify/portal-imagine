@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { fetchAllAdminDonations } from '@/lib/admin-api'
 import {
   formatCurrencyBRL,
+  getDonationStatusLabelPTBR,
   getRecognizedDonationAmountBrl,
   getSaoPauloDateParts,
   saoPauloMidnightUtc,
@@ -12,7 +13,7 @@ import {
   sumRecognizedDonationsBrl,
 } from '@/lib/payments'
 import DonationTrendChart from '@/components/DonationTrendChart'
-import DateRangePickerWithPresets, { PresetId } from '@/components/DateRangePicker'
+import DateRangePickerWithPresets, { PresetId, getPresetRange } from '@/components/DateRangePicker'
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -24,12 +25,17 @@ export default function AdminDashboard() {
   const [recentProjects, setRecentProjects] = useState<any[]>([])
   const [allDonations, setAllDonations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [dateStart, setDateStart] = useState<Date | undefined>(undefined)
-  const [dateEnd, setDateEnd] = useState<Date | undefined>(undefined)
-  const [presetId, setPresetId] = useState<PresetId>('custom')
+  // Gráfico e métricas usam o mesmo escopo do seletor: começa em "Últimos 30 dias".
+  const [dateStart, setDateStart] = useState<Date | undefined>(() => getPresetRange('last30Days').start)
+  const [dateEnd, setDateEnd] = useState<Date | undefined>(() => getPresetRange('last30Days').end)
+  const [presetId, setPresetId] = useState<PresetId>('last30Days')
+  const [loadError, setLoadError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let active = true
+    setLoading(true)
+    setLoadError('')
     const loadStats = async () => {
       try {
         const [projectsCountRes, recentProjectsRes, usersCountRes, adminDonationsRes] =
@@ -76,6 +82,7 @@ export default function AdminDashboard() {
         setAllDonations(hydratedList)
       } catch (error) {
         console.error('Erro ao carregar estatísticas:', error)
+        if (active) setLoadError('Não foi possível carregar o painel. Verifique a conexão e tente de novo.')
       } finally {
         if (active) setLoading(false)
       }
@@ -85,7 +92,7 @@ export default function AdminDashboard() {
     return () => {
       active = false
     }
-  }, [])
+  }, [reloadKey])
 
   const recentDonations = useMemo(() => allDonations.slice(0, 5), [allDonations])
 
@@ -202,6 +209,19 @@ export default function AdminDashboard() {
     )
   }
 
+  if (loadError) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center p-4">
+        <div className="card p-6 max-w-md w-full border-red-200 bg-red-50 flex flex-col gap-4">
+          <p className="text-sm text-red-700">{loadError}</p>
+          <button type="button" onClick={() => setReloadKey((k) => k + 1)} className="btn-secondary self-start">
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-8">
@@ -250,6 +270,12 @@ export default function AdminDashboard() {
                 setDateEnd(end)
                 setPresetId(nextPreset)
               }}
+              onClear={({ start, end, presetId: nextPreset }) => {
+                setDateStart(start)
+                setDateEnd(end)
+                setPresetId(nextPreset)
+              }}
+              initialPresetId="last30Days"
             />
           </div>
           <DonationTrendChart labels={trend.labels} values={trend.values} />
@@ -299,6 +325,9 @@ export default function AdminDashboard() {
                         </span>
                       )}
                     </p>
+                    <span className="inline-block mt-0.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                      {getDonationStatusLabelPTBR(donation.status)}
+                    </span>
                     <p className="text-xs text-gray-500 truncate">
                       {donation.anonymous ? 'Doador Anônimo' : donation.donorName || 'Não identificado'} — {donation.projectTitle || 'Instituto Imagine'}
                     </p>

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireAdmin } from '@/lib/admin-auth'
 import { jsonNoStore, verifyAdminMutationOrigin } from '@/lib/admin-http'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getDonationDestinationLabel, isValidUuid } from '@/lib/payments'
+import { getDonationDestinationLabel, isValidUuid, normalizeDonorEmail } from '@/lib/payments'
 import { ensureDonorAccountAndAccessLink } from '@/lib/server/donor-provision'
 import { sendDonorReceiptEmail } from '@/lib/server/email'
 
@@ -14,6 +14,7 @@ interface DonationRow {
   donor_email: string | null
   donor_name: string | null
   amount: number | null
+  refunded_amount: number | null
   status: string
   anonymous: boolean | null
   asaas_payment_id: string | null
@@ -49,7 +50,11 @@ export async function POST(
       .eq('id', donationId)
       .maybeSingle()
 
-    if (fetchErr || !row) {
+    if (fetchErr) {
+      console.error('[AdminResendReceipt] Erro ao buscar doação:', fetchErr)
+      return jsonNoStore({ error: 'Erro interno ao buscar a doação.' }, { status: 500 })
+    }
+    if (!row) {
       return jsonNoStore({ error: 'Doação não encontrada.' }, { status: 404 })
     }
 
@@ -65,15 +70,17 @@ export async function POST(
     let donorEmail: string | null = donation.donor_email || null
     let donorName: string | null = donation.donor_name || null
 
-    if (donation.user_id && (!donorEmail || !donorName)) {
-      const { data: prof } = await supabaseAdmin
-        .from('profiles')
-        .select('email, name')
-        .eq('id', donation.user_id)
-        .maybeSingle()
-      if (prof) {
-        donorEmail = donorEmail || prof.email || null
-        donorName = donorName || prof.name || null
+    // Sem e-mail na doação, o fallback é o e-mail da conta em auth.users (fonte da verdade),
+    // nunca profiles.email, que o próprio usuário pode alterar.
+    if (donation.user_id && !donorEmail) {
+      const { data: authData } = await supabaseAdmin.auth.admin.getUserById(donation.user_id)
+      const authUser = authData?.user
+      if (authUser?.email && authUser.email_confirmed_at) {
+        donorEmail = normalizeDonorEmail(authUser.email)
+      }
+      if (authUser && !donorName) {
+        const metaName = authUser.user_metadata?.name
+        donorName = typeof metaName === 'string' && metaName.trim() ? metaName.trim() : null
       }
     }
 
@@ -133,6 +140,8 @@ export async function POST(
         donorName,
         anonymous: Boolean(donation.anonymous),
         amount: Number(donation.amount) || 0,
+        refundedAmount: Number(donation.refunded_amount) || 0,
+        status: donation.status,
         projectTitle,
         donationId: donation.id,
         transactionId: donation.asaas_payment_id || donation.asaas_checkout_id || null,

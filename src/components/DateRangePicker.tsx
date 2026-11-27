@@ -20,16 +20,20 @@ import {
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
-export type PresetId = 'today' | 'yesterday' | 'lastWeek' | 'lastMonth' | 'lastQuarter' | 'custom'
+export type PresetId = 'last30Days' | 'today' | 'yesterday' | 'lastWeek' | 'lastMonth' | 'lastQuarter' | 'custom'
 
 interface DateRangePickerWithPresetsProps {
   start?: Date
   end?: Date
   onChange: (v: { start: Date; end: Date; presetId: PresetId }) => void
+  /** Chamado por "Limpar": a tela-mãe volta ao mesmo período padrão do seletor (últimos 30 dias). */
+  onClear?: (v: { start: Date; end: Date; presetId: PresetId }) => void
+  initialPresetId?: PresetId
   className?: string
 }
 
 const PRESETS = [
+  { id: 'last30Days' as PresetId, label: 'Últimos 30 dias' },
   { id: 'today' as PresetId, label: 'Hoje' },
   { id: 'yesterday' as PresetId, label: 'Ontem' },
   { id: 'lastWeek' as PresetId, label: 'Última semana' },
@@ -37,9 +41,11 @@ const PRESETS = [
   { id: 'lastQuarter' as PresetId, label: 'Último trimestre' },
 ]
 
-function getPresetRange(id: PresetId): { start: Date; end: Date } {
+export function getPresetRange(id: PresetId): { start: Date; end: Date } {
   const now = new Date()
   switch (id) {
+    case 'last30Days':
+      return { start: startOfDay(subDays(now, 29)), end: endOfDay(now) }
     case 'today':
       return { start: startOfDay(now), end: endOfDay(now) }
     case 'yesterday': {
@@ -64,7 +70,14 @@ function getPresetRange(id: PresetId): { start: Date; end: Date } {
   }
 }
 
-export default function DateRangePickerWithPresets({ start, end, onChange, className = '' }: DateRangePickerWithPresetsProps) {
+export default function DateRangePickerWithPresets({
+  start,
+  end,
+  onChange,
+  onClear,
+  initialPresetId,
+  className = '',
+}: DateRangePickerWithPresetsProps) {
   // Inicializar sem data selecionada
   const defaultRange = useMemo(() => {
     if (start && end) return { from: start, to: end }
@@ -73,7 +86,7 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
 
   const [range, setRange] = useState<{ from?: Date; to?: Date }>(defaultRange)
   const [tempRange, setTempRange] = useState<{ from?: Date; to?: Date }>(defaultRange)
-  const [presetId, setPresetId] = useState<PresetId>('custom')
+  const [presetId, setPresetId] = useState<PresetId>(initialPresetId ?? 'custom')
   const [isOpen, setIsOpen] = useState(false)
   const [position, setPosition] = useState<'left' | 'right'>('left')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -142,9 +155,12 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
 
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setPresetId('custom')
-    setRange({ from: undefined, to: undefined })
-    setTempRange({ from: undefined, to: undefined })
+    // Limpar volta ao período padrão (últimos 30 dias) e avisa a tela-mãe para ela mudar junto.
+    const fallback = getPresetRange('last30Days')
+    setPresetId('last30Days')
+    setRange({ from: fallback.start, to: fallback.end })
+    setTempRange({ from: fallback.start, to: fallback.end })
+    onClear?.({ start: fallback.start, end: fallback.end, presetId: 'last30Days' })
     // NÃO fechar - deixar popover aberto para usuário selecionar novas datas
   }
 

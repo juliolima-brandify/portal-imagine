@@ -62,7 +62,7 @@ export const donationSchema = z.object({
   project_id: z.string().uuid().nullable(),
   user_id: z.string().uuid().nullable().optional(),
   payment_method: z.enum(['credit_card', 'pix']),
-  status: z.enum(['pending', 'completed', 'failed', 'refunded']),
+  status: z.enum(['pending', 'completed', 'failed', 'refunded', 'partially_refunded']),
   asaas_payment_id: z.string().optional(),
   asaas_checkout_id: z.string().optional(),
   created_at: z.string().datetime(),

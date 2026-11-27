@@ -20,8 +20,14 @@ const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 10
 const rateBuckets = new Map<string, { count: number; resetAt: number }>()
 
+// cf-connecting-ip só é confiável quando a própria borda Cloudflare (Workers) serve a requisição;
+// fora dela o cabeçalho pode ser forjado pelo cliente.
+function runsOnCloudflareWorkers(): boolean {
+  return typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers'
+}
+
 function getClientIp(request: NextRequest): string {
-  const cfIp = request.headers.get('cf-connecting-ip')?.trim()
+  const cfIp = runsOnCloudflareWorkers() ? request.headers.get('cf-connecting-ip')?.trim() : ''
   if (cfIp) return cfIp
   const realIp = request.headers.get('x-real-ip')?.trim()
   if (realIp) return realIp
@@ -108,7 +114,8 @@ async function resolveOptionalUser(request: NextRequest): Promise<{
 
   return {
     id: authUser.id,
-    email: profile?.email || authUser.email || null,
+    // E-mail da conta vem sempre de auth.users; profiles.email é editável pelo próprio usuário.
+    email: authUser.email || null,
     name: profile?.name || authUser.user_metadata?.name || null,
     cpf: profile?.cpf || null,
     phone: profile?.phone || null,

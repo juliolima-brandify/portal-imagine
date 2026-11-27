@@ -1,5 +1,4 @@
 import 'server-only'
-import { createHash, timingSafeEqual } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import type { AsaasCheckoutPayload } from '@/lib/payments'
 
@@ -52,19 +51,7 @@ export function isAsaasConfigured(): boolean {
   return resolveAsaasConfig() !== null
 }
 
-export function verifyAsaasWebhookToken(
-  receivedToken: string | null | undefined,
-  expectedToken: string | null | undefined = process.env.ASAAS_WEBHOOK_TOKEN
-): boolean {
-  const cleanReceived = (receivedToken || '').trim()
-  const cleanExpected = (expectedToken || '').trim()
-  if (!cleanReceived || !cleanExpected || cleanExpected.length < 16) {
-    return false
-  }
-  const hashA = createHash('sha256').update(cleanReceived).digest()
-  const hashB = createHash('sha256').update(cleanExpected).digest()
-  return timingSafeEqual(hashA, hashB)
-}
+export { verifyAsaasWebhookToken } from '@/lib/webhook-token'
 
 export async function readBoundedJson(
   request: NextRequest,

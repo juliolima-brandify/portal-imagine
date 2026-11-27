@@ -614,7 +614,7 @@ export default function ProjectForm({
         {/* Links e incorporações */}
         <div className="pt-4 border-t border-gray-200">
           <div className="border-b border-gray-200 mb-4">
-            <div className="-mb-px flex flex-wrap items-center gap-4" role="tablist">
+            <div className="-mb-px flex items-center gap-4 whitespace-nowrap" role="tablist">
               <button
                 type="button"
                 role="tab"
@@ -626,7 +626,7 @@ export default function ProjectForm({
                     : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
               >
-                URL no Site
+                Site
               </button>
               <button
                 type="button"
@@ -639,7 +639,7 @@ export default function ProjectForm({
                     : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Checkout URL
+                Checkout
               </button>
               <button
                 type="button"
@@ -652,7 +652,7 @@ export default function ProjectForm({
                     : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Embed do Checkout
+                Embed
               </button>
             </div>
           </div>

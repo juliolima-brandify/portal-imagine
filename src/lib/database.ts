@@ -422,36 +422,3 @@ export async function getUserStats(userId: string): Promise<{
     return null
   }
 }
-
-export async function getProjectStats(projectId: string): Promise<{
-  totalRaised: number
-  totalDonors: number
-  totalDonations: number
-} | null> {
-  try {
-    const { data: donations, error: donationsError } = await supabase
-      .from('donations')
-      .select('id, amount, refunded_amount, status, user_id')
-      .eq('project_id', projectId)
-      .in('status', ['completed', 'partially_refunded'])
-
-    if (donationsError) {
-      console.error('Erro ao buscar estatísticas do projeto:', donationsError)
-      return null
-    }
-
-    const totalRaised = sumRecognizedDonationsBrl(donations || [])
-    const totalDonors = new Set(
-      (donations || []).map((d) => (d.user_id ? `user:${d.user_id}` : `don:${d.id}`))
-    ).size
-
-    return {
-      totalRaised,
-      totalDonors,
-      totalDonations: donations?.length || 0,
-    }
-  } catch (error) {
-    console.error('Erro ao buscar estatísticas do projeto:', error)
-    return null
-  }
-}

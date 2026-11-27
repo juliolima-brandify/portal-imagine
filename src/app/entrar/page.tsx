@@ -168,13 +168,6 @@ function EntrarContent() {
       if (isLogin) {
         const validatedData = loginSchema.parse({ email, password })
 
-        if (typeof window !== 'undefined') {
-          try {
-            window.localStorage.setItem('imagine.rememberMe', rememberMe ? 'true' : 'false')
-          } catch {
-            // Storage indisponível
-          }
-        }
 
         const authPromise = supabase.auth.signInWithPassword({
           email: validatedData.email,
@@ -189,6 +182,14 @@ function EntrarContent() {
         ])) as any
 
         if (error) throw error
+        // "Lembrar-me" só é gravado depois de o login ter dado certo.
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.setItem('imagine.rememberMe', rememberMe ? 'true' : 'false')
+          } catch {
+            // Storage indisponível
+          }
+        }
         setMessage('Login realizado com sucesso!')
         clearTimeout(timeoutId)
         await redirectAuthenticatedUser(data?.user?.id)

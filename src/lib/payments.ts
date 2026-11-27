@@ -44,12 +44,30 @@ export function resolveSpecialCampaign(
   return SPECIAL_CAMPAIGNS[normalized] ?? null
 }
 
+/** E-mail na forma canônica de gravação e comparação (minúsculo, sem espaços). */
+export function normalizeDonorEmail(value: string | null | undefined): string | null {
+  const clean = String(value ?? '').trim().toLowerCase()
+  return clean.includes('@') ? clean : null
+}
+
 /**
- * Escapa curingas do `LIKE`/`ILIKE` do Postgres (`\`, `%`, `_`) para que um e-mail
- * digitado por terceiro não vire padrão de busca amplo.
+ * Chave única de doador (espelha o SQL `get_project_public_report` e `admin_donation_totals`):
+ * e-mail normalizado; sem e-mail, user_id; sem nenhum dos dois, a própria doação.
  */
-export function escapeLikePattern(value: string | null | undefined): string {
-  return String(value ?? '').replace(/[\\%_]/g, (char) => `\\${char}`)
+export function getDonorKey(input: {
+  donorEmail?: string | null
+  userId?: string | null
+  donationId: string
+}): string {
+  const email = normalizeDonorEmail(input.donorEmail)
+  if (email) return `e:${email}`
+  if (input.userId) return `u:${input.userId}`
+  return `d:${input.donationId}`
+}
+
+/** Uma doação conta como reconhecida (somada em totais, relatórios e histórico) quando confirmada ou parcialmente estornada. */
+export function isRecognizedDonationStatus(status: string | null | undefined): boolean {
+  return status === 'completed' || status === 'partially_refunded'
 }
 
 /**
@@ -259,6 +277,9 @@ export function escapeHtml(raw: string | null | undefined): string {
     .replace(/'/g, '&#39;')
 }
 
+// `\p{Cf}` exige a flag u; o RegExp em tempo de execução evita o erro do alvo ES5 do tsc.
+const CONTROL_OR_FORMAT_CHARS = new RegExp('[\\x00-\\x1F\\x7F\\p{Cf}]', 'gu')
+
 /**
  * Previne CSV / Excel Formula Injection neutralizando células iniciadas com =, +, -, @, \t ou \r.
  * Remove quebras de linha (\r, \n, \u2028, \u2029), caracteres de controle e marcas invisíveis/bidi.
@@ -267,10 +288,11 @@ export function sanitizeSpreadsheetCell(value: unknown): string {
   if (value === null || value === undefined) return ''
   const str = String(value)
     .replace(/[\r\n\t\u2028\u2029]+/g, ' ')
-    .replace(/[\x00-\x1F\x7F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+    .replace(CONTROL_OR_FORMAT_CHARS, '')
     .trim()
   if (!str) return ''
-  if (/^[=+\-@\t\r]/.test(str)) {
+  // Inclui os equivalentes de largura total (\uFF1D \uFF0B \uFF0D \uFF20), que o Excel tamb\u00E9m trata como f\u00F3rmula.
+  if (/^[=+\-@\t\r\uFF1D\uFF0B\uFF0D\uFF20]/.test(str)) {
     return `'${str}`
   }
   return str
@@ -453,7 +475,7 @@ export function getSaoPauloDateParts(date: Date): SaoPauloDateParts {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    hour12: false,
+    hourCycle: 'h23',
   }).formatToParts(date)
   const get = (type: string) => parts.find((p) => p.type === type)?.value || ''
   return {
@@ -745,10 +767,14 @@ export function classifyAsaasWebhookEvent(rawPayload: unknown): ClassifiedAsaasW
     hasNegativeRefund = true
   }
 
+  // Com `refunds[]` presente, o valor concluído é só a soma dos itens DONE (sem DONE = sem valor).
+  // `refundedValue` é fallback apenas quando o array não vem no payload (item 9).
   const partialRefundBrl = hasNegativeRefund
     ? null
-    : refundsArrayCents > 0
-      ? centsToBrl(refundsArrayCents)
+    : Array.isArray(payment?.refunds)
+      ? refundsArrayCents > 0
+        ? centsToBrl(refundsArrayCents)
+        : null
       : rawRefundedCandidate !== null && Number.isFinite(rawRefundedCandidate) && rawRefundedCandidate > 0
         ? centsToBrl(brlToCents(rawRefundedCandidate))
         : null
@@ -761,6 +787,12 @@ export function classifyAsaasWebhookEvent(rawPayload: unknown): ClassifiedAsaasW
       : targetStatus === 'partially_refunded'
         ? partialRefundBrl
         : null
+
+  // Item 9: estorno parcial sem valor concluído não muda o status nem dispara alerta.
+  if (eventType === 'PAYMENT_PARTIALLY_REFUNDED' && refundedAmountBrl === null) {
+    targetStatus = null
+    shouldNotifyFailureOrRefund = false
+  }
 
   const customerData =
     checkout?.customerData && typeof checkout.customerData === 'object'
@@ -791,28 +823,47 @@ export function classifyAsaasWebhookEvent(rawPayload: unknown): ClassifiedAsaasW
 }
 
 /**
- * Mesma máquina de estados pura usada na função SQL apply_asaas_webhook_event.
+ * Espelho TypeScript de `public.asaas_donation_transition` (migração 20261128).
+ * Mesma regra de status e de valor estornado; o teste SQL compara as duas implementações.
  */
-export function resolveNextDonationStatus(
-  currentStatus: DonationStatus,
-  targetStatus: DonationStatus | null
-): DonationStatus {
-  if (!targetStatus) return currentStatus
-  // Estorno total é terminal.
-  if (currentStatus === 'refunded') return 'refunded'
-  // Estorno parcial é terminal para novos eventos de pagamento, mas pode evoluir para total.
-  if (currentStatus === 'partially_refunded') {
-    return targetStatus === 'refunded' ? 'refunded' : 'partially_refunded'
+export function transitionDonationState(input: {
+  status: string
+  amount: number
+  refundedCurrent?: number | null
+  target: string | null
+  refundedIn?: number | null
+}): { status: DonationStatus | string; refunded: number } {
+  const amount = Math.max(Number.isFinite(input.amount) ? input.amount : 0, 0)
+  const clamp = (v: number) => Math.min(Math.max(Number.isFinite(v) ? v : 0, 0), amount)
+  const current = clamp(input.refundedCurrent ?? 0)
+  const incoming = clamp(input.refundedIn ?? 0)
+  const target = input.target
+  const known = ['pending', 'completed', 'failed', 'refunded', 'partially_refunded']
+
+  if (!target || !known.includes(target)) return { status: input.status, refunded: current }
+  if (input.status === 'refunded' || target === 'refunded') return { status: 'refunded', refunded: amount }
+
+  if (target === 'partially_refunded') {
+    const refunded = Math.max(current, incoming)
+    if (refunded <= 0) return { status: input.status, refunded }
+    if (amount > 0 && refunded >= amount) return { status: 'refunded', refunded }
+    if (input.status === 'completed' || input.status === 'partially_refunded') {
+      return { status: 'partially_refunded', refunded }
+    }
+    return { status: input.status, refunded }
   }
-  // Eventos atrasados nunca rebaixam uma doação já confirmada.
-  if (currentStatus === 'completed' && (targetStatus === 'pending' || targetStatus === 'failed')) {
-    return 'completed'
+
+  if (target === 'completed') {
+    if (amount > 0 && current >= amount) return { status: 'refunded', refunded: current }
+    if (current > 0) return { status: 'partially_refunded', refunded: current }
+    return { status: 'completed', refunded: current }
   }
-  // Estorno parcial só faz sentido sobre doação confirmada.
-  if (targetStatus === 'partially_refunded' && currentStatus !== 'completed') {
-    return currentStatus
+
+  // pending / failed
+  if (input.status === 'completed' || input.status === 'partially_refunded') {
+    return { status: current > 0 ? 'partially_refunded' : 'completed', refunded: current }
   }
-  return targetStatus
+  return { status: target, refunded: current }
 }
 
 /**
@@ -867,6 +918,29 @@ export function sanitizePublicSessionResponse(row: {
   }
 }
 
+/**
+ * Valores do recibo (doado, estornado e líquido). Fonte única para o TXT baixado,
+ * o e-mail e o assunto do e-mail (item 2).
+ */
+export function getReceiptAmounts(input: {
+  amount: number
+  refundedAmount?: number | null
+  status?: string | null
+}): { grossBrl: number; refundedBrl: number; netBrl: number; hasRefund: boolean } {
+  const grossBrl = centsToBrl(brlToCents(Number.isFinite(input.amount) ? input.amount : 0))
+  const refundedNum =
+    typeof input.refundedAmount === 'number' && Number.isFinite(input.refundedAmount) && input.refundedAmount > 0
+      ? input.refundedAmount
+      : 0
+  const refundedBrl = refundedNum > 0 ? centsToBrl(brlToCents(refundedNum)) : 0
+  const netBrl = getRecognizedDonationAmountBrl({
+    amount: grossBrl,
+    refundedAmount: refundedBrl,
+    status: input.status,
+  })
+  return { grossBrl, refundedBrl, netBrl, hasRefund: refundedBrl > 0 }
+}
+
 export function buildReceiptText(input: {
   donationId: string
   donorName?: string | null
@@ -895,15 +969,13 @@ export function buildReceiptText(input: {
     }
   })()
 
-  const refundedNum =
-    typeof input.refundedAmount === 'number' && Number.isFinite(input.refundedAmount) && input.refundedAmount > 0
-      ? input.refundedAmount
-      : 0
-  const netAmount = getRecognizedDonationAmountBrl({
+  const receipt = getReceiptAmounts({
     amount: input.amount,
-    refundedAmount: refundedNum,
+    refundedAmount: input.refundedAmount,
     status: input.status,
   })
+  const refundedNum = receipt.refundedBrl
+  const netAmount = receipt.netBrl
 
   const lines = [
     '====================================================',
@@ -935,4 +1007,148 @@ export function buildReceiptText(input: {
   ]
 
   return lines.join('\n')
+}
+
+/** Recibo de doação enviado por e-mail (interface e HTML/assunto montados aqui, sem server-only). */
+export interface DonorReceiptEmailInput {
+  to: string
+  donorName?: string | null
+  anonymous?: boolean
+  amount: number
+  projectTitle: string
+  donationId: string
+  transactionId?: string | null
+  paymentMethod?: string | null
+  isRecurring?: boolean
+  recurringFrequency?: string | null
+  message?: string | null
+  createdAt?: string | null
+  portalAccessUrl?: string | null
+  isNewAccount?: boolean
+  refundedAmount?: number | null
+  status?: string | null
+}
+
+export function buildDonorReceiptEmail(
+  input: DonorReceiptEmailInput & { publicOrigin: string; portalOrigin: string }
+): { to: string; subject: string; html: string } {
+  const safeName = escapeHtml(
+    input.anonymous ? 'Apoiador(a)' : (input.donorName || '').trim() || 'Apoiador(a)'
+  )
+  const safeProject = escapeHtml(input.projectTitle || 'Instituto Imagine')
+  // Mesmos números do recibo baixado (buildReceiptText): doado, estornado e líquido.
+  const receiptAmounts = getReceiptAmounts({
+    amount: input.amount,
+    refundedAmount: input.refundedAmount,
+    status: input.status,
+  })
+  const safeAmount = escapeHtml(formatCurrencyBRL(receiptAmounts.grossBrl))
+  const refundRowsHtml = receiptAmounts.hasRefund
+    ? `<tr><td style="padding:4px 0;color:#4B5563;">Valor estornado:</td><td style="padding:4px 0;font-weight:600;color:#B45309;text-align:right;">${escapeHtml(formatCurrencyBRL(receiptAmounts.refundedBrl))}</td></tr>
+        <tr><td style="padding:4px 0;color:#4B5563;">Valor líquido reconhecido:</td><td style="padding:4px 0;font-weight:700;text-align:right;">${escapeHtml(formatCurrencyBRL(receiptAmounts.netBrl))}</td></tr>`
+    : ''
+  const safeDonationId = escapeHtml(input.donationId)
+  const safeTxId = input.transactionId ? escapeHtml(input.transactionId) : ''
+  const safeMethod = escapeHtml(normalizePaymentMethodLabel(input.paymentMethod))
+  const safeModality = input.isRecurring
+    ? `Recorrente (${escapeHtml(getFrequencyLabelPTBR(input.recurringFrequency))})`
+    : 'Doação única'
+  const safeMessage = input.message ? escapeHtml(input.message) : ''
+  const logoUrl = `${input.publicOrigin}/img/logo-cor.png`
+
+  const dateFormatted = (() => {
+    try {
+      return new Date(input.createdAt || Date.now()).toLocaleDateString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })
+    } catch {
+      return new Date().toLocaleDateString('pt-BR')
+    }
+  })()
+
+  const safeAccessUrl =
+    input.isNewAccount && input.portalAccessUrl && input.portalAccessUrl.startsWith('https://')
+      ? escapeHtml(input.portalAccessUrl)
+      : escapeHtml(`${input.portalOrigin}/entrar`)
+
+  const portalSectionHtml = input.isNewAccount
+    ? `
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:20px;margin:24px 0;">
+        <h3 style="margin:0 0 8px 0;color:#0D2340;font-size:16px;">Acompanhe suas doações no Portal Imagine</h3>
+        <p style="margin:0 0 16px 0;color:#374151;font-size:14px;">
+          Preparamos o seu acesso exclusivo ao Portal com o e-mail <strong>${escapeHtml(input.to)}</strong>.
+          Clique abaixo para definir sua senha com segurança e acompanhar recibos, histórico e relatórios dos projetos:
+        </p>
+        <div style="text-align:center;">
+          <a href="${safeAccessUrl}" style="display:inline-block;background:#0D2340;color:#FFFFFF;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
+            Definir Senha e Acessar Portal
+          </a>
+        </div>
+      </div>
+    `
+    : `
+      <div style="text-align:center;margin:24px 0;">
+        <a href="${safeAccessUrl}" style="display:inline-block;background:#0D2340;color:#FFFFFF;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
+          Ver Histórico no Portal Imagine
+        </a>
+      </div>
+    `
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recibo de Doação — ${INSTITUTE_NAME}</title>
+</head>
+<body style="margin:0;padding:24px 12px;background-color:#FBF8F3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1F2937;line-height:1.6;">
+  <div style="max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:14px;padding:32px 28px;border:1px solid #E5E7EB;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <img src="${logoUrl}" alt="${INSTITUTE_NAME}" style="height:48px;width:auto;margin-bottom:12px;" />
+      <h1 style="margin:0;color:#059669;font-size:24px;">Doação Confirmada!</h1>
+      <p style="margin:6px 0 0 0;color:#6B7280;font-size:14px;">Recibo oficial · CNPJ ${INSTITUTE_CNPJ}</p>
+    </div>
+
+    <p style="margin:0 0 14px 0;font-size:15px;">Olá, <strong>${safeName}</strong>!</p>
+    <p style="margin:0 0 20px 0;font-size:15px;color:#374151;">
+      Recebemos a confirmação da sua doação para o <strong>${INSTITUTE_NAME}</strong>. Muito obrigado por caminhar conosco e transformar vidas em Uberlândia!
+    </p>
+
+    <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:20px;margin:20px 0;">
+      <h2 style="margin:0 0 12px 0;color:#065F46;font-size:16px;">Dados do Recibo</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;color:#1F2937;">
+        <tr><td style="padding:4px 0;color:#4B5563;">Instituição:</td><td style="padding:4px 0;font-weight:600;text-align:right;">${INSTITUTE_NAME}</td></tr>
+        <tr><td style="padding:4px 0;color:#4B5563;">CNPJ:</td><td style="padding:4px 0;font-weight:600;text-align:right;">${INSTITUTE_CNPJ}</td></tr>
+        <tr><td style="padding:4px 0;color:#4B5563;">Destino / Projeto:</td><td style="padding:4px 0;font-weight:600;text-align:right;">${safeProject}</td></tr>
+        <tr><td style="padding:4px 0;color:#4B5563;">Valor doado:</td><td style="padding:4px 0;font-weight:700;color:#059669;font-size:16px;text-align:right;">${safeAmount}</td></tr>
+        ${refundRowsHtml}
+        <tr><td style="padding:4px 0;color:#4B5563;">Modalidade:</td><td style="padding:4px 0;text-align:right;">${safeModality}</td></tr>
+        <tr><td style="padding:4px 0;color:#4B5563;">Meio de pagamento:</td><td style="padding:4px 0;text-align:right;">${safeMethod}</td></tr>
+        <tr><td style="padding:4px 0;color:#4B5563;">Data:</td><td style="padding:4px 0;text-align:right;">${escapeHtml(dateFormatted)}</td></tr>
+        <tr><td style="padding:4px 0;color:#4B5563;">ID da Doação:</td><td style="padding:4px 0;font-family:monospace;font-size:12px;text-align:right;">${safeDonationId}</td></tr>
+        ${safeTxId ? `<tr><td style="padding:4px 0;color:#4B5563;">Ref. Transação:</td><td style="padding:4px 0;font-family:monospace;font-size:12px;text-align:right;">${safeTxId}</td></tr>` : ''}
+      </table>
+      ${safeMessage ? `<p style="margin:12px 0 0 0;padding-top:10px;border-top:1px dashed #A7F3D0;font-size:13px;color:#374151;"><strong>Sua mensagem:</strong> ${safeMessage}</p>` : ''}
+    </div>
+
+    ${portalSectionHtml}
+
+    <div style="margin-top:28px;padding-top:18px;border-top:1px solid #E5E7EB;text-align:center;color:#6B7280;font-size:12px;">
+      <p style="margin:0 0 4px 0;"><strong>${INSTITUTE_NAME}</strong> · CNPJ ${INSTITUTE_CNPJ}</p>
+      <p style="margin:0;">${escapeHtml(INSTITUTE_ADDRESS)}</p>
+    </div>
+  </div>
+</body>
+</html>`
+
+  return {
+    to: input.to.trim().toLowerCase(),
+    subject: receiptAmounts.hasRefund
+      ? `Recibo de doação (doado ${formatCurrencyBRL(receiptAmounts.grossBrl)}, líquido ${formatCurrencyBRL(receiptAmounts.netBrl)}) — ${INSTITUTE_NAME}`
+      : `Recibo de doação confirmada (${formatCurrencyBRL(receiptAmounts.grossBrl)}) — ${INSTITUTE_NAME}`,
+    html,
+  }
 }

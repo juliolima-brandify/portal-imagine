@@ -8,7 +8,6 @@ import {
   isValidUuid,
   normalizePaymentMethodLabel,
   sumDonationsBrl,
-  sumRecognizedDonationsBrl,
 } from '@/lib/payments'
 
 const DEFAULT_PAGE_SIZE = 25
@@ -58,12 +57,14 @@ export async function GET(request: NextRequest) {
     const maskAnonymous =
       searchParams.get('maskAnonymous') === 'true' || searchParams.get('view') === 'summary'
 
-    const [statsRows, projectsRes] = await Promise.all([
-      includeStats && !all ? loadAllStatsRows() : Promise.resolve([]),
+    // Totais por status vêm de uma RPC agregada (item 11). Sem reler a tabela inteira a cada página;
+    // o painel pede stats=true só na primeira carga.
+    const [totalsRaw, projectsRes] = await Promise.all([
+      includeStats ? loadDonationTotals() : Promise.resolve({} as DonationTotals),
       supabaseAdmin.from('projects').select('id, title, slug'),
     ])
 
-    const stats = computeStats(statsRows)
+    // Sem stats=true a resposta não traz totais (null), para a tela não sobrescrever com zeros.
 
     if (projectsRes.error) {
       console.error('[AdminDonations] Erro ao buscar projetos:', projectsRes.error)
@@ -77,20 +78,27 @@ export async function GET(request: NextRequest) {
     // Modo "tudo": devolve todas as linhas filtradas numa única resposta.
     // Evita dezenas de idas e voltas do cliente para montar relatórios (R16).
     if (all) {
-      const rows = await loadAllDonations(statusFilter, methodFilter, searchQuery)
+      const { rows, truncated } = await loadAllDonations(statusFilter, methodFilter, searchQuery)
+      // Nunca corta em silêncio (R16): se o teto de páginas foi atingido, avisa explicitamente.
+      if (truncated) {
+        return jsonNoStore(
+          { error: 'A lista excede o limite de linhas para exportação. Refine os filtros.', truncated: true },
+          { status: 422 }
+        )
+      }
       const items = await hydrateDonations(rows, projectMap, maskAnonymous)
       return jsonNoStore({
         data: items,
         total: items.length,
         page: 1,
         pageSize: items.length,
-        stats: includeStats ? computeStats(rows) : stats,
+        stats: includeStats ? statsFromTotals(totalsRaw) : null,
       })
     }
 
     const safeTerm = searchQuery ? sanitizeSearchTerm(searchQuery) : ''
     if (searchQuery && !safeTerm) {
-      return jsonNoStore({ data: [], total: 0, page, pageSize, stats })
+      return jsonNoStore({ data: [], total: 0, page, pageSize, stats: includeStats ? statsFromTotals(totalsRaw) : null })
     }
 
     const matchedProjectIds = safeTerm ? await findProjectIdsByQuery(safeTerm) : []
@@ -122,7 +130,7 @@ export async function GET(request: NextRequest) {
       total: typeof count === 'number' ? count : items.length,
       page,
       pageSize,
-      stats,
+      stats: includeStats ? statsFromTotals(totalsRaw) : null,
     })
   } catch (err) {
     console.error('[AdminDonations] Exceção inesperada:', err)
@@ -156,6 +164,10 @@ function applyDonationFilters<T extends {
     ]
     if (isValidUuid(opts.safeTerm)) {
       orFilters.push(`id.eq.${opts.safeTerm}`)
+    } else {
+      // Prefixo de UUID com 8+ hex (como aparece na tela): faixa por id, sem curingas.
+      const range = uuidPrefixRange(opts.safeTerm)
+      if (range) orFilters.push(`and(id.gte.${range.lo},id.lte.${range.hi})`)
     }
     if (opts.matchedProjectIds.length > 0) {
       orFilters.push(`project_id.in.(${opts.matchedProjectIds.join(',')})`)
@@ -180,52 +192,33 @@ function applyDonationFilters<T extends {
   return q
 }
 
-async function loadAllStatsRows(): Promise<
-  Array<{
-    amount: any
-    refunded_amount: any
-    status: string
-    payment_method: string | null
-    is_recurring: boolean
-  }>
-> {
-  const rows: Array<{
-    amount: any
-    refunded_amount: any
-    status: string
-    payment_method: string | null
-    is_recurring: boolean
-  }> = []
-  let from = 0
-  for (let pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
-    const { data, error } = await supabaseAdmin
-      .from('donations')
-      .select('amount, refunded_amount, status, payment_method, is_recurring')
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: true })
-      .range(from, from + BATCH_SIZE - 1)
-    if (error) throw error
-    const batch = data || []
-    rows.push(...batch)
-    if (batch.length < BATCH_SIZE) break
-    from += batch.length
-  }
-  return rows
+interface DonationTotals {
+  by_status?: Record<string, { count: number; gross: number; refunded: number; net: number }>
+  unique_donors?: number
 }
 
-function computeStats(
-  rows: Array<{ amount: any; refunded_amount?: any; status: string | null }>
-) {
+async function loadDonationTotals(): Promise<DonationTotals> {
+  const { data, error } = await supabaseAdmin.rpc('admin_donation_totals')
+  if (error) throw error
+  return (data ?? {}) as DonationTotals
+}
+
+function statsFromTotals(totals: DonationTotals) {
+  const byStatus = totals.by_status ?? {}
+  const count = (status: string) => Number(byStatus[status]?.count) || 0
+  const total = Object.values(byStatus).reduce((acc, item) => acc + (Number(item?.count) || 0), 0)
   return {
-    total: rows.length,
-    completedCount: rows.filter((r) => r.status === 'completed').length,
-    partiallyRefundedCount: rows.filter((r) => r.status === 'partially_refunded').length,
-    pendingCount: rows.filter((r) => r.status === 'pending').length,
-    failedCount: rows.filter((r) => r.status === 'failed' || r.status === 'refunded').length,
-    totalCompletedBrl: sumRecognizedDonationsBrl(rows),
-    totalPendingBrl: sumDonationsBrl(
-      rows.filter((r) => r.status === 'pending').map((r) => r.amount)
-    ),
+    total,
+    completedCount: count('completed'),
+    partiallyRefundedCount: count('partially_refunded'),
+    pendingCount: count('pending'),
+    failedCount: count('failed') + count('refunded'),
+    totalCompletedBrl: sumDonationsBrl([
+      byStatus.completed?.net ?? 0,
+      byStatus.partially_refunded?.net ?? 0,
+    ]),
+    totalPendingBrl: sumDonationsBrl([byStatus.pending?.gross ?? 0]),
+    uniqueDonors: Number(totals.unique_donors) || 0,
   }
 }
 
@@ -237,18 +230,19 @@ async function loadAllDonations(
   statusFilter: string,
   methodFilter: string,
   searchQuery: string
-): Promise<DonationRow[]> {
+): Promise<{ rows: DonationRow[]; truncated: boolean }> {
   const rows: DonationRow[] = []
   let safeTerm = ''
   let matchedProjectIds: string[] = []
 
   if (searchQuery) {
     safeTerm = sanitizeSearchTerm(searchQuery)
-    if (!safeTerm) return []
+    if (!safeTerm) return { rows: [], truncated: false }
     matchedProjectIds = await findProjectIdsByQuery(safeTerm)
   }
 
   let offset = 0
+  let truncated = true
   for (let pageIdx = 0; pageIdx < MAX_PAGES; pageIdx++) {
     const baseQuery = supabaseAdmin
       .from('donations')
@@ -267,16 +261,29 @@ async function loadAllDonations(
     if (error) throw error
     const batch = (data || []) as unknown as DonationRow[]
     rows.push(...batch)
-    if (batch.length < BATCH_SIZE) break
+    if (batch.length < BATCH_SIZE) {
+      truncated = false
+      break
+    }
     offset += batch.length
   }
 
-  return rows
+  return { rows, truncated }
+}
+
+/** Faixa de UUID para um prefixo hexadecimal de 8 a 32 dígitos (com ou sem hifens). */
+function uuidPrefixRange(term: string): { lo: string; hi: string } | null {
+  const hex = term.replace(/-/g, '').toLowerCase()
+  if (!/^[0-9a-f]{8,32}$/.test(hex)) return null
+  const fmt = (h: string) =>
+    `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`
+  return { lo: fmt(hex.padEnd(32, '0')), hi: fmt(hex.padEnd(32, 'f')) }
 }
 
 function sanitizeSearchTerm(value: string): string {
-  // Remove curingas e caracteres que quebram a sintaxe do filtro `.or()` do PostgREST.
-  return value.replace(/[%_(),"\\'*]/g, ' ').replace(/\s+/g, ' ').trim()
+  // Remove curingas (%, *) e caracteres que quebram a sintaxe do filtro `.or()` do PostgREST.
+  // O "_" fica: é o que aparece em ids como pay_... e a busca precisa achá-los.
+  return value.replace(/[%(),"\\'*]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 async function findProjectIdsByQuery(query: string): Promise<string[]> {

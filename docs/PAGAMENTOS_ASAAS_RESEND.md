@@ -118,3 +118,87 @@ Esta seção complementa as duas listas acima com as regras e decisões que a `/
 | **P2** | Política de retenção de `webhook_events.payload` (contém dados do pagador) | Sem expurgo automático; RLS e `REVOKE` já bloqueiam `anon`/`authenticated`. |
 | **P3** | Formato de `subscription.nextDueDate` aceito pelo Asaas | Passa a enviar `YYYY-MM-DD` (formato documentado); validar no sandbox antes do go-live. |
 | **P4** | Lista de eventos assinados no painel do Asaas | Eventos sem `targetStatus` são ignorados (não criam linha `pending`). |
+
+## Correções da Banca R3 sobre `a607706` (commit de correção `fix(pagamentos)`)
+
+Brief: `docs/PROMPT-CORRECAO-banca-a607706.md`. Decisões D7–D10 aceitas como recomendadas pelo Julio.
+
+### Decisões aplicadas
+
+| # | Decisão | Como ficou no código |
+|---|---|---|
+| **D7** | Recibo de doação parcialmente estornada: detalhado | `getReceiptAmounts` (doado / estornado / líquido) é a fonte única do TXT baixado, do e-mail e do assunto (`buildDonorReceiptEmail`, `src/lib/payments.ts`). |
+| **D8** | `PAYMENT_CHARGEBACK_DISPUTE` | Continua mapeado para `refunded` na classificação (`classifyAsaasWebhookEvent`). O status `disputed` não foi criado: ver pendências. |
+| **D9** | KPI "Doadores" | Doadores únicos por e-mail normalizado; sem e-mail, `user_id`; sem nenhum, a própria doação (`getDonorKey`, espelhado no SQL de `get_project_public_report` e `admin_donation_totals`). Anônimos entram no número. |
+| **D10** | Evento sem doação (`matched=false`) | Responde 200 e grava em `public.webhook_unmatched` (conciliação). Se a gravação falhar, responde 503 para o Asaas reenviar. Corrigido o comentário que prometia retry. |
+
+**Pendência para o sandbox do Asaas (não decidida no código):** `refundedValue` do `PAYMENT_PARTIALLY_REFUNDED` é acumulado ou do estorno atual? Até a validação, a soma dos itens de `refunds[]` com `status = DONE` é usada, e `refundedValue` só entra quando `refunds[]` não vier no payload.
+
+### Regras novas (não podem quebrar)
+
+- **R-B1** Estorno parcial registrado antes da confirmação se mantém (`refunded_amount` monotônico). Na confirmação, a doação nasce `partially_refunded` (100 → 30 → CONFIRMED = `partially_refunded`, estornado 30, projeto 70).
+- **R-B2** Estorno total grava `refunded_amount = amount`. Evento parcial atrasado sobre `refunded` não muda nada e não dispara alerta.
+- **R-B3** Estorno parcial sem valor concluído não muda o status nem alerta.
+- **R-B4** `profiles.email` não pode ser alterado por `authenticated` (trigger `protect_profile_email`). O e-mail de `profiles` segue `auth.users` (trigger `sync_profile_email_from_auth`). A conta do doador é identificada por `find_confirmed_auth_user_ids_by_email` (só e-mail confirmado, comparação exata e normalizada); nunca por `profiles.email`.
+- **R-B5** E-mails de `donations.donor_email` e `profiles.email` são gravados em minúsculo e sem espaços. Busca por e-mail usa igualdade, não `ilike`.
+- **R-B6** Relatório público do projeto (`get_project_public_report`) e totais do admin (`admin_donation_totals`) devolvem só agregados, sem PII. Visitante não lê `donations`.
+
+### Migrações
+
+- `20261126_asaas_payments_and_webhooks.sql`: único ajuste (item 6). Ao final, reconcede `SELECT (refunded_amount)` quando a coluna existe, para que a reexecução depois da 20261127 não revogue o valor estornado.
+- `20261127_banca_fixes.sql`: sem alteração. A transição de estado foi movida para a nova migração.
+- `20261128_banca_r3_fixes.sql` (nova, idempotente): trigger de e-mail, sincronização com `auth.users`, `find_confirmed_auth_user_ids_by_email`, normalização de e-mail e backfill, `asaas_donation_transition` (função pura de estado), `apply_asaas_webhook_event` (mesma assinatura de 14 parâmetros), `webhook_unmatched`, `get_project_public_report`, `admin_donation_totals`, backfill de `refunded_amount` (item 8).
+- **Não aplicar em produção** (`zzxtethlsdjjfjjrqmlk`) sem a aprovação da `/banca` sobre o commit final. Nenhuma consulta foi feita nesse projeto.
+
+### Itens da banca: onde e como estão cobertos
+
+| Item | Arquivo (principal) | Prova |
+|---|---|---|
+| 1 Tomada de doações via `profiles.email` | `src/lib/server/donor-provision.ts` (RPC `find_confirmed_auth_user_ids_by_email`); `src/app/api/admin/donations/[id]/resend-receipt/route.ts` (fallback por `auth.admin.getUserById`); `src/app/api/checkout/create-session/route.ts` (`email: authUser.email`); migração 20261128, seção 1 | `payments.sql.test.mjs`: "item 1" (2 testes) |
+| 2 Recibo com valor bruto | `src/lib/payments.ts` (`getReceiptAmounts`, `buildDonorReceiptEmail`, `buildReceiptText`); `src/lib/server/email.ts` (`sendDonorReceiptEmail`, alerta com estornado e líquido); `src/app/api/webhooks/asaas/route.ts` (`refundedAmount`) | `payments.test.mjs`: "Banca R3 itens 2 e 4" |
+| 3 Estorno parcial antes da confirmação | migração 20261128, seções 4 e 5 (`asaas_donation_transition` e RPC) | `payments.sql.test.mjs`: "itens 3 e 9" |
+| 4 Estorno total e atraso | migração 20261128, seção 4 | `payments.sql.test.mjs`: "item 4"; matriz TS x SQL |
+| 5 `matched=false` | `src/app/api/webhooks/asaas/route.ts` (`recordUnmatchedEvent`, comentário corrigido); migração 20261128, seção 6 | `payments.sql.test.mjs`: "item 5" |
+| 6 Reexecução 26 depois da 27 | `20261126` (fim da seção 5) | `payments.sql.test.mjs`: "idempotência" (5 sequências com `has_column_privilege`) |
+| 7 `ilike` no e-mail | `donor-provision.ts` (`.eq`); migração 20261128, seção 2 (trigger e backfill) | `payments.sql.test.mjs`: "item 7"; `payments.test.mjs`: asserção sobre `.ilike(` |
+| 8 Backfill de `refunded_amount` | migração 20261128, seção 3 | `payments.sql.test.mjs`: "item 8" |
+| 9 PARTIALLY sem valor | `src/lib/payments.ts` (`classifyAsaasWebhookEvent`, `refunds[]` só com DONE); migração 20261128, seção 4 | `payments.test.mjs`: "itens 3 e 9"; `payments.sql.test.mjs`: "item 9" |
+| 10 Relatório público com RLS do visitante | `src/app/projetos/[id]/relatorios/page.tsx` (RPC); migração 20261128, seção 7 (inclui `recent` sem nome). `getProjectStats` removida de `src/lib/database.ts` | `payments.sql.test.mjs`: "item 10" |
+| 11 Estatísticas relidas a cada página | `src/app/api/admin/donations/route.ts` (`admin_donation_totals`; `truncated` com 422); `src/app/admin/doacoes/page.tsx` (`stats=true` só na primeira carga); migração 20261128, seção 8 | `payments.sql.test.mjs`: "item 11"; `payments.test.mjs`: asserção sobre `rpc('admin_donation_totals')` |
+| 12 UX de relatórios e histórico | `src/app/admin/relatorios/page.tsx` (métricas e exportação bloqueadas com `loadError`; período de 30 dias); `src/app/admin/dashboard/page.tsx` ("Tentar novamente", período de 30 dias, selo de status); `src/app/historico/page.tsx` (`exporting`, `try/finally`); `src/components/DateRangePicker.tsx` (preset "Últimos 30 dias", `onClear`) | Revisão de código, `tsc` e build; sem teste de tela |
+
+### Itens 🟡 feitos
+
+- Helpers únicos `getDonorKey` e `isRecognizedDonationStatus`. Uso nas telas: ver pendências B-P3.
+- Busca admin: `_` mantido; prefixo de UUID com 8+ hex por faixa `id.gte`/`id.lte` (`uuidPrefixRange`).
+- `getSaoPauloDateParts` com `hourCycle: 'h23'`.
+- `ConfirmDialog` (`warning`): `bg-amber-700 hover:bg-amber-800`, ícone `text-amber-700`.
+- `ProjectForm`: abas numa linha (`whitespace-nowrap`, sem `flex-wrap`), rótulos curtos.
+- `DateRangePicker`: "Limpar" notifica a tela-mãe via `onClear`.
+- `entrar`: "Lembrar-me" gravado só depois de `signInWithPassword` com sucesso.
+- `sanitizeSpreadsheetCell`: `\p{Cf}` com flag `u` (via `RegExp` de tempo de execução, por causa do alvo ES5 do tsc) e fórmulas de largura total (＝ ＋ － ＠). CSV exportado com BOM `﻿`.
+- E-mail de alerta de estorno mostra valor estornado e líquido.
+- `doacao-sucesso`: linha "Valor líquido"; "Convide amigos" oculto no estorno parcial.
+- `admin/dashboard`: selo de status em "Doações Recentes".
+- `create-session`: `cf-connecting-ip` só é lido quando o runtime é Cloudflare Workers.
+- Checagem de `error` em `webhooks/asaas` (leitura, enriquecimento, vínculo do doador) e em `resend-receipt`.
+- `src/lib/validations.ts` aceita `partially_refunded`; `src/app/projetos/page.tsx` usa o líquido.
+
+### Pendências (abertas, não implementadas como regra)
+
+| # | Pendência | Comportamento até a decisão |
+|---|---|---|
+| **B-P1** | Status `disputed` para `PAYMENT_CHARGEBACK_DISPUTE` (D8 aceita como recomendada, mas a mudança de status não foi feita) | Continua `refunded` (definitivo). Ajustar junto com a validação no sandbox. |
+| **B-P2** | Paginação por chave `(created_at, id)` no admin (item 11 prefere, ainda não feita) | Mantida paginação por `range`, com ordenação estável por `(created_at, id)`. |
+| **B-P3** | Chave de doador nas telas admin (`admin/dashboard` e `admin/relatorios` ainda usam chaves próprias, com anônimos separados) | `getDonorKey` existe e está testado. A troca nas telas depende de o modo `maskAnonymous` deixar de mascarar o e-mail; senão o número sai errado. |
+| **B-P4** | Acabamento "input-modern" do `DateRangePicker` | O seletor não usa a classe `input-modern`; o gatilho tem estilo próprio. Não alterado. |
+| **B-P5** | Exibição do admin ainda usa `profiles.email` como fallback para linhas antigas sem `donor_email` (`admin/donations/route.ts`) | Só afeta exibição para o admin; não concede acesso nem vincula doação. |
+| **B-P6** | Recibo não é reenviado sozinho quando há estorno depois do recibo | O admin reenvia manualmente pelo botão de reenvio. |
+| **B-P7** | Tela ou rotina de conciliação de `webhook_unmatched` | Os registros ficam guardados; nenhuma tela os consulta ainda. |
+| **B-P8** | Validação do `refundedValue` no sandbox do Asaas (ver acima) | Usa `refunds[]` com DONE. |
+
+### Limites do teste
+
+- `src/lib/payments.sql.test.mjs` roda as migrações reais em PGlite (Postgres em memória). O fixture recria apenas as tabelas base que 26 e 27 alteram, além de `auth.users`, `auth.uid()` e os papéis. As políticas RLS da migração 25 não estão no fixture; a proteção de `profiles.email` é testada pelo trigger, não pela RLS.
+- `service_role` está criado com `BYPASSRLS`, como no Supabase.
+- `npm install` sem `--legacy-peer-deps` falha com conflito de peer já existente no repositório. O PGlite foi instalado com `--legacy-peer-deps`.

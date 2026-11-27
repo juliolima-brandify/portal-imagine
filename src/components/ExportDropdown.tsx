@@ -7,9 +7,10 @@ interface ExportDropdownProps {
   data: any
   filename: string
   className?: string
+  disabled?: boolean
 }
 
-export default function ExportDropdown({ data, filename, className = '' }: ExportDropdownProps) {
+export default function ExportDropdown({ data, filename, className = '', disabled = false }: ExportDropdownProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -32,8 +33,10 @@ export default function ExportDropdown({ data, filename, className = '' }: Expor
   return (
     <div className={`relative ${className}`} ref={dropdownRef}>
       <button
+        type="button"
+        disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className="btn-primary flex items-center gap-2"
+        className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Exportar
         <svg 

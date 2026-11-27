@@ -97,6 +97,8 @@ export default function AdminDoacoesPage() {
   toastRef.current = { success, error, warning }
   const loadSeqRef = useRef(0)
   const operationLockRef = useRef(false)
+  // Totais são globais (RPC agregada): pedidos seguintes à primeira carga não os recalculam.
+  const statsLoadedRef = useRef(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -121,6 +123,7 @@ export default function AdminDoacoesPage() {
       if (statusFilter !== 'all') params.set('status', statusFilter)
       if (methodFilter !== 'all') params.set('method', methodFilter)
       if (debouncedSearch) params.set('q', debouncedSearch)
+      params.set('stats', statsLoadedRef.current ? 'false' : 'true')
 
       const res = await adminFetch(`/api/admin/donations?${params.toString()}`)
       const json = await safeReadJson(res)
@@ -133,6 +136,7 @@ export default function AdminDoacoesPage() {
         setTotal(nextTotal)
 
         if (json.stats && typeof json.stats === 'object') {
+          statsLoadedRef.current = true
           const s = json.stats as Partial<AdminDonationStats>
           setStats({
             total: typeof s.total === 'number' ? s.total : nextTotal,

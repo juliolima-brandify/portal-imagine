@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import {
+  fileURLToPath } from 'node:url'
 import {
   INSTITUTE_CNPJ,
   ASAAS_ITEM_NAME_MAX_LEN,
@@ -19,7 +20,12 @@ import {
   calculateNextDueDateSaoPaulo,
   buildAsaasCheckoutPayload,
   classifyAsaasWebhookEvent,
-  resolveNextDonationStatus,
+  transitionDonationState,
+  buildDonorReceiptEmail,
+  getReceiptAmounts,
+  getDonorKey,
+  isRecognizedDonationStatus,
+  normalizeDonorEmail,
   sanitizePublicSessionResponse,
   escapeHtml,
   sanitizeSpreadsheetCell,
@@ -160,13 +166,15 @@ test('R3: classifyAsaasWebhookEvent e resolveNextDonationStatus lidam com evento
   assert.equal(paymentReceived.billingType, 'PIX')
 
   // Eventos atrasados (CHECKOUT_EXPIRED / PAYMENT_OVERDUE) nunca rebaixam doação já confirmada
-  assert.equal(resolveNextDonationStatus('completed', 'failed'), 'completed')
-  assert.equal(resolveNextDonationStatus('completed', 'pending'), 'completed')
+  const next = (status, target, extra = {}) =>
+    transitionDonationState({ status, amount: 100, target, ...extra }).status
+  assert.equal(next('completed', 'failed'), 'completed')
+  assert.equal(next('completed', 'pending'), 'completed')
   // PAYMENT_RECEIVED após PAYMENT_CONFIRMED mantém completed
-  assert.equal(resolveNextDonationStatus('completed', 'completed'), 'completed')
+  assert.equal(next('completed', 'completed'), 'completed')
   // Estorno (PAYMENT_REFUNDED) reverte completed -> refunded e trava em refunded
-  assert.equal(resolveNextDonationStatus('completed', 'refunded'), 'refunded')
-  assert.equal(resolveNextDonationStatus('refunded', 'completed'), 'refunded')
+  assert.equal(next('completed', 'refunded'), 'refunded')
+  assert.equal(next('refunded', 'completed'), 'refunded')
 })
 
 test('R4 e R5: recibo usa CNPJ oficial 14.351.728/0001-72, sessão pública omite PII e sanitizadores bloqueiam XSS/CSV injection', () => {
@@ -347,8 +355,9 @@ test('R9-R17: correções da banca (webhook 503, estorno parcial, e-mail exato, 
 
   // R11: e-mail exato com curingas escapados
   const provisionSource = read('src/lib/server/donor-provision.ts')
-  assert.ok(provisionSource.includes('escapeLikePattern'))
-  assert.equal(/\.ilike\(\s*['"]email['"]\s*,\s*cleanEmail\s*\)/.test(provisionSource), false, 'não pode usar ilike com e-mail cru')
+  // Itens 1 e 7 da banca R3: comparação exata e conta vinda de auth.users (executável em payments.sql.test.mjs).
+  assert.ok(provisionSource.includes('find_confirmed_auth_user_ids_by_email'))
+  assert.equal(provisionSource.includes('.ilike('), false, 'donor-provision não pode usar ilike')
 
   // R12: colunas explícitas no leitor do doador
   const dbSource = read('src/lib/database.ts')
@@ -385,7 +394,9 @@ test('R9-R17: correções da banca (webhook 503, estorno parcial, e-mail exato, 
   // R16: totais do admin sem truncamento silencioso
   const adminRouteSource = read('src/app/api/admin/donations/route.ts')
   assert.equal(/\.limit\(\s*(1000|5000)\s*\)/.test(adminRouteSource), false, 'admin/donations não pode truncar em 1.000/5.000')
-  assert.ok(adminRouteSource.includes('loadAllStatsRows'))
+  // Item 11 (banca R3): totais vêm da RPC agregada, não de releitura da tabela inteira.
+  assert.ok(adminRouteSource.includes("rpc('admin_donation_totals')"))
+  assert.equal(adminRouteSource.includes('loadAllStatsRows'), false)
 
   // R17: reenvio de recibo com lock no servidor e confirmação no admin
   const resendSource = read('src/app/api/admin/donations/[id]/resend-receipt/route.ts')
@@ -515,4 +526,103 @@ test('Correções Banca 86d1ca9: payment.refunds[], reconhecido líquido, CSV \r
   assert.ok(mig27.includes('VALIDATE CONSTRAINT donations_status_chk'))
   assert.ok(mig27.includes('VALIDATE CONSTRAINT donations_refunded_amount_chk'))
   assert.ok(mig27.includes('refund_changed'))
+})
+
+test('Banca R3 itens 2 e 4: recibo baixado, e-mail e assunto mostram os mesmos números (doado, estornado, líquido)', () => {
+  const norm = (text) => text.replace(/\u00a0/g, ' ')
+  const base = {
+    donationId: 'don-1',
+    donorName: 'Ana',
+    donorEmail: 'ana@x.com',
+    amount: 100,
+    projectTitle: 'Projeto X',
+    createdAt: '2026-11-01T12:00:00Z',
+    paymentMethod: 'PIX',
+    transactionId: 'pay_1',
+  }
+  const partial = { ...base, refundedAmount: 30, status: 'partially_refunded' }
+
+  assert.deepEqual(getReceiptAmounts({ amount: 100, refundedAmount: 30, status: 'partially_refunded' }), {
+    grossBrl: 100,
+    refundedBrl: 30,
+    netBrl: 70,
+    hasRefund: true,
+  })
+
+  const text = norm(buildReceiptText(partial))
+  assert.ok(text.includes('Valor: R$ 100,00'))
+  assert.ok(text.includes('Valor Estornado: R$ 30,00'))
+  assert.ok(text.includes('Valor Líquido Reconhecido: R$ 70,00'))
+
+  const mail = buildDonorReceiptEmail({
+    ...partial,
+    to: 'ana@x.com',
+    publicOrigin: 'https://imagineinstituto.com',
+    portalOrigin: 'https://portal.imagineinstituto.com',
+    isNewAccount: false,
+  })
+  const html = norm(mail.html)
+  for (const value of ['R$ 100,00', 'R$ 30,00', 'R$ 70,00']) {
+    assert.ok(html.includes(value), `e-mail deve mostrar ${value}`)
+  }
+  assert.ok(norm(mail.subject).includes('doado R$ 100,00, líquido R$ 70,00'), mail.subject)
+
+  // Sem estorno: nenhuma linha de estorno no e-mail nem no TXT.
+  const plain = buildDonorReceiptEmail({ ...base, status: 'completed', to: 'ana@x.com', publicOrigin: 'https://imagineinstituto.com', portalOrigin: 'https://portal.imagineinstituto.com' })
+  assert.equal(plain.html.includes('Valor estornado'), false)
+  assert.equal(norm(buildReceiptText({ ...base, status: 'completed' })).includes('Valor Estornado'), false)
+})
+
+test('Banca R3 itens 3 e 9: classificador usa só refunds[] com status DONE; sem valor concluído não muda status nem alerta', () => {
+  const noDone = classifyAsaasWebhookEvent({
+    id: 'evt_9a',
+    event: 'PAYMENT_PARTIALLY_REFUNDED',
+    payment: { id: 'pay_9', value: 100, refunds: [{ status: 'PENDING', value: 30 }] },
+  })
+  assert.equal(noDone.targetStatus, null)
+  assert.equal(noDone.shouldNotifyFailureOrRefund, false)
+  assert.equal(noDone.refundedAmountBrl, null)
+
+  const done = classifyAsaasWebhookEvent({
+    id: 'evt_9b',
+    event: 'PAYMENT_PARTIALLY_REFUNDED',
+    payment: { id: 'pay_9', value: 100, refunds: [{ status: 'DONE', value: 30 }, { status: 'PENDING', value: 10 }] },
+  })
+  assert.equal(done.targetStatus, 'partially_refunded')
+  assert.equal(done.shouldNotifyFailureOrRefund, true)
+  assert.equal(done.refundedAmountBrl, 30)
+
+  // refundedValue só é fallback quando refunds[] não vem no payload.
+  const fallback = classifyAsaasWebhookEvent({
+    id: 'evt_9c',
+    event: 'PAYMENT_PARTIALLY_REFUNDED',
+    payment: { id: 'pay_9', value: 100, refundedValue: 25 },
+  })
+  assert.equal(fallback.refundedAmountBrl, 25)
+
+  const arrayWins = classifyAsaasWebhookEvent({
+    id: 'evt_9d',
+    event: 'PAYMENT_PARTIALLY_REFUNDED',
+    payment: { id: 'pay_9', value: 100, refunds: [], refundedValue: 25 },
+  })
+  assert.equal(arrayWins.refundedAmountBrl, null)
+  assert.equal(arrayWins.targetStatus, null)
+})
+
+test('Banca R3 🟡: planilha neutraliza fórmulas de largura total e marcas Cf (BOM); chave de doador e doação reconhecida são regras únicas', () => {
+  assert.equal(sanitizeSpreadsheetCell('＝HYPERLINK("x")'), '\'＝HYPERLINK("x")')
+  assert.equal(sanitizeSpreadsheetCell('＋1+1'), '\'＋1+1')
+  assert.equal(sanitizeSpreadsheetCell('－2'), '\'－2')
+  assert.equal(sanitizeSpreadsheetCell('＠user'), '\'＠user')
+  assert.equal(sanitizeSpreadsheetCell('\uFEFF=SUM(1)'), '\'=SUM(1)')
+
+  assert.equal(normalizeDonorEmail('  Ana@X.com '), 'ana@x.com')
+  assert.equal(normalizeDonorEmail('sem-arroba'), null)
+  assert.equal(getDonorKey({ donorEmail: ' A@x.com ', userId: 'u1', donationId: 'd1' }), 'e:a@x.com')
+  assert.equal(getDonorKey({ donorEmail: null, userId: 'u1', donationId: 'd1' }), 'u:u1')
+  assert.equal(getDonorKey({ donorEmail: null, userId: null, donationId: 'd1' }), 'd:d1')
+  assert.equal(isRecognizedDonationStatus('completed'), true)
+  assert.equal(isRecognizedDonationStatus('partially_refunded'), true)
+  assert.equal(isRecognizedDonationStatus('refunded'), false)
+  assert.equal(isRecognizedDonationStatus('pending'), false)
 })

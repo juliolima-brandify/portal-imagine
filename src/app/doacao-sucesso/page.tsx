@@ -18,6 +18,7 @@ interface PublicSessionState {
   projectTitle: string
   amountFormatted: string
   refundedAmountFormatted: string | null
+  netAmountFormatted: string | null
   paymentStatus: DonationStatus
   paymentMethod: string
   isRecurring: boolean
@@ -36,6 +37,7 @@ function DoacaoSucessoContent() {
     projectTitle: 'Instituto Imagine',
     amountFormatted: '',
     refundedAmountFormatted: null,
+    netAmountFormatted: null,
     paymentStatus: 'pending',
     paymentMethod: 'Pix / Cartão',
     isRecurring: false,
@@ -93,6 +95,11 @@ function DoacaoSucessoContent() {
             refundedAmountFormatted:
               typeof data.refundedAmountFormatted === 'string'
                 ? data.refundedAmountFormatted
+                : null,
+            // Valor líquido = doado - estornado (só quando há estorno parcial ou total registrado).
+            netAmountFormatted:
+              typeof data.refundedAmount === 'number' && data.refundedAmount > 0
+                ? formatCurrencyBRL(Math.max((Number(data.amount) || 0) - data.refundedAmount, 0))
                 : null,
             paymentStatus: nextStatus,
             paymentMethod: data.paymentMethod || 'Pix / Cartão',
@@ -282,6 +289,12 @@ function DoacaoSucessoContent() {
                         </dd>
                       </div>
                     )}
+                    {state.netAmountFormatted && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-600">Valor líquido:</dt>
+                        <dd className="font-semibold text-gray-900 tabular-nums">{state.netAmountFormatted}</dd>
+                      </div>
+                    )}
                     <div className="flex justify-between gap-4">
                       <dt className="text-gray-600">Status atual:</dt>
                       <dd
@@ -334,7 +347,7 @@ function DoacaoSucessoContent() {
                 </Link>
               </div>
 
-              {!isFailedOrRefunded && (
+              {!isFailedOrRefunded && state.paymentStatus !== 'partially_refunded' && (
                 <div className="mt-6 pt-5 border-t border-gray-200">
                   <p className="text-xs text-gray-500 mb-3">
                     Convide amigos e familiares para conhecerem o Instituto Imagine:

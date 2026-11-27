@@ -3,14 +3,17 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { getProject, getDonations } from '@/lib/database'
-import {
-  SAO_PAULO_TIME_ZONE,
-  formatCurrencyBRL,
-  getRecognizedDonationAmountBrl,
-  sumDonationsBrl,
-  sumRecognizedDonationsBrl,
-} from '@/lib/payments'
+import { getProject } from '@/lib/database'
+import { supabase } from '@/lib/supabase'
+import { SAO_PAULO_TIME_ZONE, formatCurrencyBRL } from '@/lib/payments'
+
+interface PublicReportPayload {
+  net_total?: number
+  donation_count?: number
+  unique_donors?: number
+  monthly?: Array<{ month: string; net: number; donors: number }>
+  recent?: Array<{ net: number; created_at: string; anonymous: boolean }>
+}
 
 interface ProjectReport {
   id: string
@@ -66,39 +69,31 @@ export default function ProjectReportsPage() {
       try {
         setLoading(true)
         
-        // Carregar dados reais do Supabase
-        try {
-          // Carregar projeto
+          // Agregados públicos por RPC (migração 20261128): só números, sem nome nem e-mail (item 10).
+          // A tabela donations não é legível pelo visitante; o relatório não depende mais dela.
           const projectData = await getProject(projectId)
           if (!projectData) {
             throw new Error('Projeto não encontrado')
           }
 
-          // Carregar doações reconhecidas do projeto (confirmadas ou estornadas parcialmente)
-          const projectDonations = await getDonations()
-          const projectDonationsFiltered = projectDonations.filter(
-            (d) => d.project_id === projectId && getRecognizedDonationAmountBrl(d) > 0
-          )
+          const { data: reportRaw, error: reportErr } = await supabase.rpc('get_project_public_report', {
+            p_project_id: projectId,
+          })
+          if (reportErr) throw reportErr
 
-          const recognizedTotal = sumRecognizedDonationsBrl(projectDonationsFiltered)
+          const report = (reportRaw ?? {}) as PublicReportPayload
+          const recognizedTotal = Number(report.net_total) || 0
+          const donationCount = Number(report.donation_count) || 0
 
-          // Transformar dados para o formato do relatório
           const projectReport: ProjectReport = {
             id: projectData.id,
             title: projectData.title,
             description: projectData.description || '',
             target_amount: projectData.target_amount,
             current_amount: projectData.current_amount,
-            total_donations: projectDonationsFiltered.length,
-            total_donors: new Set(
-              projectDonationsFiltered.map((d) =>
-                d.user_id ? `user:${d.user_id}` : `don:${d.id}`
-              )
-            ).size,
-            average_donation:
-              projectDonationsFiltered.length > 0
-                ? recognizedTotal / projectDonationsFiltered.length
-                : 0,
+            total_donations: donationCount,
+            total_donors: Number(report.unique_donors) || 0,
+            average_donation: donationCount > 0 ? recognizedTotal / donationCount : 0,
             completion_percentage:
               Number(projectData.target_amount) > 0
                 ? Math.min(Math.round((Number(projectData.current_amount || 0) / Number(projectData.target_amount)) * 100), 100)
@@ -111,34 +106,16 @@ export default function ProjectReportsPage() {
             image_url: projectData.image_url || '/img/sobre.webp'
           }
 
-          // Processar dados de doações por mês
-          const donationData: DonationData[] = []
-          const monthlyData = new Map<string, { amount: number, donors: Set<string> }>()
-          
-          projectDonationsFiltered.forEach(donation => {
-            const date = new Date(donation.created_at)
-            const monthKey = `${date.toLocaleDateString('pt-BR', { month: 'short', timeZone: SAO_PAULO_TIME_ZONE })} ${date.toLocaleDateString('pt-BR', { year: 'numeric', timeZone: SAO_PAULO_TIME_ZONE })}`
-            
-            if (!monthlyData.has(monthKey)) {
-              monthlyData.set(monthKey, { amount: 0, donors: new Set() })
+          const donationData: DonationData[] = (report.monthly ?? []).map((m) => {
+            const [year, month] = String(m.month).split('-').map(Number)
+            const monthDate = new Date(Date.UTC(year, month - 1, 15, 12))
+            const label = monthDate.toLocaleDateString('pt-BR', { month: 'short', timeZone: SAO_PAULO_TIME_ZONE })
+            const yearLabel = monthDate.toLocaleDateString('pt-BR', { year: 'numeric', timeZone: SAO_PAULO_TIME_ZONE })
+            return {
+              month: `${label} ${yearLabel}`,
+              amount: Number(m.net) || 0,
+              donors: Number(m.donors) || 0,
             }
-            
-            const monthData = monthlyData.get(monthKey)!
-            monthData.amount = sumDonationsBrl([
-              monthData.amount,
-              getRecognizedDonationAmountBrl(donation),
-            ])
-            monthData.donors.add(
-              donation.user_id ? `user:${donation.user_id}` : `don:${donation.id}`
-            )
-          })
-
-          monthlyData.forEach((data, month) => {
-            donationData.push({
-              month,
-              amount: data.amount,
-              donors: data.donors.size
-            })
           })
 
           // Dados de gastos (mock por enquanto - em produção viria de uma tabela de gastos)
@@ -149,27 +126,19 @@ export default function ProjectReportsPage() {
             { category: 'Operacional', amount: projectData.current_amount * 0.04, percentage: 4, description: 'Material didático e despesas administrativas' }
           ]
 
-          // Doadores recentes
-          const recentDonors: DonorData[] = projectDonationsFiltered
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-            .slice(0, 5)
-            .map(donation => ({
-              name: donation.anonymous ? 'Doador Anônimo' : 'Doador',
-              amount: getRecognizedDonationAmountBrl(donation),
-              date: donation.created_at,
-              anonymous: donation.anonymous
-            }))
+          // Doadores recentes: a RPC devolve só valor, data e se é anônima.
+          const recentDonors: DonorData[] = (report.recent ?? []).map((item) => ({
+            name: item.anonymous ? 'Doador Anônimo' : 'Doador',
+            amount: Number(item.net) || 0,
+            date: item.created_at,
+            anonymous: Boolean(item.anonymous),
+          }))
 
           setProject(projectReport)
           setDonationData(donationData)
           setExpenseData(expenseData)
           setRecentDonors(recentDonors)
 
-        } catch (error) {
-          console.error('Erro ao carregar dados do relatório:', error)
-          throw error
-        }
-        
       } catch (err) {
         setError('Erro ao carregar relatório')
         console.error('Erro ao carregar relatório:', err)

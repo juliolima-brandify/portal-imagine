@@ -39,7 +39,8 @@ export function exportToCSV(data: any[], filename: string): void {
     ),
   ].join('\n')
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  // BOM UTF-8 para o Excel reconhecer acentos (correção da banca R3).
+  const blob = new Blob(['﻿', csvContent], { type: 'text/csv;charset=utf-8;' })
   const link = document.createElement('a')
   const url = URL.createObjectURL(blob)
 

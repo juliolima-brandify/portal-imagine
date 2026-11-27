@@ -4,6 +4,8 @@ import { jsonNoStore } from '@/lib/admin-http'
 import {
   classifyAsaasWebhookEvent,
   getDonationDestinationLabel,
+  isRecognizedDonationStatus,
+  normalizeDonorEmail,
   type DonationStatus,
 } from '@/lib/payments'
 import {
@@ -110,11 +112,20 @@ export async function POST(request: NextRequest) {
   }
 
   if (!outcome.matched || !outcome.donationId) {
+    // D10: responde 200 para não travar a fila do Asaas. O evento fica em webhook_unmatched
+    // para conciliação manual; se a gravação falhar, responde 503 e o Asaas reenvia.
+    const recorded = await recordUnmatchedEvent(classified, parsed.data)
+    if (!recorded) {
+      return jsonNoStore({ error: 'Webhook temporariamente indisponível' }, { status: 503 })
+    }
     return jsonNoStore({ received: true, matched: false })
   }
 
+  // Recibo sai quando a doação passa a contar como reconhecida (confirmada ou parcialmente
+  // estornada). Um estorno parcial registrado antes da confirmação também cai aqui.
   const becameCompleted =
-    outcome.currentStatus === 'completed' && (outcome.statusChanged || outcome.createdRenewal)
+    isRecognizedDonationStatus(outcome.currentStatus) &&
+    (outcome.previousStatus === 'pending' || outcome.previousStatus === 'failed' || outcome.createdRenewal)
   const becameAlertState =
     classified.shouldNotifyFailureOrRefund && (outcome.statusChanged || outcome.refundChanged)
 
@@ -141,6 +152,29 @@ export async function POST(request: NextRequest) {
     donationId: outcome.donationId,
     status: outcome.currentStatus,
   })
+}
+
+async function recordUnmatchedEvent(
+  classified: NonNullable<ReturnType<typeof classifyAsaasWebhookEvent>>,
+  rawPayload: unknown
+): Promise<boolean> {
+  const { error } = await supabaseAdmin.from('webhook_unmatched').upsert(
+    {
+      event_id: classified.eventId,
+      event_type: classified.eventType,
+      external_reference: classified.externalReference,
+      asaas_payment_id: classified.paymentId,
+      asaas_checkout_id: classified.checkoutId,
+      asaas_subscription_id: classified.subscriptionId,
+      payload: rawPayload ?? {},
+    },
+    { onConflict: 'event_id', ignoreDuplicates: true }
+  )
+  if (error) {
+    console.error('[WebhookAsaas] Erro ao registrar evento sem doação (webhook_unmatched):', error)
+    return false
+  }
+  return true
 }
 
 async function applyAsaasWebhookEvent(params: {
@@ -212,6 +246,10 @@ async function handlePostWebhookSideEffects(params: {
     .eq('id', params.donationId)
     .maybeSingle()
 
+  if (rowRes.error) {
+    console.error('[AsaasWebhook] Erro ao ler doação para efeitos colaterais:', rowRes.error)
+    return
+  }
   const row = rowRes.data
   if (!row) return
 
@@ -220,10 +258,17 @@ async function handlePostWebhookSideEffects(params: {
   if (customerId && !row.asaas_customer_id) enrichUpdates.asaas_customer_id = customerId
   if (billingType && !row.payment_method) enrichUpdates.payment_method = billingType
   if (donorName && !row.donor_name) enrichUpdates.donor_name = donorName
-  if (donorEmail && !row.donor_email) enrichUpdates.donor_email = donorEmail.toLowerCase()
+  const cleanDonorEmail = normalizeDonorEmail(donorEmail)
+  if (cleanDonorEmail && !row.donor_email) enrichUpdates.donor_email = cleanDonorEmail
 
   if (Object.keys(enrichUpdates).length > 0) {
-    await supabaseAdmin.from('donations').update(enrichUpdates).eq('id', params.donationId)
+    const { error: enrichErr } = await supabaseAdmin
+      .from('donations')
+      .update(enrichUpdates)
+      .eq('id', params.donationId)
+    if (enrichErr) {
+      console.error('[AsaasWebhook] Erro ao enriquecer doação:', enrichErr)
+    }
   }
 
   const projectObj =
@@ -235,7 +280,7 @@ async function handlePostWebhookSideEffects(params: {
     campaignSlug: row.campaign_slug,
   })
 
-  const effectiveDonorEmail = row.donor_email || (donorEmail ? donorEmail.toLowerCase() : null)
+  const effectiveDonorEmail = normalizeDonorEmail(row.donor_email) || cleanDonorEmail
   const effectiveDonorName = row.donor_name || donorName
   const amount = Number(row.amount)
   const txId = row.asaas_payment_id || paymentId || null
@@ -264,10 +309,11 @@ async function handlePostWebhookSideEffects(params: {
           })
 
           if (provision.userId && !row.user_id) {
-            await supabaseAdmin
+            const { error: linkErr } = await supabaseAdmin
               .from('donations')
               .update({ user_id: provision.userId })
               .eq('id', params.donationId)
+            if (linkErr) console.error('[AsaasWebhook] Erro ao vincular doação ao doador:', linkErr)
           }
 
           const receipt = await sendDonorReceiptEmail({
@@ -285,6 +331,8 @@ async function handlePostWebhookSideEffects(params: {
             createdAt: row.created_at,
             isNewAccount: provision.isNewAccount,
             portalAccessUrl: provision.portalAccessUrl,
+            refundedAmount: Number(row.refunded_amount) || 0,
+            status: row.status,
           })
 
           if (receipt.sent) {
@@ -349,6 +397,8 @@ async function handlePostWebhookSideEffects(params: {
     await sendAdminPaymentAlertEmail({
       eventType: params.eventType,
       amount,
+      refundedAmount: Number(row.refunded_amount) || 0,
+      status: row.status,
       projectTitle,
       donationId: params.donationId,
       donorEmail: effectiveDonorEmail,

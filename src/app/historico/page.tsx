@@ -28,6 +28,8 @@ export default function HistoricoPage() {
   const [dateRange, setDateRange] = useState<'all' | 'week' | 'month' | 'year'>('all')
   const [sortBy, setSortBy] = useState<'date' | 'amount' | 'project'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [exporting, setExporting] = useState<'csv' | 'pdf' | 'excel' | null>(null)
+  const [exportError, setExportError] = useState('')
 
   useEffect(() => {
     const loadData = async () => {
@@ -109,6 +111,21 @@ export default function HistoricoPage() {
       }
       return sortOrder === 'asc' ? comparison : -comparison
     })
+
+  // Gabarito: admin/doacoes. Botões travados durante a exportação e erro visível se falhar.
+  const handleExport = async (format: 'csv' | 'pdf' | 'excel') => {
+    if (exporting) return
+    setExporting(format)
+    setExportError('')
+    try {
+      await exportDonations(filteredDonations, { format })
+    } catch (err) {
+      console.error('[Historico] Erro ao exportar doações:', err)
+      setExportError('Não foi possível exportar o histórico. Tente novamente.')
+    } finally {
+      setExporting(null)
+    }
+  }
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('pt-BR', {
@@ -369,26 +386,32 @@ export default function HistoricoPage() {
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
                 type="button"
-                className="btn-secondary"
-                onClick={() => void exportDonations(filteredDonations, { format: 'csv' })}
+                className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={exporting !== null}
+                onClick={() => void handleExport('csv')}
               >
-                Exportar CSV
+                {exporting === 'csv' ? 'Exportando...' : 'Exportar CSV'}
               </button>
               <button
                 type="button"
-                className="btn-secondary"
-                onClick={() => void exportDonations(filteredDonations, { format: 'pdf' })}
+                className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={exporting !== null}
+                onClick={() => void handleExport('pdf')}
               >
-                Gerar PDF
+                {exporting === 'pdf' ? 'Gerando...' : 'Gerar PDF'}
               </button>
               <button
                 type="button"
-                className="btn-secondary"
-                onClick={() => void exportDonations(filteredDonations, { format: 'excel' })}
+                className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={exporting !== null}
+                onClick={() => void handleExport('excel')}
               >
-                Exportar Excel
+                {exporting === 'excel' ? 'Exportando...' : 'Exportar Excel'}
               </button>
             </div>
+            {exportError && (
+              <p role="alert" className="mt-4 text-sm text-red-700">{exportError}</p>
+            )}
           </div>
         )}
       </main>
