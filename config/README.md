@@ -64,7 +64,7 @@ npm run deploy:prod
 
 - [Configuração de Ambientes](../docs/ambientes/AMBIENTES.md)
 - [Configurar Ambiente Dev](../docs/ambientes/CONFIGURAR_DEV.md)
-- [Stripe Produção](../docs/configuracao/STRIPE_PRODUCAO.md)
+- [Pagamentos Asaas + Resend](../docs/PAGAMENTOS_ASAAS_RESEND.md)
 
 ---
 

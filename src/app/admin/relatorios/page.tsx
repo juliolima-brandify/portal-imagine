@@ -1,256 +1,282 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { getProjects, getDonations } from '@/lib/database'
+import { getProjects } from '@/lib/database'
+import { fetchAdminDonationsReport, type AdminDonationsReport } from '@/lib/admin-api'
+import {
+  formatCurrencyBRL,
+  getDonationDestinationLabel,
+  getSaoPauloDateParts,
+  normalizePaymentMethodLabel,
+  saoPauloMidnightUtc,
+} from '@/lib/payments'
 
 import ExportDropdown from '@/components/ExportDropdown'
 import DonationTrendChart from '@/components/DonationTrendChart'
-import DateRangePickerWithPresets, { PresetId } from '@/components/DateRangePicker'
+import DateRangePickerWithPresets, { getPresetRange } from '@/components/DateRangePicker'
 import type { User } from '@supabase/supabase-js'
 
-// Estrutura para dados reais
-const initialReports = {
-  overview: {
-    totalDonations: 0,
-    totalDonors: 0,
-    activeProjects: 0,
-    completedProjects: 0,
-    monthlyGrowth: 0,
-    averageDonation: 0,
-    totalVolunteers: 0
-  },
-  monthlyData: [] as any[],
-  topProjects: [] as any[],
-  donorSegments: [] as any[],
-  paymentMethods: [] as any[],
-  recentDonations: [] as any[]
-}
-
 export default function AdminRelatoriosPage() {
-  const [user, setUser] = useState<User | null>(null)
-  // Loading removido
-  const [reports, setReports] = useState(initialReports)
-  const [dateStart, setDateStart] = useState<Date | undefined>(undefined)
-  const [dateEnd, setDateEnd] = useState<Date | undefined>(undefined)
-  const [presetId, setPresetId] = useState<string>('custom')
-  const [selectedReport, setSelectedReport] = useState<'overview' | 'donations' | 'projects' | 'donors'>('overview')
+  const [, setUser] = useState<User | null>(null)
+  const [report, setReport] = useState<AdminDonationsReport | null>(null)
   const [projects, setProjects] = useState<any[]>([])
+  const [totalVolunteers, setTotalVolunteers] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [exportError, setExportError] = useState('')
+
+  // Métricas, gráficos e tabelas usam o mesmo escopo do seletor: começa em "Últimos 30 dias".
+  const [dateStart, setDateStart] = useState<Date | undefined>(() => getPresetRange('last30Days').start)
+  const [dateEnd, setDateEnd] = useState<Date | undefined>(() => getPresetRange('last30Days').end)
+  const [presetId, setPresetId] = useState<string>('last30Days')
+  const [selectedReport, setSelectedReport] = useState<'overview' | 'donations' | 'projects' | 'donors'>('overview')
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all')
-  const [topDonors, setTopDonors] = useState<any[]>([])
   const chartImageRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     const getUser = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setUser(user)
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser()
+        if (authUser) {
+          setUser(authUser)
         } else {
           window.location.href = '/entrar'
-          return
         }
       } catch (error) {
-        console.log('Erro ao obter usuário:', error)
+        console.error('Erro ao obter usuário:', error)
       }
     }
 
-    getUser()
+    void getUser()
   }, [])
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(amount)
-  }
-
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR')
+    return new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
   }
 
-  // Carregar dados dinâmicos do banco
-  useEffect(() => {
-    const loadReports = async () => {
-      try {
-        const [projectsData, donations] = await Promise.all([
-          getProjects(),
-          getDonations()
-        ])
-        // Contar voluntários (profiles.role = 'volunteer')
-        let totalVolunteers = 0
-        try {
-          const { data: vols } = await supabase
-            .from('profiles')
-            .select('id, role')
-            .eq('role', 'volunteer')
-          totalVolunteers = vols?.length || 0
-        } catch (e) {
-          totalVolunteers = 0
-        }
+  const spBounds = useMemo(() => {
+    const now = new Date()
+    const endDate = dateEnd || now
+    const startDate =
+      dateStart || new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() - 29)
+    return {
+      startDate,
+      endDate,
+      startUtc: new Date(saoPauloMidnightUtc(startDate)),
+      endUtc: new Date(saoPauloMidnightUtc(endDate) + 86400000 - 1),
+    }
+  }, [dateStart, dateEnd])
 
+  const loadBaseData = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const [projectsData, reportData, volsRes] = await Promise.all([
+        getProjects(),
+        fetchAdminDonationsReport({
+          start: spBounds.startUtc,
+          end: spBounds.endUtc,
+          projectId: selectedProjectId,
+        }),
+        supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('role', 'volunteer'),
+      ])
 
-        setProjects(projectsData)
-
-        // Determinar intervalo de datas conforme período
-        const startDate = dateStart
-        const endDate = dateEnd || new Date()
-
-        // Filtrar por projeto e data
-        let filteredDonations = selectedProjectId === 'all'
-          ? donations
-          : donations.filter((d: any) => d.project_id === selectedProjectId)
-        if (startDate) {
-          filteredDonations = filteredDonations.filter((d: any) => new Date(d.created_at) >= startDate!)
-        }
-        if (endDate) {
-          filteredDonations = filteredDonations.filter((d: any) => new Date(d.created_at) <= endDate!)
-        }
-
-        const activeProjects = projectsData.filter((p: any) => p.status === 'active')
-        const completedProjects = projectsData.filter((p: any) => p.status === 'completed')
-        const completedDonations = filteredDonations.filter((d: any) => d.status === 'completed')
-
-        const totalDonations = completedDonations.reduce((sum: number, d: any) => sum + d.amount, 0)
-        const totalDonors = new Set(completedDonations.map((d: any) => d.user_id).filter(Boolean)).size
-        const avgDonation = completedDonations.length > 0 ? totalDonations / completedDonations.length : 0
-
-        // Dados do período para o gráfico
-        // Preenchimento de lacunas conforme intervalo
-        const fillHours = () => Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2,'0')}h`)
-        const fillDays = () => {
-          const labels: string[] = []
-          const cur = new Date(startDate || new Date())
-          cur.setHours(0,0,0,0)
-          const last = new Date(endDate)
-          last.setHours(23,59,59,999)
-          while (cur <= last) {
-            labels.push(`${String(cur.getDate()).padStart(2,'0')}/${String(cur.getMonth()+1).padStart(2,'0')}`)
-            cur.setDate(cur.getDate()+1)
-          }
-          return labels
-        }
-        const fillMonths = () => {
-          const s = startDate || new Date()
-          const labels: string[] = []
-          const cur = new Date(s.getFullYear(), s.getMonth(), 1)
-          const last = new Date(endDate.getFullYear(), endDate.getMonth(), 1)
-          while (cur <= last) {
-            labels.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`)
-            cur.setMonth(cur.getMonth()+1)
-          }
-          return labels
-        }
-
-        // Determinar granularidade baseado no intervalo
-        const diffDays = startDate && endDate ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) : 30
-        
-        let labels: string[] = []
-        if (diffDays <= 1) {
-          // 1 dia ou menos: por hora
-          labels = fillHours()
-        } else if (diffDays > 90) {
-          // Mais de 90 dias: por mês
-          labels = fillMonths()
-        } else {
-          // Entre 2 e 90 dias: por dia
-          labels = fillDays()
-        }
-
-        const buckets = new Map<string, number>(labels.map(l => [l, 0]))
-        completedDonations.forEach((d: any) => {
-          const dt = new Date(d.created_at)
-          if (dt < (startDate || new Date()) || dt > endDate) return
-          let key = ''
-          if (diffDays <= 1) {
-            key = `${String(dt.getHours()).padStart(2,'0')}h`
-          } else if (diffDays > 90) {
-            key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`
-          } else {
-            key = `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}`
-          }
-          buckets.set(key, (buckets.get(key) || 0) + d.amount)
-        })
-        const monthlyData = labels.map(label => ({ 
-          month: diffDays > 90 ? label.split('-').reverse().join('/') : label, 
-          donations: buckets.get(label) || 0 
-        }))
-
-        // Top projects
-        const byProject = new Map<string, { amount: number, donors: Set<string> }>()
-        completedDonations.forEach((d: any) => {
-          const key = d.project_id
-          if (!byProject.has(key)) byProject.set(key, { amount: 0, donors: new Set() })
-          const agg = byProject.get(key)!
-          agg.amount += d.amount
-          if (d.user_id) agg.donors.add(d.user_id)
-        })
-        const topProjects = projectsData
-          .map((p: any) => {
-            const agg = byProject.get(p.id)
-            const amount = agg?.amount || 0
-            const donors = agg ? agg.donors.size : 0
-            const progress = p.target_amount ? Math.round(Math.min((p.current_amount / p.target_amount) * 100, 100)) : 0
-            return { name: p.title, amount, donors, progress }
-          })
-          .sort((a: any, b: any) => b.amount - a.amount)
-          .slice(5)
-
-        // Top Doadores (com perfil quando disponível)
-        const byDonor = new Map<string, { amount: number, count: number }>()
-        completedDonations.forEach((d: any) => {
-          const key = d.user_id || `anon-${d.id}`
-          if (!byDonor.has(key)) byDonor.set(key, { amount: 0, count: 0 })
-          const agg = byDonor.get(key)!
-          agg.amount += d.amount
-          agg.count += 1
-        })
-        const donorsArray = Array.from(byDonor.entries())
-          .map(([userId, info]) => ({ userId, ...(info as any) }))
-          .sort((a: any, b: any) => b.amount - a.amount)
-          .slice(0, 5)
-        setTopDonors(donorsArray)
-
-        setReports({
-          overview: {
-            totalDonations,
-            totalDonors,
-            activeProjects: activeProjects.length,
-            completedProjects: completedProjects.length,
-            monthlyGrowth: 0,
-            averageDonation: avgDonation,
-            totalVolunteers
-          },
-          monthlyData,
-          topProjects,
-          donorSegments: [],
-          paymentMethods: [],
-          recentDonations: completedDonations.slice(0, 10).map(d => ({
-            id: d.id,
-            donor: d.anonymous ? 'Anônimo' : (d.user_id || 'Usuário'),
-            project: d.project_id,
-            amount: d.amount,
-            date: d.created_at
-          }))
-        })
-      } catch (e) {
-        // Mantém estado inicial silenciosamente
+      if (volsRes.error) {
+        throw volsRes.error
       }
+
+      setProjects(projectsData)
+      setReport(reportData)
+      setTotalVolunteers(volsRes.count ?? 0)
+    } catch (err) {
+      console.error('[AdminRelatorios] Erro ao carregar relatórios:', err)
+      setLoadError('Não foi possível carregar os dados financeiros dos relatórios. Tente novamente.')
+    } finally {
+      setLoading(false)
+    }
+  }, [spBounds.startUtc.getTime(), spBounds.endUtc.getTime(), selectedProjectId])
+
+  useEffect(() => {
+    void loadBaseData()
+  }, [loadBaseData])
+
+  const { reports, topDonors } = useMemo(() => {
+    const { startDate, endDate } = spBounds
+    const activeProjects = projects.filter((p: any) => p.status === 'active')
+    const completedProjects = projects.filter((p: any) => p.status === 'completed')
+
+    const overviewRaw = report?.overview
+    const totalDonations = Number(overviewRaw?.net_total) || 0
+    const totalDonors = Number(overviewRaw?.unique_donors) || 0
+    const avgDonation = Number(overviewRaw?.average_donation) || 0
+    const monthlyGrowth = Number(overviewRaw?.growth_pct) || 0
+
+    // Dados do período para o gráfico (série agregada no Postgres em America/Sao_Paulo)
+    const fillHours = () =>
+      Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}h`)
+    const fillDays = () => {
+      const keys: string[] = []
+      const from = saoPauloMidnightUtc(startDate)
+      const to = saoPauloMidnightUtc(endDate)
+      for (let t = from; t <= to; t += 86400000) {
+        const { year, month, day } = getSaoPauloDateParts(new Date(t))
+        keys.push(`${year}-${month}-${day}`)
+      }
+      return keys
+    }
+    const fillMonths = () => {
+      const startParts = getSaoPauloDateParts(startDate)
+      const endParts = getSaoPauloDateParts(endDate)
+      let year = Number(startParts.year)
+      let month = Number(startParts.month)
+      const endYear = Number(endParts.year)
+      const endMonth = Number(endParts.month)
+      const keys: string[] = []
+      while (year < endYear || (year === endYear && month <= endMonth)) {
+        keys.push(`${year}-${String(month).padStart(2, '0')}`)
+        month += 1
+        if (month > 12) {
+          month = 1
+          year += 1
+        }
+      }
+      return keys
     }
 
-    loadReports()
-  }, [selectedProjectId, dateStart, dateEnd, presetId])
+    const diffDays = Math.round(
+      (saoPauloMidnightUtc(endDate) - saoPauloMidnightUtc(startDate)) / (1000 * 60 * 60 * 24)
+    )
+    const keys =
+      diffDays === 0 ? fillHours() : diffDays > 90 ? fillMonths() : fillDays()
 
-  // Verificação de autenticação removida - gerenciada pelo layout
+    const buckets = new Map<string, number>()
+    for (const item of report?.series ?? []) {
+      buckets.set(item.bucket, Number(item.net) || 0)
+    }
+
+    const monthlyData = keys.map((key) => {
+      let label = key
+      if (diffDays > 90) {
+        label = key.split('-').reverse().join('/')
+      } else if (diffDays !== 0) {
+        const [, mm, dd] = key.split('-')
+        label = `${dd}/${mm}`
+      }
+      return {
+        month: label,
+        donations: buckets.get(key) || 0,
+      }
+    })
+
+    // Top projects
+    const byProject = new Map<string, { amount: number; donors: number }>()
+    for (const row of report?.top_projects ?? []) {
+      byProject.set(row.project_id, {
+        amount: Number(row.net) || 0,
+        donors: Number(row.donors) || 0,
+      })
+    }
+
+    const visibleProjects =
+      selectedProjectId === 'all'
+        ? projects
+        : projects.filter((p: any) => p.id === selectedProjectId)
+
+    const topProjects = visibleProjects
+      .map((p: any) => {
+        const agg = byProject.get(p.id)
+        const amount = agg?.amount || 0
+        const donors = agg?.donors || 0
+        const progress = p.target_amount
+          ? Math.round(Math.min((p.current_amount / p.target_amount) * 100, 100))
+          : 0
+        return { name: p.title, amount, donors, progress }
+      })
+      .sort((a: any, b: any) => b.amount - a.amount)
+      .slice(0, 5)
+
+    // Segmentação de doadores (D9 via SQL)
+    const donorSegments = (report?.donor_segments ?? []).map((seg) => {
+      const count = Number(seg.count) || 0
+      const percentage = totalDonors > 0 ? Math.round((count / totalDonors) * 100) : 0
+      return {
+        segment: seg.segment,
+        count,
+        amount: Number(seg.net) || 0,
+        percentage,
+      }
+    })
+
+    // Métodos de pagamento agregados (mescla variantes para o rótulo amigável)
+    const methodAgg = new Map<string, { amount: number; count: number }>()
+    for (const item of report?.payment_methods ?? []) {
+      const label = normalizePaymentMethodLabel(item.method)
+      const prev = methodAgg.get(label) || { amount: 0, count: 0 }
+      prev.amount += Number(item.net) || 0
+      prev.count += Number(item.count) || 0
+      methodAgg.set(label, prev)
+    }
+    const paymentMethods = Array.from(methodAgg.entries())
+      .map(([method, info]) => ({
+        method,
+        amount: info.amount,
+        count: info.count,
+        percentage: totalDonations > 0 ? Math.round((info.amount / totalDonations) * 100) : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount)
+
+    // Top Doadores (D6/D9 via SQL)
+    const donorsArray = (report?.top_donors ?? []).map((d) => ({
+      userId: d.key,
+      label: d.label,
+      amount: Number(d.amount) || 0,
+      count: Number(d.count) || 0,
+    }))
+
+    return {
+      topDonors: donorsArray,
+      reports: {
+        overview: {
+          totalDonations,
+          totalDonors,
+          activeProjects: activeProjects.length,
+          completedProjects: completedProjects.length,
+          monthlyGrowth,
+          averageDonation: avgDonation,
+          totalVolunteers,
+        },
+        monthlyData,
+        topProjects,
+        donorSegments,
+        paymentMethods,
+        recentDonations: (report?.recent_donations ?? []).map((d) => ({
+          id: d.id,
+          donor: d.donor,
+          project: getDonationDestinationLabel({
+            projectTitle: d.project_title || null,
+            campaignSlug: d.campaign_slug || null,
+            projectId: d.project_id || null,
+          }),
+          amount: Number(d.amount) || 0,
+          date: d.created_at,
+        })),
+      },
+    }
+  }, [report, projects, totalVolunteers, selectedProjectId, spBounds, presetId])
 
   return (
     <div className="max-w-7xl mx-auto">
-      {/* Main Content */}
       <main>
         {/* Page Header */}
         <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
                 Relatórios e Análises
@@ -259,36 +285,88 @@ export default function AdminRelatoriosPage() {
                 Visualize métricas, relatórios de impacto e dados financeiros com análises avançadas.
               </p>
             </div>
-            <div className="mt-4 sm:mt-0">
-              <ExportDropdown 
-                data={{ ...reports, __chartImage: chartImageRef.current, __chartCaption: (dateStart && dateEnd) ? `Período: ${new Date(dateStart).toLocaleDateString('pt-BR')} – ${new Date(dateEnd).toLocaleDateString('pt-BR')}` : undefined }} 
+            <div>
+              <ExportDropdown
+                data={{
+                  ...reports,
+                  __chartImage: chartImageRef.current,
+                  __chartCaption:
+                    dateStart && dateEnd
+                      ? `Período: ${new Date(dateStart).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} – ${new Date(dateEnd).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`
+                      : undefined,
+                }}
                 filename="relatorio_completo"
+                disabled={loading || Boolean(loadError)}
+                onError={(msg) => setExportError(msg)}
               />
             </div>
           </div>
         </div>
 
-        {/* Filters and Controls */}
+        {exportError && (
+          <div role="alert" className="card p-4 mb-6 border-red-200 bg-red-50 flex items-center justify-between gap-4">
+            <p className="text-sm text-red-700">{exportError}</p>
+            <button
+              type="button"
+              onClick={() => setExportError('')}
+              className="text-xs font-medium text-red-800 hover:underline"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
+
+        {loadError && (
+          <div className="card p-6 mb-8 border-red-200 bg-red-50 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-red-900">
+                Erro ao carregar relatórios
+              </h2>
+              <p className="text-sm text-red-700">{loadError}</p>
+            </div>
+            <button type="button" onClick={() => void loadBaseData()} className="btn-secondary">
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        {/* Filters and Controls — barra uniforme h-12 */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-          <div className="flex flex-col lg:flex-row gap-6">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Período de Análise</label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div>
+              <label
+                htmlFor="rel-periodo"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Período de Análise
+              </label>
               <DateRangePickerWithPresets
+                id="rel-periodo"
                 start={dateStart ?? undefined}
                 end={dateEnd ?? undefined}
-                onChange={({ start, end, presetId }) => {
+                onChange={({ start, end, presetId: nextPreset }) => {
                   setDateStart(start)
                   setDateEnd(end)
-                  setPresetId(presetId)
+                  setPresetId(nextPreset)
                 }}
+                onClear={({ start, end, presetId: nextPreset }) => {
+                  setDateStart(start)
+                  setDateEnd(end)
+                  setPresetId(nextPreset)
+                }}
+                initialPresetId="last30Days"
               />
             </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div>
+              <label
+                htmlFor="rel-foco"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Foco da Análise
               </label>
               <select
-                className="input-modern w-full"
+                id="rel-foco"
+                className="input-modern h-12 !py-0 w-full"
                 value={selectedReport}
                 onChange={(e) => setSelectedReport(e.target.value as any)}
               >
@@ -298,24 +376,33 @@ export default function AdminRelatoriosPage() {
                 <option value="donors">Comportamento de Doadores</option>
               </select>
             </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div>
+              <label
+                htmlFor="rel-projeto"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Filtrar por Projeto
               </label>
               <select
-                className="input-modern w-full"
+                id="rel-projeto"
+                className="input-modern h-12 !py-0 w-full"
                 value={selectedProjectId}
                 onChange={(e) => setSelectedProjectId(e.target.value)}
               >
                 <option value="all">Todos os Projetos</option>
                 {projects.map((p: any) => (
-                  <option key={p.id} value={p.id}>{p.title}</option>
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
                 ))}
               </select>
             </div>
           </div>
         </div>
 
+        {/* Com erro de carga, métricas, gráficos e tabelas somem em vez de mostrar zeros enganosos. */}
+        {!loadError && (
+        <>
         {/* Key Metrics */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Métricas Principais</h2>
@@ -324,11 +411,13 @@ export default function AdminRelatoriosPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 mb-1">Total Arrecadado</p>
-                  <p className="text-2xl font-bold text-black">
-                    {formatCurrency(reports.overview.totalDonations)}
+                  <p className="text-2xl font-bold text-black tabular-nums">
+                    {loading ? '—' : formatCurrencyBRL(reports.overview.totalDonations)}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    +{reports.overview.monthlyGrowth}% vs mês anterior
+                  <p className="text-xs text-gray-500 mt-1 tabular-nums">
+                    {reports.overview.monthlyGrowth >= 0
+                      ? `+${reports.overview.monthlyGrowth}`
+                      : reports.overview.monthlyGrowth}% vs período anterior
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -338,13 +427,13 @@ export default function AdminRelatoriosPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="card p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 mb-1">Total de Doadores</p>
-                  <p className="text-2xl font-bold text-black">
-                    {reports.overview.totalDonors}
+                  <p className="text-2xl font-bold text-black tabular-nums">
+                    {loading ? '—' : reports.overview.totalDonors}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -354,13 +443,13 @@ export default function AdminRelatoriosPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="card p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 mb-1">Projetos Ativos</p>
-                  <p className="text-2xl font-bold text-black">
-                    {reports.overview.activeProjects}
+                  <p className="text-2xl font-bold text-black tabular-nums">
+                    {loading ? '—' : reports.overview.activeProjects}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -370,13 +459,13 @@ export default function AdminRelatoriosPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 mb-1">Voluntários</p>
-                  <p className="text-2xl font-bold text-purple-600">
-                    {reports.overview.totalVolunteers}
+                  <p className="text-2xl font-bold text-purple-600 tabular-nums">
+                    {loading ? '—' : reports.overview.totalVolunteers}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -391,8 +480,8 @@ export default function AdminRelatoriosPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 mb-1">Projetos Concluídos</p>
-                  <p className="text-2xl font-bold text-purple-600">
-                    {reports.overview.completedProjects}
+                  <p className="text-2xl font-bold text-purple-600 tabular-nums">
+                    {loading ? '—' : reports.overview.completedProjects}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -402,17 +491,17 @@ export default function AdminRelatoriosPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 mb-1">Doação Média</p>
-                  <p className="text-2xl font-bold text-yellow-600">
-                    {formatCurrency(reports.overview.averageDonation)}
+                  <p className="text-2xl font-bold text-amber-700 tabular-nums">
+                    {loading ? '—' : formatCurrencyBRL(reports.overview.averageDonation)}
                   </p>
                 </div>
-                <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-6 h-6 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                 </div>
@@ -438,10 +527,12 @@ export default function AdminRelatoriosPage() {
                 </div>
               </div>
               <DonationTrendChart
-                labels={reports.monthlyData.map(d => d.month)}
-                values={reports.monthlyData.map(d => d.donations)}
+                labels={reports.monthlyData.map((d) => d.month)}
+                values={reports.monthlyData.map((d) => d.donations)}
                 title="Evolução de Arrecadação"
-                onChartReady={(getter) => { chartImageRef.current = getter?.() }}
+                onChartReady={(getter) => {
+                  chartImageRef.current = getter?.()
+                }}
               />
             </div>
 
@@ -458,19 +549,19 @@ export default function AdminRelatoriosPage() {
                 </div>
               </div>
               <div className="space-y-4">
-                {reports.topProjects.map((project, index) => (
-                  <div key={project.name} className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900">
+                {reports.topProjects.map((project) => (
+                  <div key={project.name} className="flex items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">
                         {project.name}
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {project.donors} doadores
+                      <div className="text-xs text-gray-500 tabular-nums">
+                        {project.donors} {project.donors === 1 ? 'doador' : 'doadores'}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right tabular-nums flex-shrink-0">
                       <div className="text-sm font-semibold text-gray-900">
-                        {formatCurrency(project.amount)}
+                        {formatCurrencyBRL(project.amount)}
                       </div>
                       <div className="text-xs text-gray-500">
                         {project.progress}%
@@ -483,78 +574,73 @@ export default function AdminRelatoriosPage() {
           </div>
         </div>
 
-        {/* Donor Analysis */}
-        {selectedReport === 'donors' && (
+        {/* Donor Analysis & Payment Methods */}
+        {(selectedReport === 'donors' || selectedReport === 'donations' || selectedReport === 'overview') && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div className="card p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Segmentação de Doadores
               </h3>
-              <div className="space-y-4">
-                {reports.donorSegments.map((segment, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-900">
-                      {segment.segment}
-                    </span>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full"
-                          style={{ width: `${segment.percentage}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-sm text-gray-600 w-12 text-right">
-                        {segment.count}
+              {reports.donorSegments.length > 0 ? (
+                <div className="space-y-4">
+                  {reports.donorSegments.map((segment, index) => (
+                    <div key={index} className="flex items-center justify-between gap-4">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {segment.segment}
                       </span>
+                      <div className="flex items-center space-x-3 flex-shrink-0">
+                        <div className="w-20 bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full"
+                            style={{ width: `${segment.percentage}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-gray-600 w-12 text-right tabular-nums">
+                          {segment.count}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 py-4 text-center">
+                  Nenhuma segmentação disponível para o período selecionado.
+                </p>
+              )}
             </div>
 
             <div className="card p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Métodos de Pagamento
               </h3>
-              <div className="space-y-4">
-                {reports.paymentMethods.map((method, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-6 h-6 flex items-center justify-center">
-                        {method.method === 'PIX' ? (
-                          <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                          </svg>
-                        ) : method.method === 'Cartão de Crédito' ? (
-                          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        )}
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">
+              {reports.paymentMethods.length > 0 ? (
+                <div className="space-y-4">
+                  {reports.paymentMethods.map((method, index) => (
+                    <div key={index} className="flex items-center justify-between gap-4">
+                      <span className="text-sm font-medium text-gray-900 truncate">
                         {method.method}
                       </span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium text-gray-900">
-                        {method.percentage}%
+                      <div className="text-right tabular-nums flex-shrink-0">
+                        <div className="text-sm font-medium text-gray-900">
+                          {method.percentage}%
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {formatCurrencyBRL(method.amount)}
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        R$ {method.amount.toLocaleString('pt-BR')}
-                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 py-4 text-center">
+                  Nenhum método de pagamento registrado no período.
+                </p>
+              )}
             </div>
           </div>
         )}
 
-        {/* Top Doadores */}
+        {/* Top Doadores — avatar local sem vazamento externo */}
         <div className="card p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Top Doadores</h3>
@@ -563,16 +649,25 @@ export default function AdminRelatoriosPage() {
             <p className="text-sm text-gray-500">Nenhum doador encontrado</p>
           ) : (
             <div className="space-y-3">
-              {topDonors.map((d, idx) => (
-                <div key={d.userId} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(d.userId)}`} alt="Avatar" className="w-8 h-8 rounded-full" />
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{d.userId.startsWith('anon-') ? 'Anônimo' : d.userId}</div>
-                      <div className="text-xs text-gray-500">{d.count} doações</div>
+              {topDonors.map((d) => (
+                <div key={d.userId} className="flex items-center justify-between gap-4">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div
+                      aria-hidden="true"
+                      className="w-8 h-8 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-xs font-semibold text-gray-700 flex-shrink-0"
+                    >
+                      {(d.label || 'D').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{d.label}</div>
+                      <div className="text-xs text-gray-500 tabular-nums">
+                        {d.count} {d.count === 1 ? 'doação' : 'doações'}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-sm font-semibold text-gray-900">R$ {d.amount.toLocaleString('pt-BR')}</div>
+                  <div className="text-sm font-semibold text-gray-900 tabular-nums flex-shrink-0">
+                    {formatCurrencyBRL(d.amount)}
+                  </div>
                 </div>
               ))}
             </div>
@@ -585,50 +680,57 @@ export default function AdminRelatoriosPage() {
             <h3 className="text-lg font-semibold text-gray-900">
               Doações Recentes
             </h3>
-            <button className="btn-secondary text-sm">
+            <Link href="/admin/doacoes" className="btn-secondary text-sm">
               Ver Todas
-            </button>
+            </Link>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Doador
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Projeto
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Valor
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Data
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {reports.recentDonations.map((donation) => (
-                  <tr key={donation.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {donation.donor}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {donation.project}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                      {formatCurrency(donation.amount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(donation.date)}
-                    </td>
+            {reports.recentDonations.length > 0 ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Doador
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Projeto
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Valor
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Data
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {reports.recentDonations.map((donation) => (
+                    <tr key={donation.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium text-gray-900">
+                        {donation.donor}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-left text-sm text-gray-500">
+                        {donation.project}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right tabular-nums text-sm font-semibold text-gray-900">
+                        {formatCurrencyBRL(donation.amount)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-left tabular-nums text-sm text-gray-500">
+                        {formatDate(donation.date)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-8">
+                Nenhuma doação confirmada no período selecionado.
+              </p>
+            )}
           </div>
         </div>
-
+        </>
+        )}
       </main>
     </div>
   )

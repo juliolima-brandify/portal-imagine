@@ -120,7 +120,7 @@ O site público **imagineinstituto.com é um site Framer** (plano pago). A integ
 **O que foi entregue:**
 - **Collection:** reusa a **"Programas"** (o plano Framer só permite 2 collections; uma 3ª "Projetos" estourava o limite — foi criada e deletada).
 - **Template CMS:** Detail Page da "Programas" em `/programas/[slug]`, reaproveitando o design da página estática `/esporte` (recurso "Swap Collection" do Framer). Conteúdo dinâmico por item.
-- **Embed de doação dinâmico:** campo **EmbedURL** na Programas guarda a URL do checkout embed por projeto (`https://portal.imagineinstituto.com/embed/checkout/checkout-stripe?project=<id>&source=embed&utm_campaign=<slug>`); no Framer o componente Embed (Type URL) tem a URL ligada por "Convert" a esse campo.
+- **Embed de doação dinâmico:** campo **EmbedURL** na Programas guarda a URL do checkout embed por projeto (`https://portal.imagineinstituto.com/embed/checkout?project=<id>&source=embed&utm_campaign=<slug>`); no Framer o componente Embed (Type URL) tem a URL ligada por "Convert" a esse campo.
 - **Código:** `src/lib/framer-sync.ts` (upsert/remove via pacote npm `framer-api`, import dinâmico ESM, imagem de fallback = logo do portal quando o projeto não tem foto) + rota `src/app/api/webhooks/supabase-projects/route.ts` (runtime `nodejs`, valida header `x-webhook-secret`, previne loop ignorando eventos que só mexem nas colunas `framer_*`).
 - **Colunas novas em `projects`:** `framer_item_id`, `framer_synced_at`, `framer_sync_status`.
 - **Fluxo automático (Elo 1, Portal → Framer):** trigger `framer_sync_projects` na tabela `public.projects` (função `notify_framer_sync` via extensão `pg_net` / `net.http_post`) chama a rota do portal com o header do segredo → `framer-api` cria/atualiza o item. **Testado E2E.**
@@ -139,7 +139,7 @@ O site público **imagineinstituto.com é um site Framer** (plano pago). A integ
 2. ✅ **Produção religada** ao banco novo (env Vercel + redeploy + `vercel.json` corrigido) — no ar e conectada.
 3. ✅ **Integração Framer implementada e publicada** (Elo 1 automático via trigger; Elo 2 via embed dinâmico) — ver [`INTEGRACAO_FRAMER.md`](./INTEGRACAO_FRAMER.md).
 4. 🟡 **Criar admin real** em produção (não usar contas demo).
-5. 🟡 **Reativar Stripe** (chaves live + webhook) — hoje em placeholder, pagamentos inativos.
+5. 🟡 **Ativar Asaas** (chave de produção + webhook + migração aplicada) — hoje em placeholder, pagamentos inativos.
 6. 🟡 **Reativar Resend** (emails transacionais) — hoje em placeholder.
 7. 🟢 **Follow-ups Framer (não-bloqueantes):** fotos reais nos projetos (hoje logo de fallback); limpar projetos-seed de teste; `noindex` opcional nos itens curados.
 8. ✅ **Mudanças de código/SQL/docs commitadas** na `main`.

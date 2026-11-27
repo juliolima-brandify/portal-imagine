@@ -243,7 +243,7 @@ export default function ProjectForm({
             <button
               type="button"
               onClick={onCancel}
-              className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-secondary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={loading}
             >
               Cancelar
@@ -251,7 +251,7 @@ export default function ProjectForm({
             <button
               type="submit"
               form="project-form"
-              className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               disabled={loading}
             >
               {loading ? 'Salvando...' : isEditing ? 'Salvar Alterações' : 'Criar Projeto'}
@@ -540,7 +540,7 @@ export default function ProjectForm({
 
           <div>
             <label htmlFor="intro" className="block text-sm font-medium text-gray-700 mb-2">
-              Texto principal ("O projeto")
+              Texto principal (&quot;O projeto&quot;)
             </label>
             <textarea
               id="intro"
@@ -613,8 +613,8 @@ export default function ProjectForm({
 
         {/* Links e incorporações */}
         <div className="pt-4 border-t border-gray-200">
-          <div className="border-b border-gray-200 mb-4 overflow-x-auto">
-            <div className="-mb-px flex items-center gap-4" role="tablist">
+          <div className="border-b border-gray-200 mb-4">
+            <div className="-mb-px flex items-center gap-4 whitespace-nowrap" role="tablist">
               <button
                 type="button"
                 role="tab"
@@ -626,7 +626,7 @@ export default function ProjectForm({
                     : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
               >
-                URL no Site
+                Site
               </button>
               <button
                 type="button"
@@ -639,7 +639,7 @@ export default function ProjectForm({
                     : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Checkout URL
+                Checkout
               </button>
               <button
                 type="button"
@@ -652,7 +652,7 @@ export default function ProjectForm({
                     : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Embed do Checkout
+                Embed
               </button>
             </div>
           </div>

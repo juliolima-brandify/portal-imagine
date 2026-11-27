@@ -1,198 +1,416 @@
 'use client'
 
-import { Suspense, useState, useEffect } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import {
+  INSTITUTE_CNPJ,
+  formatCurrencyBRL,
+  getDonationStatusLabelPTBR,
+  type DonationStatus,
+} from '@/lib/payments'
+
+interface PublicSessionState {
+  loaded: boolean
+  notFound: boolean
+  donationId: string
+  projectId: string
+  projectTitle: string
+  amountFormatted: string
+  refundedAmountFormatted: string | null
+  netAmountFormatted: string | null
+  paymentStatus: DonationStatus
+  paymentMethod: string
+  isRecurring: boolean
+  recurringFrequency: string | null
+  receiptSentAt: string | null
+}
 
 function DoacaoSucessoContent() {
   const searchParams = useSearchParams()
-  const [donationData, setDonationData] = useState({
-    projectId: '',
-    amount: '',
-    projectName: '',
-    donationId: ''
+  const [copied, setCopied] = useState(false)
+  const [state, setState] = useState<PublicSessionState>({
+    loaded: false,
+    notFound: false,
+    donationId: '',
+    projectId: 'geral',
+    projectTitle: 'Instituto Imagine',
+    amountFormatted: '',
+    refundedAmountFormatted: null,
+    netAmountFormatted: null,
+    paymentStatus: 'pending',
+    paymentMethod: 'Pix / Cartão',
+    isRecurring: false,
+    recurringFrequency: null,
+    receiptSentAt: null,
   })
 
   useEffect(() => {
-    const sessionId = searchParams.get('session_id') || ''
-    const projectId = searchParams.get('project_id') || ''
-    
-    // Se temos session_id, buscar dados da sessão do Stripe
-    if (sessionId) {
-      fetch(`/api/checkout/session/${sessionId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            setDonationData({
-              projectId: data.projectId,
-              amount: data.amount,
-              projectName: data.projectTitle,
-              donationId: sessionId
-            })
-          }
+    let active = true
+    let pollTimer: number | null = null
+    let attempts = 0
+
+    const rawId = (
+      searchParams.get('donation_id') ||
+      searchParams.get('session_id') ||
+      searchParams.get('donation') ||
+      ''
+    ).trim()
+
+    if (!rawId) {
+      // Sem ID de doação não há como confirmar nada. Não confiar em ?amount= da URL.
+      setState((prev) => ({
+        ...prev,
+        loaded: true,
+        notFound: true,
+      }))
+      return
+    }
+
+    const fetchSession = async () => {
+      attempts += 1
+      try {
+        const res = await fetch(`/api/checkout/session/${encodeURIComponent(rawId)}`, {
+          cache: 'no-store',
         })
-        .catch(error => {
-          console.error('Erro ao buscar dados da sessão:', error)
-          // Fallback para dados básicos
-          setDonationData({
-            projectId,
-            amount: '0',
-            projectName: 'Projeto',
-            donationId: sessionId
+        const data = await res.json().catch(() => ({}))
+        if (!active) return
+
+        if (res.ok && data.success) {
+          const nextStatus: DonationStatus =
+            data.paymentStatus === 'completed' ||
+            data.paymentStatus === 'failed' ||
+            data.paymentStatus === 'refunded' ||
+            data.paymentStatus === 'partially_refunded' ||
+            data.paymentStatus === 'disputed'
+              ? data.paymentStatus
+              : 'pending'
+
+          setState({
+            loaded: true,
+            notFound: false,
+            donationId: data.donationId || rawId,
+            projectId: data.projectId || 'geral',
+            projectTitle: data.projectTitle || 'Instituto Imagine',
+            amountFormatted: data.amountFormatted || formatCurrencyBRL(Number(data.amount) || 0),
+            refundedAmountFormatted:
+              typeof data.refundedAmountFormatted === 'string'
+                ? data.refundedAmountFormatted
+                : null,
+            // Valor líquido = doado - estornado (só quando há estorno parcial ou total registrado).
+            netAmountFormatted:
+              typeof data.refundedAmount === 'number' && data.refundedAmount > 0
+                ? formatCurrencyBRL(Math.max((Number(data.amount) || 0) - data.refundedAmount, 0))
+                : null,
+            paymentStatus: nextStatus,
+            paymentMethod: data.paymentMethod || 'Pix / Cartão',
+            isRecurring: Boolean(data.isRecurring),
+            recurringFrequency: data.recurringFrequency || null,
+            receiptSentAt: typeof data.receiptSentAt === 'string' ? data.receiptSentAt : null,
           })
-        })
-    } else {
-      // Fallback para método antigo
-      const projectIdOld = searchParams.get('project') || ''
-      const amount = searchParams.get('amount') || ''
-      const donationId = searchParams.get('donation') || ''
-      
-      const mockProjects = [
-        { id: '1', title: 'Educação Digital' },
-        { id: '2', title: 'Saúde Comunitária' },
-        { id: '3', title: 'Meio Ambiente' }
-      ]
-      
-      const project = mockProjects.find(p => p.id === projectIdOld)
-      
-      setDonationData({
-        projectId: projectIdOld,
-        amount,
-        projectName: project?.title || 'Projeto',
-        donationId
-      })
+
+          if (nextStatus === 'pending' && attempts < 6) {
+            pollTimer = window.setTimeout(() => {
+              void fetchSession()
+            }, 3000)
+          }
+        } else {
+          setState((prev) => ({
+            ...prev,
+            loaded: true,
+            notFound: true,
+            donationId: rawId,
+          }))
+        }
+      } catch {
+        if (!active) return
+        setState((prev) => ({
+          ...prev,
+          loaded: true,
+          donationId: rawId,
+        }))
+      }
+    }
+
+    void fetchSession()
+
+    return () => {
+      active = false
+      if (pollTimer) window.clearTimeout(pollTimer)
     }
   }, [searchParams])
 
+  const isNotFound = state.notFound
+  const isCompleted = !isNotFound && state.paymentStatus === 'completed'
+  const isPartiallyRefunded = !isNotFound && state.paymentStatus === 'partially_refunded'
+  const isDisputed = !isNotFound && state.paymentStatus === 'disputed'
+  const isFailedOrRefunded =
+    !isNotFound && (state.paymentStatus === 'failed' || state.paymentStatus === 'refunded')
+
+  const shareText = `Acabei de apoiar o projeto "${state.projectTitle}" do Instituto Imagine em Uberlândia! Conheça e apoie também: https://imagineinstituto.com/#projetos`
+
+  const handleCopyLink = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText('https://imagineinstituto.com/#projetos').then(
+        () => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 2200)
+        },
+        () => undefined
+      )
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="card p-8 text-center">
-          {/* Success Icon */}
-          <div className="flex justify-center mb-6">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center">
-              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-3">
+            <img src="/images/logo.png" alt="Instituto Imagine" className="h-9 w-auto" />
+          </Link>
+          <span className="text-xs text-gray-500 tabular-nums">CNPJ {INSTITUTE_CNPJ}</span>
+        </div>
+      </header>
+
+      <main className="flex-1 flex items-center justify-center py-10 px-4 sm:px-6">
+        <div className="max-w-2xl w-full card p-6 sm:p-8 text-center">
+          {!state.loaded ? (
+            <div className="py-12">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600 mx-auto mb-4" />
+              <p className="text-gray-600 text-sm">Verificando o status da sua doação...</p>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="flex justify-center mb-6">
+                {isNotFound ? (
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                    <svg className="w-9 h-9 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                ) : isCompleted ? (
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                    <svg className="w-9 h-9 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                ) : isPartiallyRefunded || isDisputed ? (
+                  <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
+                    <svg className="w-9 h-9 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                    </svg>
+                  </div>
+                ) : isFailedOrRefunded ? (
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+                    <svg className="w-9 h-9 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                    </svg>
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
+                    <svg className="w-9 h-9 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
 
-          {/* Success Message */}
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">
-            Doação Realizada com Sucesso!
-          </h1>
-          
-          <p className="text-lg text-gray-600 mb-6">
-            Obrigado por apoiar o projeto <strong>{donationData.projectName}</strong> com uma doação de <strong>R$ {donationData.amount}</strong>.
-          </p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">
+                {isNotFound
+                  ? 'Doação não localizada'
+                  : isCompleted
+                    ? 'Doação Confirmada!'
+                    : isPartiallyRefunded
+                      ? 'Doação Parcialmente Estornada'
+                      : isDisputed
+                        ? 'Pagamento em Contestação'
+                        : isFailedOrRefunded
+                          ? 'Pagamento não concluído'
+                          : 'Pagamento em Processamento'}
+              </h1>
 
-          <p className="text-gray-600 mb-8">
-            Sua contribuição fará a diferença na vida de muitas pessoas. Você receberá um email de confirmação com todos os detalhes da sua doação.
-          </p>
+              <p className="text-base text-gray-600 mb-6">
+                {isNotFound ? (
+                  <>
+                    Não foi possível identificar esta doação pelo endereço acessado. Confira suas contribuições em{' '}
+                    <Link href="/doacoes" className="text-blue-700 underline font-medium">
+                      Minhas Doações
+                    </Link>{' '}
+                    ou conheça os{' '}
+                    <Link href="/projetos" className="text-blue-700 underline font-medium">
+                      Projetos
+                    </Link>{' '}
+                    do Instituto Imagine.
+                  </>
+                ) : isCompleted ? (
+                  <>
+                    Muito obrigado por apoiar <strong>{state.projectTitle}</strong>
+                    {state.amountFormatted ? (
+                      <>
+                        {' '}
+                        com <strong>{state.amountFormatted}</strong>
+                      </>
+                    ) : null}
+                    {state.receiptSentAt
+                      ? '! Seu recibo oficial e o link de acesso ao Portal do Doador já foram enviados para o seu e-mail.'
+                      : '! Assim que o recibo for processado, ele e o link de acesso ao Portal do Doador chegarão no seu e-mail.'}
+                  </>
+                ) : isPartiallyRefunded ? (
+                  <>
+                    Esta doação para <strong>{state.projectTitle}</strong> foi confirmada e recebeu um estorno parcial
+                    {state.refundedAmountFormatted ? (
+                      <>
+                        {' '}
+                        de <strong>{state.refundedAmountFormatted}</strong>
+                      </>
+                    ) : null}
+                    . Você pode consultar os valores detalhados e o recibo atualizado no Portal do Doador.
+                  </>
+                ) : isDisputed ? (
+                  <>
+                    O pagamento desta doação para <strong>{state.projectTitle}</strong> encontra-se em disputa/contestação junto à operadora do cartão. Enquanto a análise estiver em andamento, o valor fica temporariamente suspenso nos relatórios.
+                  </>
+                ) : isFailedOrRefunded ? (
+                  <>
+                    O pagamento desta tentativa não foi concluído, foi estornado ou expirou. Nenhuma cobrança indevida será mantida — você pode iniciar uma nova doação quando quiser.
+                  </>
+                ) : (
+                  <>
+                    Recebemos sua intenção de apoio para <strong>{state.projectTitle}</strong>
+                    {state.amountFormatted ? (
+                      <>
+                        {' '}
+                        no valor de <strong>{state.amountFormatted}</strong>
+                      </>
+                    ) : null}
+                    . Assim que o Asaas confirmar a compensação do Pix ou Cartão, seu recibo oficial com CNPJ e o acesso ao Portal do Doador chegarão automaticamente no seu e-mail.
+                  </>
+                )}
+              </p>
 
-          {/* Donation Details */}
-          <div className="bg-gray-50 rounded-lg p-6 mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Detalhes da Doação</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Projeto:</span>
-                <span className="font-medium">{donationData.projectName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Valor:</span>
-                <span className="font-medium">R$ {donationData.amount}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Data:</span>
-                <span className="font-medium">{new Date().toLocaleDateString('pt-BR')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Status:</span>
-                <span className="font-medium text-green-600">Confirmada</span>
-              </div>
-              {donationData.donationId && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">ID da Doação:</span>
-                  <span className="font-medium text-xs text-gray-500">{donationData.donationId}</span>
+              {!state.notFound && (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-6 text-left">
+                  <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">
+                    Resumo da Doação
+                  </h2>
+                  <dl className="space-y-2.5 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-gray-600">Destino:</dt>
+                      <dd className="font-medium text-gray-900 text-right">{state.projectTitle}</dd>
+                    </div>
+                    {state.amountFormatted && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-600">Valor:</dt>
+                        <dd className="font-semibold text-gray-900 tabular-nums">
+                          {state.amountFormatted}
+                          {state.isRecurring && state.recurringFrequency
+                            ? ` (${state.recurringFrequency})`
+                            : ''}
+                        </dd>
+                      </div>
+                    )}
+                    {state.refundedAmountFormatted && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-600">Valor estornado:</dt>
+                        <dd className="font-semibold text-amber-700 tabular-nums">
+                          -{state.refundedAmountFormatted}
+                        </dd>
+                      </div>
+                    )}
+                    {state.netAmountFormatted && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-600">Valor líquido:</dt>
+                        <dd className="font-semibold text-gray-900 tabular-nums">{state.netAmountFormatted}</dd>
+                      </div>
+                    )}
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-gray-600">Status atual:</dt>
+                      <dd
+                        className={`font-semibold ${
+                          isCompleted
+                            ? 'text-green-700'
+                            : isPartiallyRefunded
+                              ? 'text-amber-700'
+                              : isDisputed
+                                ? 'text-orange-700'
+                                : isFailedOrRefunded
+                                  ? 'text-red-700'
+                                  : 'text-amber-700'
+                        }`}
+                      >
+                        {getDonationStatusLabelPTBR(state.paymentStatus)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-gray-600">Meio de pagamento:</dt>
+                      <dd className="font-medium text-gray-900">{state.paymentMethod}</dd>
+                    </div>
+                    {state.donationId && (
+                      <div className="flex justify-between gap-4 pt-2 border-t border-gray-200">
+                        <dt className="text-gray-600">Protocolo:</dt>
+                        <dd className="font-mono text-xs text-gray-500 break-all text-right">
+                          {state.donationId}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Next Steps */}
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Próximos Passos</h3>
-            <div className="space-y-3 text-left">
-              <div className="flex items-start">
-                <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center mr-3 mt-0.5">
-                  <span className="text-green-600 text-sm font-bold">1</span>
+              {!state.notFound && !isFailedOrRefunded && !isDisputed && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 text-left">
+                  <h3 className="text-sm font-semibold text-blue-900 mb-1">
+                    Acesso automático ao Portal do Doador
+                  </h3>
+                  <p className="text-xs text-blue-800 leading-relaxed">
+                    No mesmo e-mail do recibo, você recebe um botão seguro para definir sua senha (caso seja sua primeira doação) e acompanhar seu histórico de recibos e prestações de contas em um só lugar.
+                  </p>
                 </div>
-                <div>
-                  <div className="font-medium text-gray-900">Email de Confirmação</div>
-                  <div className="text-sm text-gray-600">Você receberá um email com o recibo da doação</div>
-                </div>
-              </div>
-              
-              <div className="flex items-start">
-                <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center mr-3 mt-0.5">
-                  <span className="text-green-600 text-sm font-bold">2</span>
-                </div>
-                <div>
-                  <div className="font-medium text-gray-900">Atualizações do Projeto</div>
-                  <div className="text-sm text-gray-600">Receberá notícias sobre o progresso do projeto</div>
-                </div>
-              </div>
-              
-              <div className="flex items-start">
-                <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center mr-3 mt-0.5">
-                  <span className="text-green-600 text-sm font-bold">3</span>
-                </div>
-                <div>
-                  <div className="font-medium text-gray-900">Relatório de Impacto</div>
-                  <div className="text-sm text-gray-600">Em breve, um relatório mostrando como sua doação foi utilizada</div>
-                </div>
-              </div>
-            </div>
-          </div>
+              )}
 
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <Link href="/projetos" className="flex-1 btn-secondary">
-              Ver Outros Projetos
-            </Link>
-            <Link href="/dashboard" className="flex-1 btn-primary">
-              Ir para Início
-            </Link>
-          </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link
+                  href={isNotFound ? '/projetos' : '/#projetos'}
+                  className="flex-1 btn-secondary h-12 !py-0 flex items-center justify-center text-center"
+                >
+                  {isNotFound ? 'Explorar Projetos' : 'Voltar aos Projetos'}
+                </Link>
+                <Link
+                  href={isNotFound ? '/doacoes' : '/entrar'}
+                  className="flex-1 btn-primary h-12 !py-0 flex items-center justify-center text-center"
+                >
+                  {isNotFound ? 'Minhas Doações' : 'Acessar Portal do Doador'}
+                </Link>
+              </div>
 
-          {/* Social Share */}
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <p className="text-sm text-gray-600 mb-4">Compartilhe sua doação e inspire outros:</p>
-            <div className="flex justify-center gap-4">
-              <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z"/>
-                </svg>
-                Twitter
-              </button>
-              
-              <button className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
-                </svg>
-                WhatsApp
-              </button>
-              
-              <button className="flex items-center px-4 py-2 bg-blue-800 text-white rounded-lg hover:bg-blue-900 transition-colors">
-                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                </svg>
-                LinkedIn
-              </button>
-            </div>
-          </div>
+              {!isNotFound && !isFailedOrRefunded && !isDisputed && state.paymentStatus !== 'partially_refunded' && (
+                <div className="mt-6 pt-5 border-t border-gray-200">
+                  <p className="text-xs text-gray-500 mb-3">
+                    Convide amigos e familiares para conhecerem o Instituto Imagine:
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center px-4 py-2 bg-green-700 text-white text-sm font-medium rounded-lg hover:bg-green-800 transition-colors"
+                    >
+                      Compartilhar no WhatsApp
+                    </a>
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      {copied ? 'Link copiado!' : 'Copiar link dos projetos'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
-      </div>
+      </main>
     </div>
   )
 }

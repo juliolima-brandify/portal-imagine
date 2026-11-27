@@ -12,6 +12,12 @@ import type { Favorite } from '@/lib/favorites'
 import type { Donation } from '@/lib/database'
 import FavoriteButton from '@/components/FavoriteButton'
 import { getInstitutionalProjectPathByPortalId } from '@/lib/imagine-site'
+import {
+  formatCurrencyBRL,
+  getRecognizedDonationAmountBrl,
+  isRecognizedDonationStatus,
+  sumRecognizedDonationsBrl,
+} from '@/lib/payments'
 
 export default function ProjetosPage() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -63,7 +69,7 @@ export default function ProjetosPage() {
   // Determinar "Meus Projetos": doações concluídas e favoritos
   const currentProjects = (() => {
     const supportedProjectIds = donations
-      .filter(donation => donation.status === 'completed')
+      .filter(donation => isRecognizedDonationStatus(donation.status))
       .map(donation => donation.project_id)
     const favoriteProjectIds = favorites.map(fav => fav.project_id)
     const allMyProjectIds = Array.from(new Set([...supportedProjectIds, ...favoriteProjectIds]))
@@ -181,8 +187,10 @@ export default function ProjetosPage() {
 
         {/* Filters - Seguindo padrão Admin */}
         <div className="mb-6">
-          <div className="flex flex-wrap gap-2 overflow-x-auto pb-2">
-            <button 
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              aria-pressed={selectedCategory === 'all'}
               onClick={() => setSelectedCategory('all')}
               className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                 selectedCategory === 'all' 
@@ -193,8 +201,10 @@ export default function ProjetosPage() {
               Todas as Categorias
             </button>
             {Object.entries(categoryLabels).map(([key, label]) => (
-            <button 
+            <button
                 key={key}
+                type="button"
+                aria-pressed={selectedCategory === key}
                 onClick={() => setSelectedCategory(key)}
                 className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                   selectedCategory === key 
@@ -233,10 +243,11 @@ export default function ProjetosPage() {
               const progress = hasGoal
                 ? Math.min((Number(project.current_amount || 0) / Number(project.target_amount)) * 100, 100)
                 : 0
-              const userDonatedToProject = donations.some(d => d.project_id === project.id && d.status === 'completed')
-              const totalDonatedToProject = donations
-                .filter(d => d.project_id === project.id && d.status === 'completed')
-                .reduce((sum, d) => sum + d.amount, 0)
+              const userDonatedToProject = donations.some(d => d.project_id === project.id && isRecognizedDonationStatus(d.status))
+              // Total líquido: doado menos o que já foi estornado (estorno parcial conta só o restante).
+              const totalDonatedToProject = sumRecognizedDonationsBrl(
+                donations.filter(d => d.project_id === project.id)
+              )
               
               return (
                 <div key={project.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
@@ -307,33 +318,29 @@ export default function ProjetosPage() {
                           ></div>
                         </div>
                         <div className="flex justify-between text-sm text-gray-500 mt-1 tabular-nums">
-                          <span>R$ {Number(project.current_amount || 0).toLocaleString('pt-BR')}</span>
-                          <span>R$ {Number(project.target_amount).toLocaleString('pt-BR')}</span>
+                          <span>{formatCurrencyBRL(Number(project.current_amount || 0))}</span>
+                          <span>{formatCurrencyBRL(Number(project.target_amount))}</span>
                         </div>
                       </div>
                     ) : (
                       <div className="mb-4 text-sm text-gray-500 tabular-nums">
-                        Arrecadado: R$ {Number(project.current_amount || 0).toLocaleString('pt-BR')}
+                        Arrecadado: {formatCurrencyBRL(Number(project.current_amount || 0))}
                       </div>
                     )}
 
                     {/* User Status Info */}
                     {(() => {
                       const isVolunteerForProject = user && ['2', '3'].includes(project.id) // Projetos onde é voluntário
-                      const userDonatedToProject = donations.some(d => d.project_id === project.id && d.status === 'completed')
-                      const totalDonatedToProject = donations
-                        .filter(d => d.project_id === project.id && d.status === 'completed')
-                        .reduce((sum, d) => sum + d.amount, 0)
 
                       return (
                         <div className="mb-4 space-y-2">
                           {userDonatedToProject && (
                             <div className="p-3 bg-green-50 rounded-lg">
-                              <div className="flex items-center text-green-800 text-sm">
-                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <div className="flex items-center text-green-800 text-sm tabular-nums">
+                                <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
-                                💰 Você doou R$ {totalDonatedToProject.toLocaleString('pt-BR')}
+                                💰 Você doou {formatCurrencyBRL(totalDonatedToProject)}
                               </div>
                             </div>
                           )}

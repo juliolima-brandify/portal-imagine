@@ -15,6 +15,7 @@ export default function PerfilPage() {
   const [formData, setFormData] = useState<any>(null)
   const [profileImage, setProfileImage] = useState('https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face')
   const [isUploading, setIsUploading] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     const getUser = async () => {
@@ -114,40 +115,43 @@ export default function PerfilPage() {
   }
 
   const handleSave = async () => {
+    if (!user?.id) return
+    setFeedback(null)
     try {
-      // Salvar no Supabase
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user?.id,
-          email: user?.email,
-          name: formData.name,
-          phone: formData.phone,
-          preferences: formData.preferences
-        })
-      
+      // Nunca envia mutação de email: profiles.email é protegido por trigger e segue auth.users.
+      const payload = {
+        name: formData.name,
+        phone: formData.phone,
+        preferences: formData.preferences,
+      }
+      const { error } = profile?.created_at
+        ? await supabase.from('profiles').update(payload).eq('id', user.id)
+        : await supabase.from('profiles').upsert({ id: user.id, ...payload }, { onConflict: 'id' })
+
       if (error) {
         console.error('Erro ao salvar perfil:', error)
-        alert('Erro ao salvar perfil. Tente novamente.')
+        setFeedback({ type: 'error', text: 'Erro ao salvar perfil. Tente novamente.' })
         return
       }
-      
+
       setProfile(formData)
       setIsEditing(false)
-      alert('Perfil salvo com sucesso!')
+      setFeedback({ type: 'success', text: 'Perfil salvo com sucesso!' })
     } catch (error) {
       console.error('Erro ao salvar perfil:', error)
-      alert('Erro ao salvar perfil. Tente novamente.')
+      setFeedback({ type: 'error', text: 'Erro ao salvar perfil. Tente novamente.' })
     }
   }
 
   const handleCancel = () => {
     setFormData(profile)
     setIsEditing(false)
+    setFeedback(null)
   }
 
   const handleImageUpload = async (file: File) => {
     setIsUploading(true)
+    setFeedback(null)
 
     try {
       // Upload para Supabase Storage
@@ -169,7 +173,7 @@ export default function PerfilPage() {
         .getPublicUrl(filePath)
 
       setProfileImage(data.publicUrl)
-      
+
       // Atualizar no banco
       const { error: updateError } = await supabase
         .from('profiles')
@@ -179,11 +183,11 @@ export default function PerfilPage() {
       if (updateError) {
         console.error('Erro ao atualizar avatar:', updateError)
       }
-      
-      console.log('Imagem enviada:', file.name)
+
+      setFeedback({ type: 'success', text: 'Foto de perfil atualizada com sucesso!' })
     } catch (error) {
       console.error('Erro ao fazer upload da imagem:', error)
-      alert('Erro ao fazer upload da imagem. Tente novamente.')
+      setFeedback({ type: 'error', text: 'Erro ao fazer upload da imagem. Tente novamente.' })
     } finally {
       setIsUploading(false)
     }
@@ -311,6 +315,19 @@ export default function PerfilPage() {
             </div>
           </div>
         </div>
+
+        {feedback && (
+          <div
+            role="alert"
+            className={`mb-6 rounded-lg border px-4 py-3 text-sm ${
+              feedback.type === 'success'
+                ? 'border-green-200 bg-green-50 text-green-800'
+                : 'border-red-200 bg-red-50 text-red-800'
+            }`}
+          >
+            {feedback.text}
+          </div>
+        )}
 
         {/* Profile Form */}
         <div className="bg-white shadow-sm rounded-lg border border-gray-200">

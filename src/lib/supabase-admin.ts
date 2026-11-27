@@ -1,9 +1,22 @@
+import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 function getSupabaseCredentials() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   return { supabaseUrl, supabaseServiceKey }
+}
+
+const ADMIN_FETCH_TIMEOUT_MS = 8_000
+
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const timeoutSignal = AbortSignal.timeout(ADMIN_FETCH_TIMEOUT_MS)
+  const signalAny = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any
+  const signal =
+    init?.signal && typeof signalAny === 'function'
+      ? signalAny([init.signal, timeoutSignal])
+      : init?.signal || timeoutSignal
+  return fetch(input, { ...init, signal })
 }
 
 let cachedClient: SupabaseClient | null = null
@@ -22,6 +35,9 @@ function getAdminClient(): SupabaseClient {
   cachedClient = createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       persistSession: false,
+    },
+    global: {
+      fetch: fetchWithTimeout,
     },
   })
   return cachedClient

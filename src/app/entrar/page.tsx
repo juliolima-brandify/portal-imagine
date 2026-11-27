@@ -1,23 +1,172 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { ZodError } from 'zod'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { loginSchema, createUserSchema } from '@/lib/validations'
 import { Modal } from '@/components/ConfirmDialog'
 
-export default function EntrarPage() {
+function EntrarContent() {
+  const searchParams = useSearchParams()
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [rememberMe, setRememberMe] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const stored = window.localStorage.getItem('imagine.rememberMe')
+      if (stored === 'false') setRememberMe(false)
+    } catch {
+      // Storage indisponível
+    }
+  }, [])
+
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetLoading, setResetLoading] = useState(false)
   const [resetMessage, setResetMessage] = useState('')
+
+  // Fluxo 3A / Recuperação de senha: /entrar?reset=true ou evento PASSWORD_RECOVERY
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [recoveryLoading, setRecoveryLoading] = useState(false)
+  const [recoveryMessage, setRecoveryMessage] = useState('')
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+
+    const resetQuery = searchParams.get('reset') === 'true'
+    const hash = typeof window !== 'undefined' ? window.location.hash : ''
+    const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash)
+    const hasRecoveryHash = hash.includes('type=recovery')
+    const tokenHash = searchParams.get('token_hash')
+    const tokenType = searchParams.get('type')
+    const authCode = searchParams.get('code')
+    const urlError = searchParams.get('error') || hashParams.get('error')
+    const urlErrorDesc = searchParams.get('error_description') || hashParams.get('error_description')
+
+    if (resetQuery || hasRecoveryHash || tokenType === 'recovery') {
+      setIsRecoveryMode(true)
+    }
+
+    if (urlError || urlErrorDesc) {
+      setIsRecoveryMode(true)
+      setRecoveryMessage(
+        '❌ Este link de definição de senha expirou ou é inválido. Solicite um novo link por e-mail abaixo.'
+      )
+    } else if (tokenHash && tokenType === 'recovery') {
+      void supabase.auth
+        .verifyOtp({ token_hash: tokenHash, type: 'recovery' })
+        .then(({ error }) => {
+          if (error) {
+            setRecoveryMessage(
+              '❌ Este link de definição de senha expirou ou já foi utilizado. Solicite um novo link abaixo.'
+            )
+          }
+        })
+    } else if (authCode && resetQuery) {
+      void supabase.auth
+        .exchangeCodeForSession(authCode)
+        .then(({ error }) => {
+          if (error) {
+            setRecoveryMessage(
+              '❌ Este link de definição de senha expirou ou foi aberto em outro navegador. Solicite um novo link por e-mail abaixo.'
+            )
+          }
+        })
+        .catch(() => {
+          setRecoveryMessage(
+            '❌ Não foi possível validar este link. Solicite um novo link por e-mail abaixo.'
+          )
+        })
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryMode(true)
+        setRecoveryMessage('')
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [searchParams])
+
+  const redirectAuthenticatedUser = async (userId?: string) => {
+    try {
+      const { data: profile } = userId
+        ? await supabase.from('profiles').select('role').eq('id', userId).single()
+        : { data: null }
+
+      if (profile?.role === 'admin') {
+        window.location.href = '/admin/dashboard'
+      } else if (profile?.role === 'volunteer') {
+        window.location.href = '/volunteer/contributions'
+      } else {
+        window.location.href = '/dashboard'
+      }
+    } catch {
+      window.location.href = '/dashboard'
+    }
+  }
+
+  const handleSetNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRecoveryMessage('')
+
+    if (newPassword.length < 8) {
+      setRecoveryMessage('❌ A nova senha deve ter pelo menos 8 caracteres.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setRecoveryMessage('❌ As senhas digitadas não coincidem.')
+      return
+    }
+
+    setRecoveryLoading(true)
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session) {
+        setRecoveryMessage(
+          '❌ Sua sessão de definição de senha expirou. Clique em "Solicitar novo link por e-mail" abaixo.'
+        )
+        setRecoveryLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase.auth.updateUser({
+        password: newPassword,
+      })
+
+      if (error) throw error
+
+      setRecoveryMessage('✅ Senha definida com sucesso! Redirecionando para o seu Portal...')
+      await redirectAuthenticatedUser(data?.user?.id || session.user.id)
+    } catch (err: any) {
+      if (err?.message?.includes('different from the old password')) {
+        setRecoveryMessage('❌ Escolha uma senha diferente da anterior.')
+      } else {
+        setRecoveryMessage(
+          '❌ Não foi possível salvar a nova senha. Solicite um novo link por e-mail.'
+        )
+      }
+      setRecoveryLoading(false)
+    }
+  }
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,6 +189,7 @@ export default function EntrarPage() {
       if (isLogin) {
         const validatedData = loginSchema.parse({ email, password })
 
+
         const authPromise = supabase.auth.signInWithPassword({
           email: validatedData.email,
           password: validatedData.password,
@@ -53,29 +203,17 @@ export default function EntrarPage() {
         ])) as any
 
         if (error) throw error
+        // "Lembrar-me" só é gravado depois de o login ter dado certo.
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.setItem('imagine.rememberMe', rememberMe ? 'true' : 'false')
+          } catch {
+            // Storage indisponível
+          }
+        }
         setMessage('Login realizado com sucesso!')
         clearTimeout(timeoutId)
-
-        try {
-          const userId = data?.user?.id
-          const { data: profile } = userId
-            ? await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', userId)
-                .single()
-            : { data: null }
-
-          if (profile?.role === 'admin') {
-            window.location.href = '/admin/dashboard'
-          } else if (profile?.role === 'volunteer') {
-            window.location.href = '/volunteer/contributions'
-          } else {
-            window.location.href = '/dashboard'
-          }
-        } catch {
-          window.location.href = '/dashboard'
-        }
+        await redirectAuthenticatedUser(data?.user?.id)
       } else {
         const validatedData = createUserSchema.parse({ email, password, name })
 
@@ -120,7 +258,7 @@ export default function EntrarPage() {
       } else if (error?.message?.includes('Invalid login credentials')) {
         setMessage('❌ Email ou senha incorretos. Verifique suas credenciais.')
       } else if (error?.message?.includes('User already registered')) {
-        setMessage('❌ Este email já está cadastrado. Tente fazer login.')
+        setMessage('❌ Este email já está cadastrado. Tente fazer login ou recuperar a senha.')
       } else if (error?.message?.includes('Password should be at least')) {
         setMessage('❌ A senha deve ter pelo menos 8 caracteres.')
       } else if (error?.message?.includes('Invalid email')) {
@@ -143,12 +281,18 @@ export default function EntrarPage() {
         return
       }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      const normalizedResetEmail = resetEmail.trim()
+      if (!normalizedResetEmail) {
+        setResetMessage('❌ Informe um email válido.')
+        return
+      }
+
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedResetEmail, {
         redirectTo: `${window.location.origin}/entrar?reset=true`,
       })
 
       if (error) throw error
-      setResetMessage('✅ Email de recuperação enviado! Verifique sua caixa de entrada.')
+      setResetMessage('✅ Link enviado! Verifique sua caixa de entrada e spam.')
       setResetEmail('')
     } catch (error: any) {
       if (error?.message?.includes('Invalid email')) {
@@ -166,94 +310,256 @@ export default function EntrarPage() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <a href="https://imagineinstituto.com/" className="flex items-center">
+            <Link href="/" className="flex items-center">
               <img src="/images/logo.png" alt="Instituto Imagine" className="h-10 w-auto" />
-            </a>
-            <a href="https://imagineinstituto.com/" className="text-gray-600 hover:text-gray-900 transition-colors">
+            </Link>
+            <Link href="/" className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium">
               Voltar ao site principal
-            </a>
+            </Link>
           </div>
         </div>
       </header>
 
       <div className="flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
-          <div>
-            <h1 className="mt-6 text-center text-3xl font-bold text-gray-900">
-              {isLogin ? 'Fazer Login' : 'Criar Conta'}
-            </h1>
-            <p className="mt-2 text-center text-sm text-gray-600">
-              Portal Instituto Imagine - Transformando vidas
-            </p>
-          </div>
-
-          {!isSupabaseConfigured() && (
-            <div className="card p-4 bg-yellow-50 border-yellow-200">
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
-                <p className="text-sm font-medium text-yellow-700">Sistema em manutenção</p>
+          {isRecoveryMode ? (
+            <div className="card p-6 sm:p-8 space-y-6">
+              <div>
+                <h1 className="text-center text-2xl font-bold text-gray-900">
+                  Definir sua senha
+                </h1>
+                <p className="mt-2 text-center text-sm text-gray-600">
+                  Escolha uma senha segura para acessar seus recibos e acompanhar os projetos no Portal Instituto Imagine.
+                </p>
               </div>
-              <p className="text-xs mt-1 text-yellow-600">
-                Sistema temporariamente indisponível - Tente novamente mais tarde
-              </p>
-            </div>
-          )}
 
-          <form className="mt-8 space-y-6" onSubmit={handleAuth}>
-            <div className="space-y-4">
-              {!isLogin && (
+              <form onSubmit={handleSetNewPassword} className="space-y-4">
                 <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">Nome completo</label>
-                  <input id="name" name="name" type="text" required={!isLogin} className="input-modern" placeholder="Digite seu nome completo" value={name} onChange={(e) => setName(e.target.value)} />
+                  <label
+                    htmlFor="new-password"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    Nova senha (mínimo 8 caracteres)
+                  </label>
+                  <input
+                    id="new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    className="input-modern"
+                    placeholder="Digite sua nova senha"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="confirm-password"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    Confirmar nova senha
+                  </label>
+                  <input
+                    id="confirm-password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    className="input-modern"
+                    placeholder="Repita sua nova senha"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+
+                {recoveryMessage && (
+                  <div
+                    role="alert"
+                    className={`text-sm p-3 rounded-lg ${
+                      recoveryMessage.includes('✅')
+                        ? 'bg-green-50 text-green-700 border border-green-200'
+                        : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}
+                  >
+                    {recoveryMessage}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={recoveryLoading}
+                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {recoveryLoading ? 'Salvando senha...' : 'Salvar senha e entrar'}
+                </button>
+
+                <div className="pt-2 flex flex-col gap-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(true)}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Solicitar novo link por e-mail
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRecoveryMode(false)
+                      setRecoveryMessage('')
+                    }}
+                    className="text-xs text-gray-500 hover:text-gray-800"
+                  >
+                    Voltar para o login tradicional
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            <>
+              <div>
+                <h1 className="mt-6 text-center text-3xl font-bold text-gray-900">
+                  {isLogin ? 'Fazer Login' : 'Criar Conta'}
+                </h1>
+                <p className="mt-2 text-center text-sm text-gray-600">
+                  Portal Instituto Imagine — Transformando vidas
+                </p>
+              </div>
+
+              {!isSupabaseConfigured() && (
+                <div className="card p-4 bg-yellow-50 border-yellow-200">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                    <p className="text-sm font-medium text-yellow-800">Sistema em manutenção</p>
+                  </div>
+                  <p className="text-xs mt-1 text-yellow-800">
+                    Sistema temporariamente indisponível — tente novamente mais tarde
+                  </p>
                 </div>
               )}
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                <input id="email" name="email" type="email" autoComplete="email" required className="input-modern" placeholder="Digite seu email" value={email} onChange={(e) => setEmail(e.target.value)} />
-              </div>
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
-                <input id="password" name="password" type="password" autoComplete={isLogin ? 'current-password' : 'new-password'} required className="input-modern" placeholder="Digite sua senha" value={password} onChange={(e) => setPassword(e.target.value)} />
-              </div>
-            </div>
 
-            {isLogin && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <input id="remember-me" name="remember-me" type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
-                  <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">Lembrar-me</label>
+              <form className="mt-8 space-y-6" onSubmit={handleAuth}>
+                <div className="space-y-4">
+                  {!isLogin && (
+                    <div>
+                      <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+                        Nome completo
+                      </label>
+                      <input
+                        id="name"
+                        name="name"
+                        type="text"
+                        required={!isLogin}
+                        className="input-modern"
+                        placeholder="Digite seu nome completo"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                      Email
+                    </label>
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      className="input-modern"
+                      placeholder="Digite seu email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="password"
+                      className="block text-sm font-medium text-gray-700 mb-2"
+                    >
+                      Senha
+                    </label>
+                    <input
+                      id="password"
+                      name="password"
+                      type="password"
+                      autoComplete={isLogin ? 'current-password' : 'new-password'}
+                      required
+                      className="input-modern"
+                      placeholder="Digite sua senha"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <button type="button" onClick={() => setShowForgotPassword(true)} className="text-sm text-blue-600 hover:text-blue-500 transition-colors">
-                  Esqueceu a senha?
-                </button>
-              </div>
-            )}
 
-            {message && (
-              <div className={`text-sm p-3 rounded-lg ${message.includes('sucesso') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                {message}
-              </div>
-            )}
+                {isLogin && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <input
+                        id="remember-me"
+                        name="remember-me"
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => {
+                          setRememberMe(e.target.checked)
+                        }}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                        Lembrar-me
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPassword(true)}
+                      className="text-sm text-blue-600 hover:text-blue-500 transition-colors"
+                    >
+                      Esqueceu ou primeiro acesso?
+                    </button>
+                  </div>
+                )}
 
-            <div>
-              <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">
-                {loading ? 'Processando...' : isLogin ? 'Entrar' : 'Criar Conta'}
-              </button>
-            </div>
+                {message && (
+                  <div
+                    role="alert"
+                    className={`text-sm p-3 rounded-lg ${
+                      message.includes('sucesso')
+                        ? 'bg-green-50 text-green-700 border border-green-200'
+                        : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}
+                  >
+                    {message}
+                  </div>
+                )}
 
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsLogin(!isLogin)
-                  setMessage('')
-                }}
-                className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-              >
-                {isLogin ? 'Não tem conta? Criar uma' : 'Já tem conta? Fazer login'}
-              </button>
-            </div>
-          </form>
+                <div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Processando...' : isLogin ? 'Entrar' : 'Criar Conta'}
+                  </button>
+                </div>
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLogin(!isLogin)
+                      setMessage('')
+                    }}
+                    className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                  >
+                    {isLogin ? 'Não tem conta? Criar uma' : 'Já tem conta? Fazer login'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
 
           <Modal
             isOpen={showForgotPassword}
@@ -264,20 +570,10 @@ export default function EntrarPage() {
                 setResetMessage('')
               }
             }}
-            title="Recuperar Senha"
+            title="Receber Link de Senha"
             size="sm"
-          >
-            <form onSubmit={handleForgotPassword} className="space-y-4">
-              <div>
-                <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                <input id="reset-email" type="email" required className="input-modern" placeholder="Digite seu email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} />
-              </div>
-              {resetMessage && (
-                <div className={`text-sm p-3 rounded-lg ${resetMessage.includes('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                  {resetMessage}
-                </div>
-              )}
-              <div className="flex gap-3 pt-2 border-t border-gray-200">
+            footer={
+              <div className="flex gap-3 justify-end">
                 <button
                   type="button"
                   onClick={() => {
@@ -285,19 +581,73 @@ export default function EntrarPage() {
                     setResetEmail('')
                     setResetMessage('')
                   }}
-                  className="btn-secondary flex-1"
+                  className="btn-secondary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:hover:scale-100"
                   disabled={resetLoading}
                 >
                   Cancelar
                 </button>
-                <button type="submit" disabled={resetLoading} className="btn-primary flex-1">
-                  {resetLoading ? 'Enviando...' : 'Enviar'}
+                <button
+                  type="submit"
+                  form="forgot-password-form"
+                  disabled={resetLoading}
+                  className="btn-primary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:hover:scale-100"
+                >
+                  {resetLoading ? 'Enviando...' : 'Enviar link'}
                 </button>
               </div>
+            }
+          >
+            <form id="forgot-password-form" onSubmit={handleForgotPassword} className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Informe o e-mail usado na sua doação ou cadastro para receber um link seguro de definição de senha.
+              </p>
+              <div>
+                <label
+                  htmlFor="reset-email"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Email
+                </label>
+                <input
+                  id="reset-email"
+                  type="email"
+                  required
+                  className="input-modern"
+                  placeholder="Digite seu email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                />
+              </div>
+              {resetMessage && (
+                <div
+                  role="alert"
+                  className={`text-sm p-3 rounded-lg ${
+                    resetMessage.includes('✅')
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}
+                >
+                  {resetMessage}
+                </div>
+              )}
             </form>
           </Modal>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function EntrarPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-sm text-gray-600">Carregando...</div>
+        </div>
+      }
+    >
+      <EntrarContent />
+    </Suspense>
   )
 }

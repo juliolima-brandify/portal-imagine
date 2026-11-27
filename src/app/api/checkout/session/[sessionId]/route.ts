@@ -1,65 +1,73 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { stripe } from '@/lib/stripe'
+import { NextRequest } from 'next/server'
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase-admin'
+import { jsonNoStore } from '@/lib/admin-http'
+import { isValidUuid, sanitizePublicSessionResponse } from '@/lib/payments'
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { sessionId: string } }
 ) {
+  const rawId = (params?.sessionId || '').trim()
+  if (!rawId || rawId.length > 120) {
+    return jsonNoStore({ success: false, error: 'Identificador de doação inválido.' }, { status: 400 })
+  }
+
+  if (!isSupabaseAdminConfigured()) {
+    return jsonNoStore({ success: false, error: 'Serviço indisponível.' }, { status: 503 })
+  }
+
+  const publicSelectColumns =
+    'id, project_id, campaign_slug, amount, refunded_amount, status, payment_method, is_recurring, recurring_frequency, receipt_sent_at, projects:project_id(title)'
+
   try {
-    const sessionId = params.sessionId
+    let row: any = null
 
-    if (!sessionId) {
-      return NextResponse.json(
-        { success: false, error: 'Session ID é obrigatório' },
-        { status: 400 }
-      )
+    if (isValidUuid(rawId)) {
+      const { data } = await supabaseAdmin
+        .from('donations')
+        .select(publicSelectColumns)
+        .eq('id', rawId)
+        .maybeSingle()
+      row = data
     }
 
-    // Buscar sessão no Stripe
-    const session = await stripe.checkout.sessions.retrieve(sessionId)
-
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Sessão não encontrada' },
-        { status: 404 }
-      )
+    if (!row) {
+      const { data } = await supabaseAdmin
+        .from('donations')
+        .select(publicSelectColumns)
+        .eq('asaas_checkout_id', rawId)
+        .maybeSingle()
+      row = data
     }
 
-    // Extrair dados da sessão
-    const amount = session.amount_total ? session.amount_total / 100 : 0 // Converter de centavos
-    const projectId = session.metadata?.projectId || ''
-    const projectTitle = session.metadata?.projectTitle || 'Projeto'
-    const donorEmail = session.customer_details?.email || session.customer_email || ''
-    const donorName = session.customer_details?.name || session.metadata?.donorName || ''
-    
-    console.log('✅ Dados da sessão recuperados:', {
-      sessionId,
-      projectId,
-      projectTitle,
-      amount,
-      donorEmail
-    })
+    if (!row) {
+      return jsonNoStore({ success: false, error: 'Doação não encontrada.' }, { status: 404 })
+    }
 
-    return NextResponse.json({
-      success: true,
-      sessionId,
-      projectId,
-      projectTitle,
-      amount: amount.toFixed(2),
-      donorEmail,
-      donorName,
-      paymentStatus: session.payment_status,
-      metadata: session.metadata
-    })
+    const projectTitle =
+      row.projects && typeof row.projects === 'object' && !Array.isArray(row.projects)
+        ? (row.projects as { title?: string }).title || null
+        : null
 
-  } catch (error) {
-    console.error('❌ Erro ao buscar sessão do Stripe:', error)
-    
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Erro ao buscar dados da sessão' 
-      },
+    return jsonNoStore(
+      sanitizePublicSessionResponse({
+        id: row.id,
+        project_id: row.project_id,
+        campaign_slug: row.campaign_slug,
+        projectTitle,
+        amount: row.amount,
+        refunded_amount: row.refunded_amount,
+        status: row.status,
+        payment_method: row.payment_method,
+        is_recurring: row.is_recurring,
+        recurring_frequency: row.recurring_frequency,
+        receipt_sent_at: row.receipt_sent_at,
+      })
+    )
+  } catch (err) {
+    console.error('[CheckoutSession] Erro ao consultar status público da doação:', err)
+    return jsonNoStore(
+      { success: false, error: 'Erro ao consultar status da doação.' },
       { status: 500 }
     )
   }

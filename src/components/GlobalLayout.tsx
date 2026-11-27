@@ -10,7 +10,7 @@ interface GlobalLayoutProps {
   children: ReactNode
 }
 
-const NO_SIDEBAR_PATHS = ['/auth', '/entrar', '/', '/admin', '/prototype/checkout', '/embed/checkout', '/doar']
+const NO_SIDEBAR_PATHS = ['/auth', '/entrar', '/', '/admin', '/embed/checkout', '/doacao-sucesso', '/doar']
 
 function checkSkipSidebar(pathname: string | null): boolean {
   if (!pathname) return true

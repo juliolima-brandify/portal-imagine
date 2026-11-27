@@ -20,16 +20,21 @@ import {
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
-export type PresetId = 'today' | 'yesterday' | 'lastWeek' | 'lastMonth' | 'lastQuarter' | 'custom'
+export type PresetId = 'last30Days' | 'today' | 'yesterday' | 'lastWeek' | 'lastMonth' | 'lastQuarter' | 'custom'
 
 interface DateRangePickerWithPresetsProps {
+  id?: string
   start?: Date
   end?: Date
   onChange: (v: { start: Date; end: Date; presetId: PresetId }) => void
+  /** Chamado por "Padrão (30d)": a tela-mãe volta ao mesmo período padrão do seletor (últimos 30 dias). */
+  onClear?: (v: { start: Date; end: Date; presetId: PresetId }) => void
+  initialPresetId?: PresetId
   className?: string
 }
 
 const PRESETS = [
+  { id: 'last30Days' as PresetId, label: 'Últimos 30 dias' },
   { id: 'today' as PresetId, label: 'Hoje' },
   { id: 'yesterday' as PresetId, label: 'Ontem' },
   { id: 'lastWeek' as PresetId, label: 'Última semana' },
@@ -37,9 +42,11 @@ const PRESETS = [
   { id: 'lastQuarter' as PresetId, label: 'Último trimestre' },
 ]
 
-function getPresetRange(id: PresetId): { start: Date; end: Date } {
+export function getPresetRange(id: PresetId): { start: Date; end: Date } {
   const now = new Date()
   switch (id) {
+    case 'last30Days':
+      return { start: startOfDay(subDays(now, 29)), end: endOfDay(now) }
     case 'today':
       return { start: startOfDay(now), end: endOfDay(now) }
     case 'yesterday': {
@@ -64,7 +71,15 @@ function getPresetRange(id: PresetId): { start: Date; end: Date } {
   }
 }
 
-export default function DateRangePickerWithPresets({ start, end, onChange, className = '' }: DateRangePickerWithPresetsProps) {
+export default function DateRangePickerWithPresets({
+  id,
+  start,
+  end,
+  onChange,
+  onClear,
+  initialPresetId,
+  className = '',
+}: DateRangePickerWithPresetsProps) {
   // Inicializar sem data selecionada
   const defaultRange = useMemo(() => {
     if (start && end) return { from: start, to: end }
@@ -73,10 +88,40 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
 
   const [range, setRange] = useState<{ from?: Date; to?: Date }>(defaultRange)
   const [tempRange, setTempRange] = useState<{ from?: Date; to?: Date }>(defaultRange)
-  const [presetId, setPresetId] = useState<PresetId>('custom')
+  const [presetId, setPresetId] = useState<PresetId>(initialPresetId ?? 'custom')
   const [isOpen, setIsOpen] = useState(false)
-  const [position, setPosition] = useState<'left' | 'right'>('left')
+  const [isDesktopLg, setIsDesktopLg] = useState(false)
+  const [offsetLeft, setOffsetLeft] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mql = window.matchMedia('(min-width: 1024px)')
+    const sync = () => setIsDesktopLg(mql.matches)
+    sync()
+    mql.addEventListener('change', sync)
+    return () => mql.removeEventListener('change', sync)
+  }, [])
+
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return
+    const updatePosition = () => {
+      if (!rootRef.current) return
+      const rect = rootRef.current.getBoundingClientRect()
+      const vw = window.innerWidth
+      const margin = 16
+      const targetWidth =
+        vw >= 1024 ? Math.min(880, vw - margin * 2) : vw >= 768 ? Math.min(560, vw - margin * 2) : vw >= 640 ? Math.min(380, vw - margin * 2) : vw - margin * 2
+      const desiredViewportLeft =
+        rect.left + targetWidth <= vw - margin
+          ? rect.left
+          : Math.max(margin, Math.min(rect.right - targetWidth, vw - margin - targetWidth))
+      setOffsetLeft(Math.round(desiredViewportLeft - rect.left))
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    return () => window.removeEventListener('resize', updatePosition)
+  }, [isOpen, isDesktopLg])
 
   // Sincronizar com props externas
   useEffect(() => {
@@ -125,8 +170,8 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
     setIsOpen(false)
   }
 
-  const onSelect = (sel: any) => {
-    setTempRange(sel)
+  const onSelect = (sel: { from?: Date; to?: Date } | undefined) => {
+    setTempRange(sel ?? { from: undefined, to: undefined })
     setPresetId('custom')
     // NÃO fechar - deixar usuário clicar em "Aplicar"
   }
@@ -142,9 +187,12 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
 
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setPresetId('custom')
-    setRange({ from: undefined, to: undefined })
-    setTempRange({ from: undefined, to: undefined })
+    // Limpar volta ao período padrão (últimos 30 dias) e avisa a tela-mãe para ela mudar junto.
+    const fallback = getPresetRange('last30Days')
+    setPresetId('last30Days')
+    setRange({ from: fallback.start, to: fallback.end })
+    setTempRange({ from: fallback.start, to: fallback.end })
+    onClear?.({ start: fallback.start, end: fallback.end, presetId: 'last30Days' })
     // NÃO fechar - deixar popover aberto para usuário selecionar novas datas
   }
 
@@ -158,43 +206,15 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
     <div className={`relative ${className}`} ref={rootRef}>
       {/* Botão Principal */}
       <button
+        id={id}
         type="button"
-        className="
-          w-full px-4 py-2.5 
-          bg-white 
-          border border-gray-300 
-          rounded-xl 
-          shadow-sm hover:shadow-md 
-          transition-all duration-200
-          flex items-center justify-between gap-3
-          text-sm font-medium text-gray-700
-          hover:border-[#2EB87E] hover:bg-gray-50
-          focus:outline-none focus:ring-2 focus:ring-[#2EB87E] focus:ring-offset-2
-        "
+        className="input-modern h-12 !py-0 flex items-center justify-between gap-3 text-sm font-medium text-gray-700 text-left cursor-pointer"
         onClick={(e) => {
           e.stopPropagation()
-          
-          // Calcular posição do popover
-          if (rootRef.current && !isOpen) {
-            const rect = rootRef.current.getBoundingClientRect()
-            const spaceOnRight = window.innerWidth - rect.right
-            const spaceOnLeft = rect.left
-            
-            // Popover tem ~720px de largura
-            const popoverWidth = 720
-            
-            // Se não cabe à direita, abre à esquerda
-            if (spaceOnRight < popoverWidth && spaceOnLeft > spaceOnRight) {
-              setPosition('right')
-            } else {
-              setPosition('left')
-            }
-          }
-          
-          setIsOpen(o => !o)
-          if (!isOpen) {
-            setTempRange(range)
-          }
+          setIsOpen((o) => {
+            if (!o) setTempRange(range)
+            return !o
+          })
         }}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
@@ -213,17 +233,17 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
       {/* Dropdown / Popover */}
       {isOpen && (
         <div 
-          className={`
+          className="
             absolute z-50 mt-2
             bg-white 
             border border-gray-200 
             rounded-2xl 
             shadow-2xl 
             overflow-hidden
-            w-full sm:w-[600px] md:w-[720px] max-w-[95vw]
-            ${position === 'left' ? 'left-0' : 'right-0'}
-          `}
+            w-[calc(100vw-2rem)] sm:w-[380px] md:w-[560px] lg:w-[880px] max-w-[calc(100vw-2rem)]
+          "
           style={{
+            left: `${offsetLeft}px`,
             maxHeight: 'calc(100vh - 100px)',
             overflowY: 'auto'
           }}
@@ -260,7 +280,7 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
                 ))}
               </div>
               
-              {/* Botão Limpar */}
+              {/* Botão Padrão (30d) */}
               <button
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
@@ -274,25 +294,33 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
                   transition-all duration-150
                 "
               >
-                Limpar
+                Padrão (30d)
               </button>
             </div>
 
             {/* Coluna Direita: Calendário */}
-            <div 
-              className="flex-1 p-6 flex flex-col" 
+            <div
+              className="flex-1 p-3 sm:p-4 lg:p-6 flex flex-col"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
               <style jsx global>{`
                 .rdp-premium {
-                  --rdp-cell-size: 40px;
+                  --rdp-cell-size: 34px;
+                  margin: 0;
                   font-family: 'Inter', 'Sora', system-ui, -apple-system, sans-serif;
+                }
+
+                @media (min-width: 1024px) {
+                  .rdp-premium {
+                    --rdp-cell-size: 38px;
+                  }
                 }
                 
                 .rdp-premium .rdp-months {
                   display: flex;
-                  gap: 2rem;
+                  gap: 1.5rem;
+                  justify-content: center;
                 }
                 
                 .rdp-premium .rdp-month {
@@ -320,7 +348,13 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
                 }
                 
                 .rdp-premium .rdp-cell {
-                  padding: 2px;
+                  padding: 1px;
+                }
+
+                @media (min-width: 1024px) {
+                  .rdp-premium .rdp-cell {
+                    padding: 2px;
+                  }
                 }
                 
                 .rdp-premium .rdp-button {
@@ -440,13 +474,13 @@ export default function DateRangePickerWithPresets({ start, end, onChange, class
                 }
               `}</style>
               
-              <div className="flex-1">
+              <div className="flex-1 flex justify-center">
                 <DayPicker
                   mode="range"
-                  selected={tempRange?.from && tempRange?.to ? { from: tempRange.from, to: tempRange.to } : undefined}
+                  selected={tempRange?.from ? { from: tempRange.from, to: tempRange.to } : undefined}
                   onSelect={onSelect}
                   locale={ptBR}
-                  numberOfMonths={typeof window !== 'undefined' && window.innerWidth < 768 ? 1 : 2}
+                  numberOfMonths={isDesktopLg ? 2 : 1}
                   weekStartsOn={1}
                   showOutsideDays
                   className="rdp-premium"

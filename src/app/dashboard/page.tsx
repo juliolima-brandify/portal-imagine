@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { formatCurrencyBRL, sumRecognizedDonationsBrl } from '@/lib/payments'
 import type { User } from '@supabase/supabase-js'
 import VolunteerDashboard from '@/components/VolunteerDashboard'
 
@@ -77,21 +78,27 @@ export default function DashboardPage() {
           totalProjectsSupported: 0
         })
       } else {
-        // Estatísticas para doador
-        const [donationsResult, projectsResult] = await Promise.all([
-          supabase.from('donations').select('amount').eq('donor_id', userId),
-          supabase.from('donations').select('project_id').eq('donor_id', userId)
-        ])
+        // Estatísticas para doador (apenas doações reconhecidas pelo valor líquido)
+        const { data: donationsData, error: donationsError } = await supabase
+          .from('donations')
+          .select('amount, refunded_amount, status, project_id')
+          .eq('user_id', userId)
+          .in('status', ['completed', 'partially_refunded'])
 
-        const totalDonated = donationsResult.data?.reduce((sum, donation) => sum + (donation.amount || 0), 0) || 0
-        const totalDonations = donationsResult.data?.length || 0
-        const uniqueProjects = new Set(projectsResult.data?.map(d => d.project_id)).size
+        if (donationsError) throw donationsError
+
+        const rows = donationsData || []
+        const totalDonated = sumRecognizedDonationsBrl(rows)
+        const totalDonations = rows.length
+        const uniqueProjects = new Set(
+          rows.map((d) => d.project_id).filter((id): id is string => Boolean(id))
+        ).size
 
         setStats({
           totalDonated,
           totalDonations,
           totalProjects: 0,
-          totalProjectsSupported: uniqueProjects
+          totalProjectsSupported: uniqueProjects,
         })
       }
     } catch (error) {
@@ -99,12 +106,7 @@ export default function DashboardPage() {
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(amount)
-  }
+  const formatCurrency = (amount: number) => formatCurrencyBRL(amount)
 
   const handleSignOut = async () => {
     try {

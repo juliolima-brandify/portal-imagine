@@ -124,7 +124,7 @@ export default function SobrePage() {
               </div>
               <h3 className="font-semibold text-gray-900 mb-2">Pagamentos Seguros</h3>
               <p className="text-gray-600 text-sm">
-                Utilizamos o Stripe, líder mundial em processamento de pagamentos
+                Processamento seguro de Pix e Cartão de Crédito via Asaas, instituição de pagamento regulada pelo Banco Central
               </p>
             </div>
             <div className="text-center">

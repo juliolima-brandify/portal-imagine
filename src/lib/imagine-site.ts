@@ -285,11 +285,11 @@ export const HOME_FAQ_TABS = [
     id: 'faq-0',
     label: 'Doação',
     items: [
-      { q: 'Como faço para doar?', a: 'Escolha um projeto, toque em “Quero doar”, defina o valor e pague pelo Pix com o QR Code ou o código copia e cola. Depois envie o comprovante pelo WhatsApp para receber o seu recibo.' },
+      { q: 'Como faço para doar?', a: 'Escolha um projeto, toque em “Quero doar”, defina o valor e conclua o pagamento no ambiente seguro do Asaas (Pix ou Cartão de Crédito). Assim que o pagamento é confirmado, você recebe o recibo e o acesso ao Portal do Doador no seu e-mail.' },
       { q: 'Posso escolher para qual projeto vai a minha doação?', a: 'Sim. Cada doação é registrada no projeto que você escolheu. Se preferir, escolha “Onde for mais necessário” e o Instituto direciona para a frente com mais urgência.' },
-      { q: 'Existe valor mínimo?', a: 'Não. Qualquer valor ajuda. Os valores sugeridos são só um atalho.' },
-      { q: 'Posso doar todo mês?', a: 'Pode. Marque “Quero doar todo mês” no formulário e combinamos com você a melhor forma. A doação recorrente é o que mantém as aulas e os atendimentos funcionando o ano inteiro.' },
-      { q: 'Recebo recibo?', a: 'Sim. Enviando o comprovante, você recebe o recibo com o CNPJ do Instituto Imagine.' },
+      { q: 'Existe valor mínimo?', a: 'Pelo checkout online (Pix ou Cartão), o valor mínimo de processamento é R$ 5,00. Para doação de itens ou outros formatos, fale conosco pelo WhatsApp.' },
+      { q: 'Posso doar todo mês?', a: 'Pode. Marque “Quero doar todo mês” ao escolher o valor e ative sua assinatura recorrente no cartão. A doação recorrente é o que mantém as aulas e os atendimentos funcionando o ano inteiro.' },
+      { q: 'Recebo recibo?', a: 'Sim. Assim que o pagamento é confirmado, enviamos automaticamente o recibo com o CNPJ do Instituto Imagine para o seu e-mail, e ele também fica salvo no seu Portal do Doador.' },
     ],
   },
   {
