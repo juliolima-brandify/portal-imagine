@@ -12,8 +12,8 @@ import {
 
 const DEFAULT_PAGE_SIZE = 25
 const MAX_PAGE_SIZE = 100
-const BATCH_SIZE = 1000
-const MAX_PAGES = 100
+const BATCH_SIZE = 500
+const MAX_PAGES = 200
 const PROFILE_CHUNK_SIZE = 100
 
 const DONATION_ADMIN_COLUMNS = [
@@ -44,6 +44,42 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url)
+    const mode = (searchParams.get('mode') || '').trim().toLowerCase()
+
+    if (mode === 'report') {
+      const startParam = (searchParams.get('start') || '').trim() || null
+      const endParam = (searchParams.get('end') || '').trim() || null
+      const rawProjectId = (searchParams.get('projectId') || '').trim()
+      const projectId =
+        rawProjectId && rawProjectId.toLowerCase() !== 'all' ? rawProjectId : null
+
+      if (projectId && !isValidUuid(projectId)) {
+        return jsonNoStore({ error: 'Projeto inválido para o relatório.' }, { status: 400 })
+      }
+      if (startParam && Number.isNaN(Date.parse(startParam))) {
+        return jsonNoStore({ error: 'Data inicial inválida.' }, { status: 400 })
+      }
+      if (endParam && Number.isNaN(Date.parse(endParam))) {
+        return jsonNoStore({ error: 'Data final inválida.' }, { status: 400 })
+      }
+
+      const { data: reportData, error: reportErr } = await supabaseAdmin.rpc(
+        'admin_donations_report',
+        {
+          p_start: startParam,
+          p_end: endParam,
+          p_project_id: projectId,
+        }
+      )
+
+      if (reportErr) {
+        console.error('[AdminDonations] Erro ao gerar relatório agregado:', reportErr)
+        return jsonNoStore({ error: 'Erro ao carregar relatório de doações.' }, { status: 500 })
+      }
+
+      return jsonNoStore({ report: reportData ?? {} })
+    }
+
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
     const pageSize = Math.min(
       MAX_PAGE_SIZE,
@@ -51,7 +87,7 @@ export async function GET(request: NextRequest) {
     )
     const statusFilter = (searchParams.get('status') || 'all').trim().toLowerCase()
     const methodFilter = (searchParams.get('method') || 'all').trim().toLowerCase()
-    const searchQuery = (searchParams.get('q') || '').trim().toLowerCase()
+    const searchQuery = (searchParams.get('q') || '').trim().slice(0, 100).toLowerCase()
     const includeStats = searchParams.get('stats') !== 'false'
     const all = searchParams.get('all') === 'true'
     const maskAnonymous =
@@ -177,7 +213,9 @@ function applyDonationFilters<T extends {
 
   if (opts.statusFilter === 'failed') {
     q = q.in('status', ['failed', 'refunded'])
-  } else if (['completed', 'pending', 'refunded', 'partially_refunded'].includes(opts.statusFilter)) {
+  } else if (
+    ['completed', 'pending', 'refunded', 'partially_refunded', 'disputed'].includes(opts.statusFilter)
+  ) {
     q = q.eq('status', opts.statusFilter)
   }
 
@@ -211,6 +249,7 @@ function statsFromTotals(totals: DonationTotals) {
     total,
     completedCount: count('completed'),
     partiallyRefundedCount: count('partially_refunded'),
+    disputedCount: count('disputed'),
     pendingCount: count('pending'),
     failedCount: count('failed') + count('refunded'),
     totalCompletedBrl: sumDonationsBrl([
@@ -257,15 +296,16 @@ async function loadAllDonations(
       matchedProjectIds,
     })
 
-    const { data, error } = await query.range(offset, offset + BATCH_SIZE - 1)
+    const { data, error } = await query.range(offset, offset + BATCH_SIZE)
     if (error) throw error
     const batch = (data || []) as unknown as DonationRow[]
-    rows.push(...batch)
-    if (batch.length < BATCH_SIZE) {
+    if (batch.length <= BATCH_SIZE) {
+      rows.push(...batch)
       truncated = false
       break
     }
-    offset += batch.length
+    rows.push(...batch.slice(0, BATCH_SIZE))
+    offset += BATCH_SIZE
   }
 
   return { rows, truncated }

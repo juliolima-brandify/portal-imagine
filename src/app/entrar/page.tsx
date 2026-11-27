@@ -45,16 +45,24 @@ function EntrarContent() {
 
     const resetQuery = searchParams.get('reset') === 'true'
     const hash = typeof window !== 'undefined' ? window.location.hash : ''
+    const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash)
     const hasRecoveryHash = hash.includes('type=recovery')
     const tokenHash = searchParams.get('token_hash')
     const tokenType = searchParams.get('type')
     const authCode = searchParams.get('code')
+    const urlError = searchParams.get('error') || hashParams.get('error')
+    const urlErrorDesc = searchParams.get('error_description') || hashParams.get('error_description')
 
     if (resetQuery || hasRecoveryHash || tokenType === 'recovery') {
       setIsRecoveryMode(true)
     }
 
-    if (tokenHash && tokenType === 'recovery') {
+    if (urlError || urlErrorDesc) {
+      setIsRecoveryMode(true)
+      setRecoveryMessage(
+        '❌ Este link de definição de senha expirou ou é inválido. Solicite um novo link por e-mail abaixo.'
+      )
+    } else if (tokenHash && tokenType === 'recovery') {
       void supabase.auth
         .verifyOtp({ token_hash: tokenHash, type: 'recovery' })
         .then(({ error }) => {
@@ -65,7 +73,20 @@ function EntrarContent() {
           }
         })
     } else if (authCode && resetQuery) {
-      void supabase.auth.exchangeCodeForSession(authCode).catch(() => undefined)
+      void supabase.auth
+        .exchangeCodeForSession(authCode)
+        .then(({ error }) => {
+          if (error) {
+            setRecoveryMessage(
+              '❌ Este link de definição de senha expirou ou foi aberto em outro navegador. Solicite um novo link por e-mail abaixo.'
+            )
+          }
+        })
+        .catch(() => {
+          setRecoveryMessage(
+            '❌ Não foi possível validar este link. Solicite um novo link por e-mail abaixo.'
+          )
+        })
     }
 
     const {
@@ -260,7 +281,13 @@ function EntrarContent() {
         return
       }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      const normalizedResetEmail = resetEmail.trim()
+      if (!normalizedResetEmail) {
+        setResetMessage('❌ Informe um email válido.')
+        return
+      }
+
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedResetEmail, {
         redirectTo: `${window.location.origin}/entrar?reset=true`,
       })
 
@@ -349,6 +376,7 @@ function EntrarContent() {
 
                 {recoveryMessage && (
                   <div
+                    role="alert"
                     className={`text-sm p-3 rounded-lg ${
                       recoveryMessage.includes('✅')
                         ? 'bg-green-50 text-green-700 border border-green-200'
@@ -496,6 +524,7 @@ function EntrarContent() {
 
                 {message && (
                   <div
+                    role="alert"
                     className={`text-sm p-3 rounded-lg ${
                       message.includes('sucesso')
                         ? 'bg-green-50 text-green-700 border border-green-200'
@@ -552,7 +581,7 @@ function EntrarContent() {
                     setResetEmail('')
                     setResetMessage('')
                   }}
-                  className="btn-secondary"
+                  className="btn-secondary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:hover:scale-100"
                   disabled={resetLoading}
                 >
                   Cancelar
@@ -561,7 +590,7 @@ function EntrarContent() {
                   type="submit"
                   form="forgot-password-form"
                   disabled={resetLoading}
-                  className="btn-primary"
+                  className="btn-primary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:hover:scale-100"
                 >
                   {resetLoading ? 'Enviando...' : 'Enviar link'}
                 </button>
@@ -591,6 +620,7 @@ function EntrarContent() {
               </div>
               {resetMessage && (
                 <div
+                  role="alert"
                   className={`text-sm p-3 rounded-lg ${
                     resetMessage.includes('✅')
                       ? 'bg-green-50 text-green-700 border border-green-200'

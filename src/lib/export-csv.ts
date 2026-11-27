@@ -17,8 +17,7 @@ export function todayInSaoPaulo(): string {
  */
 export function exportToCSV(data: any[], filename: string): void {
   if (!data || data.length === 0) {
-    alert('Nenhum dado para exportar')
-    return
+    throw new Error('Nenhum dado disponível para exportar.')
   }
 
   const headers = Object.keys(data[0])

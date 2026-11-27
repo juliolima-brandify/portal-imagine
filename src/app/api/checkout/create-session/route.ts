@@ -18,6 +18,7 @@ import { createAsaasCheckoutSession, readBoundedJson } from '@/lib/server/asaas'
 // aplicar o limite real; este contador evita rajadas dentro do mesmo isolate.
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 10
+const MAX_RATE_BUCKETS = 5_000
 const rateBuckets = new Map<string, { count: number; resetAt: number }>()
 
 // cf-connecting-ip só é confiável quando a própria borda Cloudflare (Workers) serve a requisição;
@@ -27,16 +28,20 @@ function runsOnCloudflareWorkers(): boolean {
 }
 
 function getClientIp(request: NextRequest): string {
-  const cfIp = runsOnCloudflareWorkers() ? request.headers.get('cf-connecting-ip')?.trim() : ''
+  const isWorkers = runsOnCloudflareWorkers()
+  const cfIp = isWorkers ? request.headers.get('cf-connecting-ip')?.trim() : ''
   if (cfIp) return cfIp
-  const realIp = request.headers.get('x-real-ip')?.trim()
-  if (realIp) return realIp
-  const forwarded = request.headers.get('x-forwarded-for')
-  if (forwarded) return forwarded.split(',')[0].trim()
-  return 'unknown'
+  // Fora de proxy confiável, não confiar em x-forwarded-for / x-real-ip forjáveis pelo cliente.
+  if (isWorkers || process.env.TRUST_PROXY_HEADERS === 'true') {
+    const realIp = request.headers.get('x-real-ip')?.trim()
+    if (realIp) return realIp
+    const forwarded = request.headers.get('x-forwarded-for')
+    if (forwarded) return forwarded.split(',')[0].trim()
+  }
+  return 'untrusted-proxy'
 }
 
-function isRateLimited(ip: string): boolean {
+function isRateLimited(bucketKey: string): boolean {
   const now = Date.now()
   if (rateBuckets.size > 100) {
     rateBuckets.forEach((entry, key) => {
@@ -45,9 +50,15 @@ function isRateLimited(ip: string): boolean {
       }
     })
   }
-  const bucket = rateBuckets.get(ip)
+  if (rateBuckets.size >= MAX_RATE_BUCKETS && !rateBuckets.has(bucketKey)) {
+    for (const oldKey of Array.from(rateBuckets.keys())) {
+      rateBuckets.delete(oldKey)
+      if (rateBuckets.size < MAX_RATE_BUCKETS) break
+    }
+  }
+  const bucket = rateBuckets.get(bucketKey)
   if (!bucket || now >= bucket.resetAt) {
-    rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    rateBuckets.set(bucketKey, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
     return false
   }
   bucket.count += 1
@@ -202,6 +213,16 @@ export async function POST(request: NextRequest) {
   const cleanMessage = (options.message || '').trim() || null
   const donorNameHint = (options.donorName || currentUser?.name || '').trim() || null
   const donorEmailHint = currentUser?.email ? currentUser.email.trim().toLowerCase() : null
+
+  if (
+    (currentUser && isRateLimited(`user:${currentUser.id}`)) ||
+    (donorEmailHint && isRateLimited(`email:${donorEmailHint}`))
+  ) {
+    return jsonNoStore(
+      { success: false, error: 'Muitas tentativas. Aguarde um minuto e tente novamente.' },
+      { status: 429 }
+    )
+  }
 
   // 1) Registrar intenção de doação pendente no Supabase (com fallback para banco dev antes da migração)
   let donationId: string | null = null

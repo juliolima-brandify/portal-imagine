@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useEffect, useRef } from 'react'
+import { ReactNode, useEffect, useId, useRef } from 'react'
 
 interface ModalProps {
   isOpen: boolean
@@ -38,6 +38,17 @@ export function Modal({
   closeOnEscape = true
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+
+  // Travar rolagem do body quando aberto
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [isOpen])
 
   // Fechar com ESC
   useEffect(() => {
@@ -90,12 +101,12 @@ export function Modal({
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
       >
         {/* Header Fixo */}
         <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white rounded-t-lg">
           <div className="flex items-center justify-between">
-            <h2 id="modal-title" className="text-xl font-semibold text-gray-900">
+            <h2 id={titleId} className="text-xl font-semibold text-gray-900">
               {title}
             </h2>
             {showCloseButton && (
@@ -183,7 +194,7 @@ export default function ConfirmDialog({
             type="button"
             onClick={onCancel}
             disabled={isLoading}
-            className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-secondary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {cancelText}
           </button>
@@ -191,7 +202,7 @@ export default function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={isLoading}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${getButtonStyles()}`}
+            className={`h-11 px-6 rounded-full font-semibold inline-flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${getButtonStyles()}`}
           >
             {isLoading ? 'Processando...' : confirmText}
           </button>

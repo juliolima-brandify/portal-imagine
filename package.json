@@ -7,6 +7,7 @@
     "dev:clean": "powershell -ExecutionPolicy Bypass -File ./start-clean.ps1",
     "build": "next build",
     "start": "next start",
+    "test": "node --test src/lib/imagine-site.test.mjs src/lib/site-projects.test.mjs src/lib/blog-posts.test.mjs src/lib/payments.test.mjs src/lib/webhook-token.test.mjs src/lib/payments.sql.test.mjs",
     "lint": "next lint",
     "clean": "powershell -Command \"Remove-Item -Recurse -Force .next,node_modules\\.cache -ErrorAction SilentlyContinue\"",
     "dev:vinext": "vite dev --port 3001",

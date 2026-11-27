@@ -84,11 +84,27 @@ export async function ensureDonorAccountAndAccessLink(input: {
       },
     })
 
-    // Falha fechada (R6): se createUser falhar (ex.: usuário já existente em auth.users
-    // sem linha em profiles), NUNCA gera link PASSWORD_RECOVERY.
+    // Falha fechada (R6): se createUser falhar (ex.: corrida com outro webhook paralelo ou
+    // usuário já existente sem perfil), reconsulta em modo somente leitura sem gerar link de recuperação.
     if (createErr || !createdAuth?.user?.id) {
       if (createErr) {
-        console.warn('[DonorProvision] createUser não criou nova conta; mantendo login padrão:', createErr.message)
+        console.warn('[DonorProvision] createUser não criou nova conta; tentando vínculo somente leitura:', createErr.message)
+      }
+      const { data: retryMatches, error: retryErr } = await supabaseAdmin.rpc(
+        'find_confirmed_auth_user_ids_by_email',
+        { p_email: cleanEmail }
+      )
+      const retryUserId =
+        !retryErr && Array.isArray(retryMatches) && retryMatches.length === 1
+          ? (retryMatches[0]?.user_id as string | undefined)
+          : undefined
+      if (retryUserId) {
+        await linkOrphanDonationsByEmail(cleanEmail, retryUserId)
+        return {
+          userId: retryUserId,
+          isNewAccount: false,
+          portalAccessUrl: defaultLoginUrl,
+        }
       }
       return {
         userId: null,

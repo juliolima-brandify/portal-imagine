@@ -11,6 +11,7 @@ import {
   buildReceiptText,
   formatCurrencyBRL,
   getDonationDestinationLabel,
+  getDonationStatusBadgeMeta,
   getDonationStatusLabelPTBR,
   getFrequencyLabelPTBR,
   getRecognizedDonationAmountBrl,
@@ -55,22 +56,7 @@ export default function DoacaoDetailPage() {
     }
   }, [params?.id])
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-700'
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'partially_refunded':
-        return 'bg-amber-100 text-amber-800'
-      case 'failed':
-        return 'bg-red-100 text-red-700'
-      case 'refunded':
-        return 'bg-gray-200 text-gray-700'
-      default:
-        return 'bg-gray-200 text-gray-700'
-    }
-  }
+  const getStatusBadge = (status: string) => getDonationStatusBadgeMeta(status).className
 
   if (loading) {
     return (
@@ -168,7 +154,7 @@ export default function DoacaoDetailPage() {
                 {getDonationStatusLabelPTBR(donation.status)}
               </span>
             </div>
-            <p className="text-sm text-gray-600 font-mono">Protocolo: {donation.id}</p>
+            <p className="text-sm text-gray-600 font-mono break-all">Protocolo: {donation.id}</p>
           </div>
           <Link href="/doacoes" className="btn-secondary">
             ← Voltar às Doações
@@ -234,7 +220,7 @@ export default function DoacaoDetailPage() {
                 </div>
                 <div className="sm:col-span-2 pt-3 border-t border-gray-100">
                   <span className="text-xs font-medium text-gray-500 uppercase">
-                    Referência no Gateway
+                    Código da Transação
                   </span>
                   <p className="text-xs font-mono text-gray-700 break-all mt-1">{txId}</p>
                 </div>

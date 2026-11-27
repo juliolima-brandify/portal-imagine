@@ -77,7 +77,7 @@ export default function ProjectReportsPage() {
           }
 
           const { data: reportRaw, error: reportErr } = await supabase.rpc('get_project_public_report', {
-            p_project_id: projectId,
+            p_project_id: projectData.id,
           })
           if (reportErr) throw reportErr
 
@@ -182,7 +182,7 @@ export default function ProjectReportsPage() {
     <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
                 Relatório de Transparência
@@ -191,14 +191,14 @@ export default function ProjectReportsPage() {
                 {project.title}
               </p>
             </div>
-            <Link href="/projetos" className="btn-secondary">
+            <Link href="/projetos" className="btn-secondary whitespace-nowrap">
               ← Voltar aos Projetos
             </Link>
           </div>
         </div>
 
         {/* Project Overview */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <div className="card p-6 mb-8">
           <div className="flex flex-col lg:flex-row gap-6">
             <div className="lg:w-1/3">
               <img 
@@ -214,19 +214,19 @@ export default function ProjectReportsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <div className="text-sm text-gray-500">Meta de Arrecadação</div>
-                  <div className="text-lg font-semibold text-gray-900">{formatCurrency(project.target_amount)}</div>
+                  <div className="text-lg font-semibold text-gray-900 tabular-nums">{formatCurrency(project.target_amount)}</div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Arrecadado</div>
-                  <div className="text-lg font-semibold text-green-600">{formatCurrency(project.current_amount)}</div>
+                  <div className="text-lg font-semibold text-green-600 tabular-nums">{formatCurrency(project.current_amount)}</div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Progresso</div>
-                  <div className="text-lg font-semibold text-blue-600">{project.completion_percentage}%</div>
+                  <div className="text-lg font-semibold text-blue-600 tabular-nums">{project.completion_percentage}%</div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Total de Doadores</div>
-                  <div className="text-lg font-semibold text-gray-900">{project.total_donors}</div>
+                  <div className="text-lg font-semibold text-gray-900 tabular-nums">{project.total_donors}</div>
                 </div>
               </div>
 
@@ -238,7 +238,7 @@ export default function ProjectReportsPage() {
                     style={{ width: `${project.completion_percentage}%` }}
                   ></div>
                 </div>
-                <div className="flex justify-between text-sm text-gray-500 mt-1">
+                <div className="flex justify-between text-sm text-gray-500 mt-1 tabular-nums">
                   <span>{formatCurrency(project.current_amount)}</span>
                   <span>{formatCurrency(project.target_amount)}</span>
                 </div>
@@ -249,59 +249,67 @@ export default function ProjectReportsPage() {
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="card p-6">
             <div className="text-2xl font-bold text-green-600 mb-2 tabular-nums">{formatCurrency(project.current_amount)}</div>
             <div className="text-sm text-gray-500">Total Arrecadado</div>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="card p-6">
             <div className="text-2xl font-bold text-blue-600 mb-2 tabular-nums">{project.total_donations}</div>
             <div className="text-sm text-gray-500">Total de Doações</div>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="card p-6">
             <div className="text-2xl font-bold text-purple-600 mb-2 tabular-nums">{project.total_donors}</div>
             <div className="text-sm text-gray-500">Doadores Únicos</div>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="card p-6">
             <div className="text-2xl font-bold text-orange-600 mb-2 tabular-nums">{formatCurrency(project.average_donation)}</div>
             <div className="text-sm text-gray-500">Doação Média</div>
           </div>
         </div>
 
         {/* Donation Timeline */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <div className="card p-6 mb-8">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Evolução das Doações</h3>
-          <div className="space-y-4">
-            {donationData.map((data, index) => (
-              <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div>
-                  <div className="font-medium text-gray-900">{data.month}</div>
-                  <div className="text-sm text-gray-500">{data.donors} doadores</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-semibold text-gray-900">{formatCurrency(data.amount)}</div>
-                  <div className="text-sm text-gray-500">
-                    {project.current_amount > 0
-                      ? ((data.amount / project.current_amount) * 100).toFixed(1)
-                      : '0.0'}% do total
+          {donationData.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              Nenhuma doação confirmada registrada neste projeto até o momento.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {donationData.map((data, index) => (
+                <div key={index} className="flex items-center justify-between gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <div className="font-medium text-gray-900">{data.month}</div>
+                    <div className="text-sm text-gray-500 tabular-nums">
+                      {data.donors} {data.donors === 1 ? 'doador' : 'doadores'}
+                    </div>
+                  </div>
+                  <div className="text-right tabular-nums">
+                    <div className="font-semibold text-gray-900">{formatCurrency(data.amount)}</div>
+                    <div className="text-sm text-gray-500">
+                      {project.current_amount > 0
+                        ? ((data.amount / project.current_amount) * 100).toFixed(1)
+                        : '0.0'}% do total
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Expense Breakdown */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <div className="card p-6 mb-8">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Como o Dinheiro é Utilizado</h3>
           <div className="space-y-4">
             {expenseData.map((expense, index) => (
               <div key={index} className="border-l-4 border-blue-500 pl-4">
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start gap-4">
                   <div>
                     <div className="font-medium text-gray-900">{expense.category}</div>
                     <div className="text-sm text-gray-500">{expense.description}</div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right tabular-nums flex-shrink-0">
                     <div className="font-semibold text-gray-900">{formatCurrency(expense.amount)}</div>
                     <div className="text-sm text-gray-500">{expense.percentage}% do total</div>
                   </div>
@@ -318,44 +326,50 @@ export default function ProjectReportsPage() {
         </div>
 
         {/* Recent Donors */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <div className="card p-6 mb-8">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Doadores Recentes</h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Doador
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Valor
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Data
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {recentDonors.map((donor, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-left">
-                      <div className="text-sm font-medium text-gray-900">
-                        {donor.anonymous ? 'Doador Anônimo' : donor.name}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right tabular-nums">
-                      <div className="text-sm font-medium text-gray-900">
-                        {formatCurrency(donor.amount)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-left tabular-nums text-sm text-gray-900">
-                      {formatDate(donor.date)}
-                    </td>
+          {recentDonors.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              Ainda não há doações confirmadas para exibir aqui.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Doador
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Valor
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Data
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {recentDonors.map((donor, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-left">
+                        <div className="text-sm font-medium text-gray-900">
+                          {donor.anonymous ? 'Doador Anônimo' : donor.name}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right tabular-nums">
+                        <div className="text-sm font-medium text-gray-900">
+                          {formatCurrency(donor.amount)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-left tabular-nums text-sm text-gray-900">
+                        {formatDate(donor.date)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Transparency Statement */}

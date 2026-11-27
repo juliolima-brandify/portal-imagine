@@ -81,7 +81,8 @@ function DoacaoSucessoContent() {
             data.paymentStatus === 'completed' ||
             data.paymentStatus === 'failed' ||
             data.paymentStatus === 'refunded' ||
-            data.paymentStatus === 'partially_refunded'
+            data.paymentStatus === 'partially_refunded' ||
+            data.paymentStatus === 'disputed'
               ? data.paymentStatus
               : 'pending'
 
@@ -139,11 +140,12 @@ function DoacaoSucessoContent() {
     }
   }, [searchParams])
 
-  const isCompleted = state.paymentStatus === 'completed'
-  const isPartiallyRefunded = state.paymentStatus === 'partially_refunded'
+  const isNotFound = state.notFound
+  const isCompleted = !isNotFound && state.paymentStatus === 'completed'
+  const isPartiallyRefunded = !isNotFound && state.paymentStatus === 'partially_refunded'
+  const isDisputed = !isNotFound && state.paymentStatus === 'disputed'
   const isFailedOrRefunded =
-    state.paymentStatus === 'failed' ||
-    state.paymentStatus === 'refunded'
+    !isNotFound && (state.paymentStatus === 'failed' || state.paymentStatus === 'refunded')
 
   const shareText = `Acabei de apoiar o projeto "${state.projectTitle}" do Instituto Imagine em Uberlândia! Conheça e apoie também: https://imagineinstituto.com/#projetos`
 
@@ -180,15 +182,21 @@ function DoacaoSucessoContent() {
           ) : (
             <>
               <div className="flex justify-center mb-6">
-                {isCompleted ? (
+                {isNotFound ? (
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                    <svg className="w-9 h-9 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                ) : isCompleted ? (
                   <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
                     <svg className="w-9 h-9 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
-                ) : isPartiallyRefunded ? (
-                  <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
-                    <svg className="w-9 h-9 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                ) : isPartiallyRefunded || isDisputed ? (
+                  <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
+                    <svg className="w-9 h-9 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
                     </svg>
                   </div>
@@ -208,17 +216,33 @@ function DoacaoSucessoContent() {
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">
-                {isCompleted
-                  ? 'Doação Confirmada!'
-                  : isPartiallyRefunded
-                    ? 'Doação Parcialmente Estornada'
-                    : isFailedOrRefunded
-                      ? 'Pagamento não concluído'
-                      : 'Pagamento em Processamento'}
+                {isNotFound
+                  ? 'Doação não localizada'
+                  : isCompleted
+                    ? 'Doação Confirmada!'
+                    : isPartiallyRefunded
+                      ? 'Doação Parcialmente Estornada'
+                      : isDisputed
+                        ? 'Pagamento em Contestação'
+                        : isFailedOrRefunded
+                          ? 'Pagamento não concluído'
+                          : 'Pagamento em Processamento'}
               </h1>
 
               <p className="text-base text-gray-600 mb-6">
-                {isCompleted ? (
+                {isNotFound ? (
+                  <>
+                    Não foi possível identificar esta doação pelo endereço acessado. Confira suas contribuições em{' '}
+                    <Link href="/doacoes" className="text-blue-700 underline font-medium">
+                      Minhas Doações
+                    </Link>{' '}
+                    ou conheça os{' '}
+                    <Link href="/projetos" className="text-blue-700 underline font-medium">
+                      Projetos
+                    </Link>{' '}
+                    do Instituto Imagine.
+                  </>
+                ) : isCompleted ? (
                   <>
                     Muito obrigado por apoiar <strong>{state.projectTitle}</strong>
                     {state.amountFormatted ? (
@@ -241,6 +265,10 @@ function DoacaoSucessoContent() {
                       </>
                     ) : null}
                     . Você pode consultar os valores detalhados e o recibo atualizado no Portal do Doador.
+                  </>
+                ) : isDisputed ? (
+                  <>
+                    O pagamento desta doação para <strong>{state.projectTitle}</strong> encontra-se em disputa/contestação junto à operadora do cartão. Enquanto a análise estiver em andamento, o valor fica temporariamente suspenso nos relatórios.
                   </>
                 ) : isFailedOrRefunded ? (
                   <>
@@ -303,9 +331,11 @@ function DoacaoSucessoContent() {
                             ? 'text-green-700'
                             : isPartiallyRefunded
                               ? 'text-amber-700'
-                              : isFailedOrRefunded
-                                ? 'text-red-700'
-                                : 'text-amber-700'
+                              : isDisputed
+                                ? 'text-orange-700'
+                                : isFailedOrRefunded
+                                  ? 'text-red-700'
+                                  : 'text-amber-700'
                         }`}
                       >
                         {getDonationStatusLabelPTBR(state.paymentStatus)}
@@ -327,7 +357,7 @@ function DoacaoSucessoContent() {
                 </div>
               )}
 
-              {!state.notFound && !isFailedOrRefunded && (
+              {!state.notFound && !isFailedOrRefunded && !isDisputed && (
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 text-left">
                   <h3 className="text-sm font-semibold text-blue-900 mb-1">
                     Acesso automático ao Portal do Doador
@@ -339,15 +369,21 @@ function DoacaoSucessoContent() {
               )}
 
               <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/#projetos" className="flex-1 btn-secondary text-center">
-                  Voltar aos Projetos
+                <Link
+                  href={isNotFound ? '/projetos' : '/#projetos'}
+                  className="flex-1 btn-secondary h-12 !py-0 flex items-center justify-center text-center"
+                >
+                  {isNotFound ? 'Explorar Projetos' : 'Voltar aos Projetos'}
                 </Link>
-                <Link href="/entrar" className="flex-1 btn-primary text-center">
-                  Acessar Portal do Doador
+                <Link
+                  href={isNotFound ? '/doacoes' : '/entrar'}
+                  className="flex-1 btn-primary h-12 !py-0 flex items-center justify-center text-center"
+                >
+                  {isNotFound ? 'Minhas Doações' : 'Acessar Portal do Doador'}
                 </Link>
               </div>
 
-              {!isFailedOrRefunded && state.paymentStatus !== 'partially_refunded' && (
+              {!isNotFound && !isFailedOrRefunded && !isDisputed && state.paymentStatus !== 'partially_refunded' && (
                 <div className="mt-6 pt-5 border-t border-gray-200">
                   <p className="text-xs text-gray-500 mb-3">
                     Convide amigos e familiares para conhecerem o Instituto Imagine:

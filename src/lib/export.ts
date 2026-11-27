@@ -48,8 +48,7 @@ export async function exportToPDF(
   opts?: { chartImage?: string; chartCaption?: string }
 ): Promise<void> {
   if (!data || data.length === 0) {
-    alert('Nenhum dado para exportar')
-    return
+    throw new Error('Nenhum dado disponível para exportar.')
   }
 
   try {
@@ -122,7 +121,7 @@ export async function exportToPDF(
     doc.save(`${filename}.pdf`)
   } catch (error) {
     console.error('Erro ao gerar PDF:', error)
-    alert('Erro ao gerar PDF. Verifique o console para mais detalhes.')
+    throw new Error('Não foi possível gerar o arquivo PDF. Tente novamente.')
   }
 }
 
@@ -132,8 +131,7 @@ export async function exportToPDF(
 
 export async function exportToExcel(data: any[], filename: string): Promise<void> {
   if (!data || data.length === 0) {
-    alert('Nenhum dado para exportar')
-    return
+    throw new Error('Nenhum dado disponível para exportar.')
   }
 
   try {
@@ -155,7 +153,7 @@ export async function exportToExcel(data: any[], filename: string): Promise<void
     XLSX.writeFile(wb, `${filename}.xlsx`)
   } catch (error) {
     console.error('Erro ao gerar Excel:', error)
-    alert('Erro ao gerar Excel. Verifique o console para mais detalhes.')
+    throw new Error('Não foi possível gerar o arquivo Excel. Tente novamente.')
   }
 }
 
@@ -322,8 +320,7 @@ export async function exportReport(reportData: any, filename: string, options: E
   }
 
   if (exportData.length === 0) {
-    alert('Nenhum dado disponível para exportar')
-    return
+    throw new Error('Nenhum dado disponível para exportar.')
   }
 
   switch (options.format) {

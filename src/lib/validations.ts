@@ -18,14 +18,14 @@ export const userSchema = z.object({
 })
 
 export const createUserSchema = z.object({
-  email: z.string().email('Email inválido. Verifique o formato informado.'),
+  email: z.string().trim().email('Email inválido. Verifique o formato informado.'),
   password: z.string().min(8, 'A senha deve ter pelo menos 8 caracteres.'),
-  name: z.string().min(2, 'Informe seu nome completo.').max(100),
+  name: z.string().trim().min(2, 'Informe seu nome completo.').max(100),
   role: userRoleSchema.default('donor'),
 })
 
 export const loginSchema = z.object({
-  email: z.string().email('Email inválido. Verifique o formato informado.'),
+  email: z.string().trim().email('Email inválido. Verifique o formato informado.'),
   password: z.string().min(8, 'A senha deve ter pelo menos 8 caracteres.'),
 })
 
@@ -62,7 +62,7 @@ export const donationSchema = z.object({
   project_id: z.string().uuid().nullable(),
   user_id: z.string().uuid().nullable().optional(),
   payment_method: z.enum(['credit_card', 'pix']),
-  status: z.enum(['pending', 'completed', 'failed', 'refunded', 'partially_refunded']),
+  status: z.enum(['pending', 'completed', 'failed', 'refunded', 'partially_refunded', 'disputed']),
   asaas_payment_id: z.string().optional(),
   asaas_checkout_id: z.string().optional(),
   created_at: z.string().datetime(),

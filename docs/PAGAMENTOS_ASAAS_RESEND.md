@@ -128,7 +128,7 @@ Brief: `docs/PROMPT-CORRECAO-banca-a607706.md`. Decisões D7–D10 aceitas como 
 | # | Decisão | Como ficou no código |
 |---|---|---|
 | **D7** | Recibo de doação parcialmente estornada: detalhado | `getReceiptAmounts` (doado / estornado / líquido) é a fonte única do TXT baixado, do e-mail e do assunto (`buildDonorReceiptEmail`, `src/lib/payments.ts`). |
-| **D8** | `PAYMENT_CHARGEBACK_DISPUTE` | Continua mapeado para `refunded` na classificação (`classifyAsaasWebhookEvent`). O status `disputed` não foi criado: ver pendências. |
+| **D8** | `PAYMENT_CHARGEBACK_DISPUTE` | **Implementado na R4**: classificado como `'disputed'` (reversível para `'completed'`/`'partially_refunded'` se vencer, ou terminal `'refunded'` se perder). |
 | **D9** | KPI "Doadores" | Doadores únicos por e-mail normalizado; sem e-mail, `user_id`; sem nenhum, a própria doação (`getDonorKey`, espelhado no SQL de `get_project_public_report` e `admin_donation_totals`). Anônimos entram no número. |
 | **D10** | Evento sem doação (`matched=false`) | Responde 200 e grava em `public.webhook_unmatched` (conciliação). Se a gravação falhar, responde 503 para o Asaas reenviar. Corrigido o comentário que prometia retry. |
 
@@ -188,10 +188,10 @@ Brief: `docs/PROMPT-CORRECAO-banca-a607706.md`. Decisões D7–D10 aceitas como 
 
 | # | Pendência | Comportamento até a decisão |
 |---|---|---|
-| **B-P1** | Status `disputed` para `PAYMENT_CHARGEBACK_DISPUTE` (D8 aceita como recomendada, mas a mudança de status não foi feita) | Continua `refunded` (definitivo). Ajustar junto com a validação no sandbox. |
+| **B-P1** | Status `disputed` para `PAYMENT_CHARGEBACK_DISPUTE` (`D8`) | **Fechada na R4**: status `'disputed'` reversível implementado em SQL (`20261129`), `payments.ts`, webhook e telas. |
 | **B-P2** | Paginação por chave `(created_at, id)` no admin (item 11 prefere, ainda não feita) | Mantida paginação por `range`, com ordenação estável por `(created_at, id)`. |
-| **B-P3** | Chave de doador nas telas admin (`admin/dashboard` e `admin/relatorios` ainda usam chaves próprias, com anônimos separados) | `getDonorKey` existe e está testado. A troca nas telas depende de o modo `maskAnonymous` deixar de mascarar o e-mail; senão o número sai errado. |
-| **B-P4** | Acabamento "input-modern" do `DateRangePicker` | O seletor não usa a classe `input-modern`; o gatilho tem estilo próprio. Não alterado. |
+| **B-P3** | Chave de doador nas telas admin (`/admin/dashboard` e `/admin/relatorios`) | **Fechada na R4**: cálculos agregados movidos para a RPC `admin_donations_report`, aplicando `D9` no SQL sem distorção por `maskAnonymous` e mantendo `D6` na exibição de anônimos. |
+| **B-P4** | Acabamento "input-modern" do `DateRangePicker` | **Fechada na R4**: gatilho alinhado com `input-modern h-12 !py-0`, `htmlFor`/`id` vinculado e seleção manual corrigida. |
 | **B-P5** | Exibição do admin ainda usa `profiles.email` como fallback para linhas antigas sem `donor_email` (`admin/donations/route.ts`) | Só afeta exibição para o admin; não concede acesso nem vincula doação. |
 | **B-P6** | Recibo não é reenviado sozinho quando há estorno depois do recibo | O admin reenvia manualmente pelo botão de reenvio. |
 | **B-P7** | Tela ou rotina de conciliação de `webhook_unmatched` | Os registros ficam guardados; nenhuma tela os consulta ainda. |
@@ -202,3 +202,26 @@ Brief: `docs/PROMPT-CORRECAO-banca-a607706.md`. Decisões D7–D10 aceitas como 
 - `src/lib/payments.sql.test.mjs` roda as migrações reais em PGlite (Postgres em memória). O fixture recria apenas as tabelas base que 26 e 27 alteram, além de `auth.users`, `auth.uid()` e os papéis. As políticas RLS da migração 25 não estão no fixture; a proteção de `profiles.email` é testada pelo trigger, não pela RLS.
 - `service_role` está criado com `BYPASSRLS`, como no Supabase.
 - `npm install` sem `--legacy-peer-deps` falha com conflito de peer já existente no repositório. O PGlite foi instalado com `--legacy-peer-deps`.
+
+---
+
+## Correções da Banca R4 sobre `56d31a2`
+
+### Regras novas (não podem quebrar)
+
+- **R-B7** **`PAYMENT_CHARGEBACK_DISPUTE` é reversível (`'disputed'`)**: enquanto em `'disputed'`, `isRecognizedDonationStatus` é `false` (não soma em `projects.current_amount`, `admin_donation_totals`, `admin_donations_report` nem `get_project_public_report`), **sem** sobrescrever `refunded_amount`. Ao vencer (`'completed'`), restaura `'partially_refunded'` se `refunded_amount > 0` (e `< amount`) ou `'completed'`; ao perder (`'refunded'`), trava em `'refunded'` com `refunded_amount = amount`.
+- **R-B8** **Guarda `P4` em assinaturas**: eventos sem `targetStatus` válido (`PAYMENT_UPDATED`) nunca casam pela assinatura nem criam doação `pending` fantasma.
+- **R-B9** **`get_project_public_report` respeita visibilidade de `projects`**: exige `service_role`, projeto público (`status = 'active' AND show_on_site = true AND slug IS NOT NULL`), ou `authenticated` que seja admin, doador do projeto ou tenha favoritado o projeto; caso contrário devolve relatório zerado.
+- **R-B10** **Agregação no Postgres para Dashboard e Relatórios Admin (`admin_donations_report`)**: KPIs do período, crescimento real, série em `America/Sao_Paulo`, métodos/segmentos, top projetos e top doadores (`D6`/`D9`) vêm da RPC sem carregar todas as linhas em memória no Worker (`all=true` permanece apenas para exportação CSV paginada com lookahead `BATCH_SIZE + 1`).
+- **R-B11** **Reexecução fora de ordem protegida**: `20261127` e `20261128` possuem guardas contra downgrade quando `20261129` já foi aplicada (`25 → 26 → 27 → 28 → 29 → 27/28`).
+- **R-B12** **Planilha `pt-BR`, CSS em `@layer components`, `bfcache` e zero `window.alert()` na exportação**: `sanitizeSpreadsheetCell` neutraliza fórmulas também após `;`, `.card`/botões vivem em `@layer components`, formulários de checkout resetam estado em `pageshow` e exportadores lançam `Error` explícito tratado na UI.
+
+### Migração R4
+
+- `supabase/migrations/20261129_banca_r4_fixes.sql` (nova, idempotente):
+  - Atualiza `donations_status_chk` com `'disputed'`.
+  - Atualiza `asaas_donation_transition` e `apply_asaas_webhook_event` (assinatura única de 14 parâmetros com guarda `P4` e `'disputed'`).
+  - Atualiza `get_project_public_report` com checagem de visibilidade de `public.projects`.
+  - Cria `admin_donations_report(p_start, p_end, p_project_id)` (`SECURITY DEFINER`, exclusiva para `service_role`).
+  - Atualiza `protect_profile_email` para comparar `lower(trim(NEW.email)) IS DISTINCT FROM lower(trim(OLD.email))`.
+  - Não aplicar em produção (`zzxtethlsdjjfjjrqmlk`) sem aprovação da `/banca`.

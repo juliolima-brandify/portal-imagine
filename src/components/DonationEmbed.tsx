@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   MIN_DONATION_BRL,
   formatCurrencyBRL,
@@ -37,6 +37,16 @@ export default function DonationEmbed({ project, source = 'embed' }: DonationEmb
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const submitLockRef = useRef(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onPageShow = () => {
+      submitLockRef.current = false
+      setProcessing(false)
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return () => window.removeEventListener('pageshow', onPageShow)
+  }, [])
 
   const getDonationAmount = (): number => {
     if (selectedPreset === 'custom') {

@@ -7,6 +7,7 @@ import {
   INSTITUTE_ADDRESS,
   escapeHtml,
   formatCurrencyBRL,
+  getDonationStatusLabelPTBR,
   getFrequencyLabelPTBR,
   normalizePaymentMethodLabel,
   getReceiptAmounts,
@@ -135,6 +136,8 @@ export async function sendAdminNewDonationEmail(input: {
   donorEmail?: string | null
   anonymous?: boolean
   amount: number
+  refundedAmount?: number | null
+  status?: string | null
   projectTitle: string
   donationId: string
   transactionId?: string | null
@@ -149,22 +152,39 @@ export async function sendAdminNewDonationEmail(input: {
     : escapeHtml(input.donorName || 'Não informado')
   const safeEmail = escapeHtml(input.donorEmail || 'Não informado')
   const safeProject = escapeHtml(input.projectTitle)
-  const safeAmount = escapeHtml(formatCurrencyBRL(input.amount))
+  const amounts = getReceiptAmounts({
+    amount: input.amount,
+    refundedAmount: input.refundedAmount,
+    status: input.status || 'completed',
+  })
+  const safeGrossAmount = escapeHtml(formatCurrencyBRL(amounts.grossBrl))
+  const safeNetAmount = escapeHtml(formatCurrencyBRL(amounts.netBrl))
+  const safeRefundedAmount = escapeHtml(formatCurrencyBRL(amounts.refundedBrl))
+  const safeStatus = escapeHtml(getDonationStatusLabelPTBR(input.status || 'completed'))
   const safeMethod = escapeHtml(normalizePaymentMethodLabel(input.paymentMethod))
   const safeModality = input.isRecurring
     ? `Recorrente (${escapeHtml(getFrequencyLabelPTBR(input.recurringFrequency))})`
     : 'Única'
   const safeMsg = input.message ? escapeHtml(input.message) : ''
+  const titleText = amounts.hasRefund
+    ? `Nova Doação Confirmada (Líq. ${safeNetAmount} / Bruto ${safeGrossAmount})`
+    : `Nova Doação Confirmada: ${safeGrossAmount}`
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <body style="margin:0;padding:24px 12px;background:#F9FAFB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1F2937;">
   <div style="max-width:560px;margin:0 auto;background:#FFFFFF;border-radius:12px;padding:28px;border:1px solid #E5E7EB;">
-    <h2 style="margin:0 0 12px 0;color:#059669;font-size:20px;">Nova Doação Confirmada: ${safeAmount}</h2>
+    <h2 style="margin:0 0 12px 0;color:#059669;font-size:20px;">${titleText}</h2>
     <p style="margin:0 0 16px 0;font-size:14px;color:#4B5563;">Projeto / Campanha: <strong>${safeProject}</strong></p>
     <div style="background:#F3F4F6;border-radius:8px;padding:16px;font-size:13px;line-height:1.7;">
       <div><strong>Doador:</strong> ${donorLabel}</div>
       <div><strong>E-mail:</strong> ${safeEmail}</div>
+      <div><strong>Status:</strong> ${safeStatus}</div>
+      ${
+        amounts.hasRefund
+          ? `<div><strong>Valor líquido reconhecido:</strong> ${safeNetAmount} (bruto ${safeGrossAmount}, estornado -${safeRefundedAmount})</div>`
+          : `<div><strong>Valor:</strong> ${safeGrossAmount}</div>`
+      }
       <div><strong>Meio:</strong> ${safeMethod} · ${safeModality}</div>
       <div><strong>ID Portal:</strong> <code>${escapeHtml(input.donationId)}</code></div>
       ${input.transactionId ? `<div><strong>ID Asaas:</strong> <code>${escapeHtml(input.transactionId)}</code></div>` : ''}
@@ -181,7 +201,9 @@ export async function sendAdminNewDonationEmail(input: {
 
   return sendResendEmail({
     to: adminTo,
-    subject: `Nova doação (${formatCurrencyBRL(input.amount)}) — ${input.projectTitle}`,
+    subject: amounts.hasRefund
+      ? `Nova doação (líquido ${formatCurrencyBRL(amounts.netBrl)}, bruto ${formatCurrencyBRL(amounts.grossBrl)}) — ${input.projectTitle}`
+      : `Nova doação (${formatCurrencyBRL(amounts.grossBrl)}) — ${input.projectTitle}`,
     html,
   })
 }
@@ -201,6 +223,13 @@ export async function sendAdminPaymentAlertEmail(input: {
     refundedAmount: input.refundedAmount,
     status: input.status,
   })
+  const statusLabel = getDonationStatusLabelPTBR(input.status)
+  const pendingNote =
+    input.status === 'pending' && alertAmounts.hasRefund
+      ? ' (status pending — pagamento ainda aguardando confirmação; estorno parcial já registrado)'
+      : input.status
+        ? ` (status ${escapeHtml(input.status)})`
+        : ''
   const alertRefundHtml = alertAmounts.hasRefund
     ? `<p style="margin:0 0 12px 0;font-size:14px;">Estornado: <strong>${escapeHtml(formatCurrencyBRL(alertAmounts.refundedBrl))}</strong> · Líquido reconhecido: <strong>${escapeHtml(formatCurrencyBRL(alertAmounts.netBrl))}</strong></p>`
     : ''
@@ -210,6 +239,7 @@ export async function sendAdminPaymentAlertEmail(input: {
   <div style="max-width:560px;margin:0 auto;background:#FFFFFF;border-radius:12px;padding:28px;border:1px solid #FCA5A5;">
     <h2 style="margin:0 0 12px 0;color:#DC2626;font-size:18px;">Alerta de Pagamento / Estorno (${escapeHtml(input.eventType)})</h2>
     <p style="margin:0 0 12px 0;font-size:14px;">Doação de <strong>${escapeHtml(formatCurrencyBRL(alertAmounts.grossBrl))}</strong> em <strong>${escapeHtml(input.projectTitle)}</strong>.</p>
+    <p style="margin:0 0 12px 0;font-size:14px;">Status atual: <strong>${escapeHtml(statusLabel)}</strong>${pendingNote}</p>
     ${alertRefundHtml}
     <p style="margin:0;font-size:13px;color:#4B5563;">ID Portal: <code>${escapeHtml(input.donationId)}</code> · E-mail: ${escapeHtml(input.donorEmail || 'N/A')}</p>
   </div>

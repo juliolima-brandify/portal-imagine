@@ -190,9 +190,16 @@ export default function ImagineSitePage({
     }
     window.addEventListener('keydown', onKey)
 
+    const onPageShow = () => {
+      doarLockRef.current = false
+      setDoarLoading(false)
+    }
+    window.addEventListener('pageshow', onPageShow)
+
     return () => {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pageshow', onPageShow)
       if (toastTimer.current) window.clearTimeout(toastTimer.current)
     }
   }, [])

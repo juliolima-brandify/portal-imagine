@@ -39,6 +39,7 @@ const VALID_STATUSES = new Set<DonationStatus>([
   'failed',
   'refunded',
   'partially_refunded',
+  'disputed',
 ])
 
 function parseRpcOutcome(data: unknown): AppliedWebhookOutcome {
@@ -125,7 +126,10 @@ export async function POST(request: NextRequest) {
   // estornada). Um estorno parcial registrado antes da confirmação também cai aqui.
   const becameCompleted =
     isRecognizedDonationStatus(outcome.currentStatus) &&
-    (outcome.previousStatus === 'pending' || outcome.previousStatus === 'failed' || outcome.createdRenewal)
+    (outcome.previousStatus === 'pending' ||
+      outcome.previousStatus === 'failed' ||
+      outcome.previousStatus === 'disputed' ||
+      outcome.createdRenewal)
   const becameAlertState =
     classified.shouldNotifyFailureOrRefund && (outcome.statusChanged || outcome.refundChanged)
 
@@ -137,9 +141,11 @@ export async function POST(request: NextRequest) {
         eventType: classified.eventType,
         becameCompleted,
         becameAlertState,
+        resolvedFromDispute: outcome.previousStatus === 'disputed',
         checkoutId: classified.checkoutId,
         customerId: classified.customerId,
         paymentId: classified.paymentId,
+        subscriptionId: classified.subscriptionId,
         billingType: classified.billingType,
         donorName: classified.donorName,
         donorEmail: classified.donorEmail,
@@ -209,25 +215,29 @@ async function handlePostWebhookSideEffects(params: {
   eventType: string
   becameCompleted: boolean
   becameAlertState: boolean
+  resolvedFromDispute?: boolean
   checkoutId: string | null
   customerId: string | null
   paymentId: string | null
+  subscriptionId: string | null
   billingType: string | null
   donorName: string | null
   donorEmail: string | null
 }): Promise<void> {
   let paymentId = params.paymentId
   let customerId = params.customerId
+  let subscriptionId = params.subscriptionId
   let billingType = params.billingType
   let donorName = params.donorName
   let donorEmail = params.donorEmail
 
   // Enriquecimento fora do caminho crítico do webhook (R3: responder 200 rápido).
-  if (params.checkoutId && (!paymentId || !customerId || !billingType)) {
+  if (params.checkoutId && (!paymentId || !customerId || !billingType || !subscriptionId)) {
     const summary = await getAsaasPaymentByCheckoutSession(params.checkoutId)
     if (summary) {
       paymentId = paymentId ?? summary.id
       customerId = customerId ?? summary.customerId
+      subscriptionId = subscriptionId ?? summary.subscriptionId
       billingType = billingType ?? summary.billingType
     }
   }
@@ -256,6 +266,7 @@ async function handlePostWebhookSideEffects(params: {
   const enrichUpdates: Record<string, unknown> = {}
   if (paymentId && !row.asaas_payment_id) enrichUpdates.asaas_payment_id = paymentId
   if (customerId && !row.asaas_customer_id) enrichUpdates.asaas_customer_id = customerId
+  if (subscriptionId && !row.asaas_subscription_id) enrichUpdates.asaas_subscription_id = subscriptionId
   if (billingType && !row.payment_method) enrichUpdates.payment_method = billingType
   if (donorName && !row.donor_name) enrichUpdates.donor_name = donorName
   const cleanDonorEmail = normalizeDonorEmail(donorEmail)
@@ -380,19 +391,33 @@ async function handlePostWebhookSideEffects(params: {
       }
     }
 
-    await sendAdminNewDonationEmail({
-      donorName: effectiveDonorName,
-      donorEmail: effectiveDonorEmail,
-      anonymous: Boolean(row.anonymous),
-      amount,
-      projectTitle,
-      donationId: params.donationId,
-      transactionId: txId,
-      paymentMethod: method,
-      isRecurring: Boolean(row.is_recurring),
-      recurringFrequency: row.recurring_frequency,
-      message: row.message,
-    })
+    if (params.resolvedFromDispute && row.receipt_sent_at) {
+      await sendAdminPaymentAlertEmail({
+        eventType: `${params.eventType} (DISPUTA VENCIDA)`,
+        amount,
+        refundedAmount: Number(row.refunded_amount) || 0,
+        status: row.status,
+        projectTitle,
+        donationId: params.donationId,
+        donorEmail: effectiveDonorEmail,
+      })
+    } else {
+      await sendAdminNewDonationEmail({
+        donorName: effectiveDonorName,
+        donorEmail: effectiveDonorEmail,
+        anonymous: Boolean(row.anonymous),
+        amount,
+        refundedAmount: Number(row.refunded_amount) || 0,
+        status: row.status,
+        projectTitle,
+        donationId: params.donationId,
+        transactionId: txId,
+        paymentMethod: method,
+        isRecurring: Boolean(row.is_recurring),
+        recurringFrequency: row.recurring_frequency,
+        message: row.message,
+      })
+    }
   } else if (params.becameAlertState) {
     await sendAdminPaymentAlertEmail({
       eventType: params.eventType,

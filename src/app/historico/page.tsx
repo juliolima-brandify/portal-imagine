@@ -9,6 +9,7 @@ import {
   SAO_PAULO_TIME_ZONE,
   formatCurrencyBRL,
   getDonationDestinationLabel,
+  getDonationStatusBadgeMeta,
   getDonationStatusLabelPTBR,
   getRecognizedDonationAmountBrl,
   normalizePaymentMethodLabel,
@@ -22,7 +23,7 @@ export default function HistoricoPage() {
   const [donations, setDonations] = useState<Donation[]>([])
   const [userStats, setUserStats] = useState<any>(null)
   const [filter, setFilter] = useState<
-    'all' | 'completed' | 'pending' | 'partially_refunded' | 'failed'
+    'all' | 'completed' | 'pending' | 'partially_refunded' | 'disputed' | 'refunded' | 'failed'
   >('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [dateRange, setDateRange] = useState<'all' | 'week' | 'month' | 'year'>('all')
@@ -121,7 +122,11 @@ export default function HistoricoPage() {
       await exportDonations(filteredDonations, { format })
     } catch (err) {
       console.error('[Historico] Erro ao exportar doações:', err)
-      setExportError('Não foi possível exportar o histórico. Tente novamente.')
+      setExportError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Não foi possível exportar o histórico. Tente novamente.'
+      )
     } finally {
       setExporting(null)
     }
@@ -137,22 +142,7 @@ export default function HistoricoPage() {
       minute: '2-digit',
     })
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800'
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'partially_refunded':
-        return 'bg-amber-100 text-amber-800'
-      case 'failed':
-        return 'bg-red-100 text-red-800'
-      case 'refunded':
-        return 'bg-gray-200 text-gray-800'
-      default:
-        return 'bg-gray-200 text-gray-800'
-    }
-  }
+  const getStatusBadge = (status: string) => getDonationStatusBadgeMeta(status).className
 
   if (loading) {
     return (
@@ -241,6 +231,8 @@ export default function HistoricoPage() {
                 <option value="completed">Confirmadas</option>
                 <option value="pending">Em processamento</option>
                 <option value="partially_refunded">Estornadas parcialmente</option>
+                <option value="disputed">Em disputa</option>
+                <option value="refunded">Estornadas</option>
                 <option value="failed">Não concluídas</option>
               </select>
             </div>
@@ -353,7 +345,7 @@ export default function HistoricoPage() {
                       </div>
 
                       {tx && (
-                        <div className="mt-3 text-xs text-gray-500 font-mono">
+                        <div className="mt-3 text-xs text-gray-500 font-mono break-all">
                           Referência: {tx}
                         </div>
                       )}
@@ -377,7 +369,7 @@ export default function HistoricoPage() {
           )}
         </div>
 
-        {donations.length > 0 && (
+        {filteredDonations.length > 0 && (
           <div className="mt-10 card p-8 text-center">
             <h2 className="text-lg font-semibold text-gray-900 mb-2">Exportar Histórico</h2>
             <p className="text-sm text-gray-600 mb-6">

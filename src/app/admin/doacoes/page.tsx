@@ -8,6 +8,7 @@ import { exportToCSV, todayInSaoPaulo } from '@/lib/export-csv'
 import {
   SAO_PAULO_TIME_ZONE,
   formatCurrencyBRL,
+  getDonationStatusBadgeMeta,
   getDonationStatusLabelPTBR,
   getFrequencyLabelPTBR,
   getRecognizedDonationAmountBrl,
@@ -29,7 +30,7 @@ interface AdminDonationRow {
   refundedAmount: number
   netAmount: number
   currency: string
-  status: 'pending' | 'completed' | 'failed' | 'refunded' | 'partially_refunded'
+  status: 'pending' | 'completed' | 'failed' | 'refunded' | 'partially_refunded' | 'disputed'
   method: string
   rawMethod: string | null
   isRecurring: boolean
@@ -45,6 +46,7 @@ interface AdminDonationStats {
   total: number
   completedCount: number
   partiallyRefundedCount: number
+  disputedCount: number
   pendingCount: number
   failedCount: number
   totalCompletedBrl: number
@@ -70,6 +72,7 @@ export default function AdminDoacoesPage() {
     total: 0,
     completedCount: 0,
     partiallyRefundedCount: 0,
+    disputedCount: 0,
     pendingCount: 0,
     failedCount: 0,
     totalCompletedBrl: 0,
@@ -81,7 +84,7 @@ export default function AdminDoacoesPage() {
   const [loadError, setLoadError] = useState('')
 
   const [statusFilter, setStatusFilter] = useState<
-    'all' | 'completed' | 'pending' | 'partially_refunded' | 'failed'
+    'all' | 'completed' | 'pending' | 'partially_refunded' | 'disputed' | 'failed'
   >('all')
   const [methodFilter, setMethodFilter] = useState<'all' | 'pix' | 'card' | 'recurring'>('all')
   const [searchTerm, setSearchTerm] = useState('')
@@ -143,6 +146,7 @@ export default function AdminDoacoesPage() {
             completedCount: typeof s.completedCount === 'number' ? s.completedCount : 0,
             partiallyRefundedCount:
               typeof s.partiallyRefundedCount === 'number' ? s.partiallyRefundedCount : 0,
+            disputedCount: typeof s.disputedCount === 'number' ? s.disputedCount : 0,
             pendingCount: typeof s.pendingCount === 'number' ? s.pendingCount : 0,
             failedCount: typeof s.failedCount === 'number' ? s.failedCount : 0,
             totalCompletedBrl: typeof s.totalCompletedBrl === 'number' ? s.totalCompletedBrl : 0,
@@ -284,8 +288,12 @@ export default function AdminDoacoesPage() {
 
       exportToCSV(rows, `doacoes_imagine_${todayInSaoPaulo()}`)
       toastRef.current.success('Exportação concluída', `${all.length} doações exportadas.`)
-    } catch {
-      toastRef.current.error('Erro ao exportar', 'Não foi possível carregar todas as doações.')
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Não foi possível carregar todas as doações.'
+      toastRef.current.error('Erro ao exportar', msg)
     } finally {
       operationLockRef.current = false
       setIsExporting(false)
@@ -301,20 +309,8 @@ export default function AdminDoacoesPage() {
   }
 
   const statusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return { label: 'Confirmada', cls: 'bg-green-100 text-green-700' }
-      case 'pending':
-        return { label: 'Em processamento', cls: 'bg-yellow-100 text-yellow-800' }
-      case 'refunded':
-        return { label: 'Estornada', cls: 'bg-gray-200 text-gray-700' }
-      case 'partially_refunded':
-        return { label: 'Estornada parcialmente', cls: 'bg-amber-100 text-amber-800' }
-      case 'failed':
-        return { label: 'Não concluída', cls: 'bg-red-100 text-red-700' }
-      default:
-        return { label: status, cls: 'bg-gray-100 text-gray-700' }
-    }
+    const meta = getDonationStatusBadgeMeta(status)
+    return { label: meta.label, cls: meta.className }
   }
 
   const formatDateTime = (iso: string) => {
@@ -376,7 +372,7 @@ export default function AdminDoacoesPage() {
         </div>
         <div className="card p-6">
           <div className="text-2xl font-bold text-gray-900 mb-1 tabular-nums">
-            {stats.completedCount}
+            {stats.completedCount + stats.partiallyRefundedCount}
           </div>
           <div className="text-sm text-gray-600">Doações Confirmadas</div>
         </div>
@@ -401,7 +397,13 @@ export default function AdminDoacoesPage() {
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(
-                  e.target.value as 'all' | 'completed' | 'pending' | 'partially_refunded' | 'failed'
+                  e.target.value as
+                    | 'all'
+                    | 'completed'
+                    | 'pending'
+                    | 'partially_refunded'
+                    | 'disputed'
+                    | 'failed'
                 )
                 setPage(1)
               }}
@@ -413,6 +415,7 @@ export default function AdminDoacoesPage() {
               <option value="partially_refunded">
                 Estornadas parcialmente ({stats.partiallyRefundedCount})
               </option>
+              <option value="disputed">Em disputa ({stats.disputedCount})</option>
               <option value="failed">Não concluídas / Estornadas ({stats.failedCount})</option>
             </select>
           </div>
@@ -672,7 +675,7 @@ export default function AdminDoacoesPage() {
               type="button"
               onClick={() => setSelectedDonation(null)}
               disabled={Boolean(resendingId)}
-              className="btn-secondary disabled:opacity-50"
+              className="btn-secondary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:hover:scale-100"
             >
               Fechar
             </button>
@@ -688,7 +691,7 @@ export default function AdminDoacoesPage() {
                     setPendingResend(target)
                   }}
                   disabled={Boolean(resendingId)}
-                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-primary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   {resendingId === selectedDonation.id ? 'Enviando recibo...' : 'Reenviar Recibo por E-mail'}
                 </button>

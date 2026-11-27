@@ -30,6 +30,11 @@ import {
   escapeHtml,
   sanitizeSpreadsheetCell,
   buildReceiptText,
+  getDonationStatusLabelPTBR,
+  getDonationStatusBadgeMeta,
+  isValidCpf,
+  isValidCnpj,
+  isValidCpfOrCnpj,
 } from './payments.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -623,6 +628,122 @@ test('Banca R3 🟡: planilha neutraliza fórmulas de largura total e marcas Cf 
   assert.equal(getDonorKey({ donorEmail: null, userId: null, donationId: 'd1' }), 'd:d1')
   assert.equal(isRecognizedDonationStatus('completed'), true)
   assert.equal(isRecognizedDonationStatus('partially_refunded'), true)
+  assert.equal(isRecognizedDonationStatus('disputed'), false)
   assert.equal(isRecognizedDonationStatus('refunded'), false)
   assert.equal(isRecognizedDonationStatus('pending'), false)
+})
+
+test('R4 Bloco 1 (D8): PAYMENT_CHARGEBACK_DISPUTE mapeia para disputed reversível, sem zerar saldo permanentemente nem inflar total', () => {
+  const dispute = classifyAsaasWebhookEvent({
+    id: 'evt_disp_1',
+    event: 'PAYMENT_CHARGEBACK_DISPUTE',
+    payment: { id: 'pay_disp_1', value: 100 },
+  })
+  assert.ok(dispute)
+  assert.equal(dispute.targetStatus, 'disputed')
+  assert.equal(dispute.shouldNotifyFailureOrRefund, true)
+  assert.equal(dispute.shouldNotifyDonorSuccess, false)
+
+  const chargebackLost = classifyAsaasWebhookEvent({
+    id: 'evt_cb_1',
+    event: 'PAYMENT_CHARGEBACK_REQUESTED',
+    payment: { id: 'pay_disp_1', value: 100 },
+  })
+  assert.equal(chargebackLost?.targetStatus, 'refunded')
+
+  assert.equal(getRecognizedDonationAmountBrl({ amount: 100, refundedAmount: 0, status: 'disputed' }), 0)
+  assert.equal(getDonationStatusLabelPTBR('disputed'), 'Em disputa')
+  const badge = getDonationStatusBadgeMeta('disputed')
+  assert.equal(badge.label, 'Em disputa')
+  assert.ok(badge.className.includes('amber') || badge.className.includes('orange'))
+
+  // Entrada em disputa não sobrescreve refunded_amount com o valor bruto.
+  assert.deepEqual(
+    transitionDonationState({ status: 'completed', amount: 100, refundedCurrent: 0, target: 'disputed' }),
+    { status: 'disputed', refunded: 0 }
+  )
+  assert.deepEqual(
+    transitionDonationState({ status: 'partially_refunded', amount: 100, refundedCurrent: 30, target: 'disputed' }),
+    { status: 'disputed', refunded: 30 }
+  )
+  // Vitória na disputa restaura completed (ou partially_refunded se havia estorno parcial).
+  assert.deepEqual(
+    transitionDonationState({ status: 'disputed', amount: 100, refundedCurrent: 0, target: 'completed' }),
+    { status: 'completed', refunded: 0 }
+  )
+  assert.deepEqual(
+    transitionDonationState({ status: 'disputed', amount: 100, refundedCurrent: 30, target: 'completed' }),
+    { status: 'partially_refunded', refunded: 30 }
+  )
+  // Derrota definitiva grava refunded terminal.
+  assert.deepEqual(
+    transitionDonationState({ status: 'disputed', amount: 100, refundedCurrent: 30, target: 'refunded' }),
+    { status: 'refunded', refunded: 100 }
+  )
+})
+
+test('R4 Blocos 6, 12 e 14: CSV pt-BR (;), e-mail de reembolso parcial e CPF/CNPJ módulo 11', () => {
+  // Bloco 6: ponto-e-vírgula abrindo célula de fórmula no Excel pt-BR.
+  assert.equal(sanitizeSpreadsheetCell('Apoio;=HYPERLINK("http://evil")'), "Apoio;'=HYPERLINK(\"http://evil\")")
+  assert.equal(sanitizeSpreadsheetCell('ok;   +CMD'), "ok;'+CMD")
+  assert.equal(sanitizeSpreadsheetCell('x;＝1'), "x;'＝1")
+  assert.equal(sanitizeSpreadsheetCell('Projeto A; Turma B'), 'Projeto A; Turma B')
+
+  // Bloco 12: recibo parcial no HTML mostra título de reembolso parcial, líquido em destaque, status e break-all.
+  const partialHtml = buildDonorReceiptEmail({
+    to: 'ana@x.com',
+    donorName: 'Ana',
+    amount: 100,
+    refundedAmount: 30,
+    status: 'partially_refunded',
+    projectTitle: 'Projeto X',
+    donationId: 'don_123',
+    transactionId: 'pay_123',
+    paymentMethod: 'PIX',
+    createdAt: '2026-11-01T12:00:00Z',
+    publicOrigin: 'https://imagineinstituto.com',
+    portalOrigin: 'https://portal.imagineinstituto.com',
+  }).html.replace(/\u00a0/g, ' ')
+  assert.ok(partialHtml.includes('Doação Confirmada (Reembolso Parcial)'))
+  assert.ok(partialHtml.includes('Valor líquido reconhecido:'))
+  assert.ok(partialHtml.includes('Status:'))
+  assert.ok(partialHtml.includes('Estornada parcialmente'))
+  assert.ok(partialHtml.includes('word-break:break-all'))
+
+  // Bloco 14: CPF/CNPJ mod-11 e descarte silencioso de documento inválido no checkout Asaas.
+  assert.equal(isValidCpf('123.456.789-09'), true)
+  assert.equal(isValidCpf('111.111.111-11'), false)
+  assert.equal(isValidCpf('123.456.789-00'), false)
+  assert.equal(isValidCnpj('11.222.333/0001-81'), true)
+  assert.equal(isValidCnpj('11.222.333/0001-80'), false)
+  assert.equal(isValidCpfOrCnpj('12345678900'), false)
+
+  const invalidCpfPayload = buildAsaasCheckoutPayload({
+    donationId: 'dd0107dc-1802-47af-8755-371603acf890',
+    valueBrl: 50,
+    destinationTitle: 'Projeto A',
+    isRecurring: false,
+    callbackBaseUrl: 'https://imagineinstituto.com',
+    customerData: { name: 'Ana', email: 'ana@x.com', cpfCnpj: '111.111.111-11' },
+  })
+  assert.equal(invalidCpfPayload.customerData?.cpfCnpj, undefined)
+})
+
+test('R4 invariantes estáticos: @layer CSS, zero window.alert em exportação, bfcache pageshow, relatorios sem all=true', () => {
+  const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8')
+  const globalsCss = read('src/app/globals.css')
+  assert.ok(globalsCss.includes('@layer components'))
+  assert.equal(/\balert\s*\(/.test(read('src/lib/export.ts')), false)
+  assert.equal(/\balert\s*\(/.test(read('src/lib/export-csv.ts')), false)
+  assert.ok(read('src/components/site/ImagineSitePage.tsx').includes("'pageshow'"))
+  assert.ok(read('src/components/DonationEmbed.tsx').includes("'pageshow'"))
+  assert.ok(read('src/app/doacao-sucesso/page.tsx').includes('state.notFound'))
+  assert.ok(read('src/app/projetos/[id]/relatorios/page.tsx').includes('p_project_id: projectData.id'))
+
+  const adminDash = read('src/app/admin/dashboard/page.tsx')
+  const adminRel = read('src/app/admin/relatorios/page.tsx')
+  assert.ok(adminDash.includes('fetchAdminDonationsReport'))
+  assert.ok(adminRel.includes('fetchAdminDonationsReport'))
+  assert.equal(adminDash.includes('fetchAllAdminDonations'), false)
+  assert.equal(adminRel.includes('fetchAllAdminDonations'), false)
 })

@@ -51,7 +51,7 @@ export interface Donation {
   campaign_slug?: string | null
   amount: number
   currency: string
-  status: 'pending' | 'completed' | 'failed' | 'refunded' | 'partially_refunded'
+  status: 'pending' | 'completed' | 'failed' | 'refunded' | 'partially_refunded' | 'disputed'
   payment_method?: string
   asaas_checkout_id?: string | null
   asaas_payment_id?: string | null

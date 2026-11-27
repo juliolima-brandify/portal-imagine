@@ -243,7 +243,7 @@ export default function ProjectForm({
             <button
               type="button"
               onClick={onCancel}
-              className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-secondary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={loading}
             >
               Cancelar
@@ -251,7 +251,7 @@ export default function ProjectForm({
             <button
               type="submit"
               form="project-form"
-              className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary h-11 !py-0 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               disabled={loading}
             >
               {loading ? 'Salvando...' : isEditing ? 'Salvar Alterações' : 'Criar Projeto'}

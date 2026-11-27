@@ -10,9 +10,11 @@ import { transitionDonationState } from './payments.ts'
 // Nunca conecta ao Supabase: o banco é criado em memória para cada teste.
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const M25 = '20261125_harden_rls_and_remove_framer_trigger.sql'
 const M26 = '20261126_asaas_payments_and_webhooks.sql'
 const M27 = '20261127_banca_fixes.sql'
 const M28 = '20261128_banca_r3_fixes.sql'
+const M29 = '20261129_banca_r4_fixes.sql'
 
 // Estado do banco antes da migração 20261126 (tabelas base do projeto, com as colunas que 26 e 27 tocam).
 const FIXTURE = `
@@ -69,11 +71,24 @@ CREATE TABLE public.donations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.favorites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, project_id)
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.favorites ENABLE ROW LEVEL SECURITY;
+
 GRANT USAGE ON SCHEMA public, auth TO anon, authenticated, service_role;
 GRANT SELECT ON public.projects TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.profiles TO authenticated;
 GRANT SELECT ON public.donations TO authenticated;
-GRANT ALL ON public.profiles, public.projects, public.donations TO service_role;
+GRANT SELECT, INSERT, DELETE ON public.favorites TO authenticated;
+GRANT ALL ON public.profiles, public.projects, public.donations, public.favorites TO service_role;
 `
 
 function migrationSql(name) {
@@ -190,7 +205,7 @@ async function webhook(db, o) {
 const SERVICE_ROLE_SUB = '' // service_role não usa JWT de usuário
 
 test('itens 3 e 9: estorno parcial antes da confirmação se mantém; a confirmação vira partially_refunded (100 -> 30 -> CONFIRMED)', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   const projectId = await insertProject(db, 0)
   const id = await insertDonation(db, { projectId, amount: 100, status: 'pending', paymentId: 'pay_3' })
 
@@ -217,7 +232,7 @@ test('itens 3 e 9: estorno parcial antes da confirmação se mantém; a confirma
 })
 
 test('item 4: estorno total grava refunded_amount = amount; parcial atrasado sobre refunded não altera nada nem alerta', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   const projectId = await insertProject(db, 0)
   const id = await insertDonation(db, { projectId, amount: 100, status: 'completed', paymentId: 'pay_4' })
   assert.equal(await projectAmount(db, projectId), 100)
@@ -243,8 +258,8 @@ test('item 4: estorno total grava refunded_amount = amount; parcial atrasado sob
   await db.close()
 })
 
-test('item 8: backfill de refunded_amount em doações já refunded, pela migração 28', async () => {
-  const db = await freshDb([M26, M27])
+test('item 8: backfill de refunded_amount em doações já refunded, pela migração 28 (preservado pela 29)', async () => {
+  const db = await freshDb([M25, M26, M27])
   await insertAuthUser(db, '00000000-0000-0000-0000-00000000000a', 'antes@x.com')
   const id = await insertDonation(db, {
     userId: '00000000-0000-0000-0000-00000000000a', amount: 80, status: 'refunded', refunded: 0,
@@ -252,11 +267,13 @@ test('item 8: backfill de refunded_amount em doações já refunded, pela migra�
   assert.equal((await readDonation(db, id)).refunded_amount, 0, 'estado anterior à correção')
   await db.exec(migrationSql(M28))
   assert.equal((await readDonation(db, id)).refunded_amount, 80)
+  await db.exec(migrationSql(M29))
+  assert.equal((await readDonation(db, id)).refunded_amount, 80)
   await db.close()
 })
 
 test('item 9: PARTIALLY_REFUNDED sem valor concluído não muda status nem registra estorno', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   const projectId = await insertProject(db, 0)
   const pending = await insertDonation(db, { projectId, amount: 100, status: 'pending', paymentId: 'pay_9a' })
   const confirmed = await insertDonation(db, { projectId, amount: 50, status: 'completed', paymentId: 'pay_9b' })
@@ -279,7 +296,7 @@ test('item 9: PARTIALLY_REFUNDED sem valor concluído não muda status nem regis
 })
 
 test('item 5: evento sem doação responde matched=false e libera o event_id para nova entrega', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   const r = await webhook(db, { eventId: 'evt_nao_casa', type: 'PAYMENT_CONFIRMED', paymentId: 'pay_inexistente', target: 'completed', amount: 10 })
   assert.equal(r.matched, false)
   assert.equal(r.duplicate, false)
@@ -302,7 +319,7 @@ test('item 5: evento sem doação responde matched=false e libera o event_id par
 })
 
 test('item 1: authenticated não troca profiles.email (vira erro); o e-mail segue auth.users', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   const ATTACKER = '00000000-0000-0000-0000-0000000000a1'
   const VICTIM = '00000000-0000-0000-0000-0000000000b1'
   await insertAuthUser(db, ATTACKER, 'atacante@x.com')
@@ -340,7 +357,7 @@ test('item 1: authenticated não troca profiles.email (vira erro); o e-mail segu
 })
 
 test('item 1: a conta do doador é achada por auth.users (e-mail confirmado, exato), nunca por profiles.email', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   const VICTIM = '00000000-0000-0000-0000-0000000000b2'
   const UNCONFIRMED = '00000000-0000-0000-0000-0000000000c2'
   const SPOOF = '00000000-0000-0000-0000-0000000000d2'
@@ -369,7 +386,7 @@ test('item 1: a conta do doador é achada por auth.users (e-mail confirmado, exa
 })
 
 test('item 7: e-mails de doação e de perfil são gravados normalizados (lower/trim)', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   await insertAuthUser(db, '00000000-0000-0000-0000-0000000000e1', 'Mixed@X.com')
   const id = await insertDonation(db, { amount: 10, status: 'pending', email: '  Foo@X.com ' })
   assert.equal((await readDonation(db, id)).donor_email, 'foo@x.com')
@@ -381,7 +398,7 @@ test('item 7: e-mails de doação e de perfil são gravados normalizados (lower/
 })
 
 test('item 10: relatório público devolve só agregados (sem PII) e o visitante não lê donations', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   const U1 = '00000000-0000-0000-0000-0000000000f1'
   const U2 = '00000000-0000-0000-0000-0000000000f2'
   await insertAuthUser(db, U1, 'u1@x.com')
@@ -419,7 +436,7 @@ test('item 10: relatório público devolve só agregados (sem PII) e o visitante
 })
 
 test('item 11: totais do admin por status vêm da RPC agregada e não são lidos por anon', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   const P = await insertProject(db, 0)
   await insertDonation(db, { projectId: P, amount: 100, status: 'completed', paymentId: 't1', email: 'a@x.com' })
   await insertDonation(db, { projectId: P, amount: 100, status: 'partially_refunded', refunded: 40, paymentId: 't2', email: 'b@x.com' })
@@ -446,7 +463,7 @@ test('item 11: totais do admin por status vêm da RPC agregada e não são lidos
 })
 
 test('apply_asaas_webhook_event: renovação com parcela nova cria doação concluída e soma ao projeto', async () => {
-  const db = await freshDb([M26, M27, M28])
+  const db = await freshDb([M25, M26, M27, M28, M29])
   const P = await insertProject(db, 0)
   await insertDonation(db, { projectId: P, amount: 100, status: 'pending', paymentId: 'sub_pay_1' })
   await db.query(`UPDATE public.donations SET is_recurring = true, asaas_subscription_id = 'sub_1'`)
@@ -459,31 +476,35 @@ test('apply_asaas_webhook_event: renovação com parcela nova cria doação conc
   await db.close()
 })
 
-test('idempotência das migrações: 26→27→28, 27→26→27→28 e 28 duas vezes terminam com o GRANT de refunded_amount', async () => {
+test('idempotência das migrações (incluindo fora de ordem após R4): GRANT, RPC única, chk disputed e report preservados', async () => {
   const sequences = [
-    [M26, M27, M28],
-    [M26, M27, M26, M27, M28],
-    [M26, M27, M28, M28],
-    [M26, M27, M26],
-    [M26, M27, M26, M27],
+    [M25, M26, M27, M28, M29],
+    [M25, M26, M27, M28, M29, M27],
+    [M25, M26, M27, M28, M29, M28],
+    [M25, M26, M27, M28, M29, M26],
+    [M25, M26, M27, M28, M29, M29],
   ]
   for (const seq of sequences) {
     const db = await freshDb(seq)
     const { rows } = await db.query(`
       SELECT has_column_privilege('authenticated', 'public.donations', 'refunded_amount', 'SELECT') AS auth_ok,
              has_column_privilege('anon', 'public.donations', 'refunded_amount', 'SELECT') AS anon_ok,
-             (SELECT count(*)::int FROM pg_proc WHERE proname = 'apply_asaas_webhook_event') AS fn_count`)
+             (SELECT count(*)::int FROM pg_proc WHERE proname = 'apply_asaas_webhook_event') AS fn_count,
+             (SELECT o_status FROM public.asaas_donation_transition('completed', 100, 0, 'disputed', NULL)) AS disp_status,
+             to_regprocedure('public.admin_donations_report(timestamptz,timestamptz,uuid)') IS NOT NULL AS has_report`)
     assert.equal(rows[0].auth_ok, true, `GRANT ausente na sequência ${seq.join(' → ')}`)
     assert.equal(rows[0].anon_ok, false, `anon não pode ler o estorno (${seq.join(' → ')})`)
     assert.equal(rows[0].fn_count, 1, `uma única versão da RPC (${seq.join(' → ')})`)
+    assert.equal(rows[0].disp_status, 'disputed', `guarda R4 deve preservar disputed (${seq.join(' → ')})`)
+    assert.equal(rows[0].has_report, true, `admin_donations_report preservada (${seq.join(' → ')})`)
     await db.close()
   }
 })
 
-test('espelho TypeScript: transitionDonationState é igual à função SQL em toda a matriz de entradas', async () => {
-  const db = await freshDb([M26, M27, M28])
-  const statuses = ['pending', 'completed', 'failed', 'refunded', 'partially_refunded']
-  const targets = [null, 'pending', 'completed', 'failed', 'refunded', 'partially_refunded']
+test('espelho TypeScript: transitionDonationState é igual à função SQL em toda a matriz de entradas (inclui disputed)', async () => {
+  const db = await freshDb([M25, M26, M27, M28, M29])
+  const statuses = ['pending', 'completed', 'failed', 'refunded', 'partially_refunded', 'disputed']
+  const targets = [null, 'pending', 'completed', 'failed', 'refunded', 'partially_refunded', 'disputed']
   const currents = [0, 30]
   const incomings = [null, 0, 30, 100]
   let checked = 0
@@ -506,6 +527,128 @@ test('espelho TypeScript: transitionDonationState é igual à função SQL em to
       }
     }
   }
-  assert.equal(checked, 5 * 6 * 2 * 4)
+  assert.equal(checked, 6 * 7 * 2 * 4)
+  await db.close()
+})
+
+test('R4 Bloco 1 (D8): disputed sai de projects.current_amount sem cravar refunded_amount e pode ser revertido na vitória ou encerrado na derrota', async () => {
+  const db = await freshDb([M25, M26, M27, M28, M29])
+  const P = await insertProject(db, 0)
+  const d1 = await insertDonation(db, { projectId: P, amount: 100, status: 'completed', paymentId: 'pay_disp_win' })
+  const d2 = await insertDonation(db, { projectId: P, amount: 80, status: 'partially_refunded', refunded: 20, paymentId: 'pay_disp_partial' })
+  assert.equal(await projectAmount(db, P), 160)
+
+  // Disputa aberta em ambas: sai do saldo, mas refunded_amount não é sobrescrito com amount.
+  await webhook(db, { eventId: 'e_d1', type: 'PAYMENT_CHARGEBACK_DISPUTE', paymentId: 'pay_disp_win', target: 'disputed', amount: 100 })
+  await webhook(db, { eventId: 'e_d2', type: 'PAYMENT_CHARGEBACK_DISPUTE', paymentId: 'pay_disp_partial', target: 'disputed', amount: 80 })
+  assert.equal((await readDonation(db, d1)).status, 'disputed')
+  assert.equal((await readDonation(db, d1)).refunded_amount, 0)
+  assert.equal((await readDonation(db, d2)).status, 'disputed')
+  assert.equal((await readDonation(db, d2)).refunded_amount, 20)
+  assert.equal(await projectAmount(db, P), 0)
+
+  // Vitória em d1 e d2: restauram completed (100) e partially_refunded (80 - 20 = 60).
+  await webhook(db, { eventId: 'e_w1', type: 'PAYMENT_CONFIRMED', paymentId: 'pay_disp_win', target: 'completed', amount: 100 })
+  await webhook(db, { eventId: 'e_w2', type: 'PAYMENT_RECEIVED', paymentId: 'pay_disp_partial', target: 'completed', amount: 80 })
+  assert.equal((await readDonation(db, d1)).status, 'completed')
+  assert.equal((await readDonation(db, d2)).status, 'partially_refunded')
+  assert.equal(await projectAmount(db, P), 160)
+
+  // Nova disputa seguida de derrota definitiva: refunded terminal = amount, irreversível.
+  await webhook(db, { eventId: 'e_d3', type: 'PAYMENT_CHARGEBACK_DISPUTE', paymentId: 'pay_disp_win', target: 'disputed', amount: 100 })
+  await webhook(db, { eventId: 'e_l3', type: 'PAYMENT_CHARGEBACK_REQUESTED', paymentId: 'pay_disp_win', target: 'refunded', amount: 100 })
+  assert.equal((await readDonation(db, d1)).status, 'refunded')
+  assert.equal((await readDonation(db, d1)).refunded_amount, 100)
+  assert.equal(await projectAmount(db, P), 60)
+
+  await webhook(db, { eventId: 'e_late_win', type: 'PAYMENT_CONFIRMED', paymentId: 'pay_disp_win', target: 'completed', amount: 100 })
+  assert.equal((await readDonation(db, d1)).status, 'refunded', 'refunded definitivo não reverte')
+  await db.close()
+})
+
+test('R4 Bloco 2 (P4): targetStatus=null em assinatura existente retorna matched=false e não cria renovação fantasma', async () => {
+  const db = await freshDb([M25, M26, M27, M28, M29])
+  const P = await insertProject(db, 0)
+  await insertDonation(db, { projectId: P, amount: 100, status: 'completed', paymentId: 'sub_p1' })
+  await db.query(`UPDATE public.donations SET is_recurring = true, asaas_subscription_id = 'sub_p4'`)
+
+  const upd = await webhook(db, {
+    eventId: 'evt_p4_null', type: 'PAYMENT_UPDATED', paymentId: 'sub_p2', subscriptionId: 'sub_p4', target: null, amount: 100,
+  })
+  assert.equal(upd.matched, false)
+  assert.equal(upd.created_renewal, false)
+  const { rows: countRows } = await db.query(`SELECT count(*)::int AS n FROM public.donations`)
+  assert.equal(countRows[0].n, 1)
+
+  const conf = await webhook(db, {
+    eventId: 'evt_p4_conf', type: 'PAYMENT_CONFIRMED', paymentId: 'sub_p2', subscriptionId: 'sub_p4', target: 'completed', amount: 100,
+  })
+  assert.equal(conf.matched, true)
+  assert.equal(conf.created_renewal, true)
+  assert.equal(await projectAmount(db, P), 200)
+  await db.close()
+})
+
+test('R4 Bloco 3: get_project_public_report respeita visibilidade RLS para projetos ocultos', async () => {
+  const db = await freshDb([M25, M26, M27, M28, M29])
+  const DONOR = '00000000-0000-0000-0000-0000000000d1'
+  const FAV = '00000000-0000-0000-0000-0000000000d2'
+  const STRANGER = '00000000-0000-0000-0000-0000000000d3'
+  const ADMIN = '00000000-0000-0000-0000-0000000000d4'
+  await insertAuthUser(db, DONOR, 'donor@x.com')
+  await insertAuthUser(db, FAV, 'fav@x.com')
+  await insertAuthUser(db, STRANGER, 'stranger@x.com')
+  await insertAuthUser(db, ADMIN, 'admin@x.com')
+  await db.query(`UPDATE public.profiles SET role = 'admin' WHERE id = $1`, [ADMIN])
+
+  const { rows: projRows } = await db.query(
+    `INSERT INTO public.projects (title, slug, status, show_on_site) VALUES ('Projeto Oculto', 'oculto', 'active', false) RETURNING id`
+  )
+  const P = projRows[0].id
+  await insertDonation(db, { userId: DONOR, projectId: P, amount: 100, status: 'completed', paymentId: 'vis_1' })
+  await db.query(`INSERT INTO public.favorites (user_id, project_id) VALUES ($1, $2)`, [FAV, P])
+
+  const readReport = async (role, sub = '') => {
+    await as(db, role, sub)
+    const { rows } = await db.query(`SELECT public.get_project_public_report($1::uuid) AS r`, [P])
+    await reset(db)
+    return rows[0].r
+  }
+
+  assert.equal(Number((await readReport('anon')).net_total), 0)
+  assert.equal(Number((await readReport('authenticated', STRANGER)).net_total), 0)
+  assert.equal(Number((await readReport('authenticated', DONOR)).net_total), 100)
+  assert.equal(Number((await readReport('authenticated', FAV)).net_total), 100)
+  assert.equal(Number((await readReport('authenticated', ADMIN)).net_total), 100)
+  assert.equal(Number((await readReport('service_role')).net_total), 100)
+  await db.close()
+})
+
+test('R4 Bloco 7: admin_donations_report agrega no Postgres (D6/D9), é restrito a service_role', async () => {
+  const db = await freshDb([M25, M26, M27, M28, M29])
+  const P = await insertProject(db, 0)
+  await insertDonation(db, { projectId: P, amount: 100, status: 'completed', email: 'a@x.com', paymentId: 'r_a1', anonymous: false })
+  await insertDonation(db, { projectId: P, amount: 50, status: 'completed', email: 'a@x.com', paymentId: 'r_a2', anonymous: true })
+  await insertDonation(db, { projectId: P, amount: 80, status: 'partially_refunded', refunded: 30, email: 'b@x.com', paymentId: 'r_b1' })
+  await insertDonation(db, { projectId: P, amount: 40, status: 'disputed', email: 'c@x.com', paymentId: 'r_c1' })
+
+  await as(db, 'service_role')
+  const { rows } = await db.query(
+    `SELECT public.admin_donations_report((now() - interval '7 days'), (now() + interval '1 hour'), NULL::uuid) AS rep`
+  )
+  await reset(db)
+  const rep = rows[0].rep
+  assert.equal(Number(rep.overview.net_total), 200)
+  assert.equal(rep.overview.donation_count, 3)
+  assert.equal(rep.overview.unique_donors, 2)
+  assert.equal(rep.latest_donations.length, 4)
+  assert.ok(rep.top_donors_90d.some((d) => d.label === 'Doador Anônimo'))
+
+  await as(db, 'anon')
+  await assert.rejects(db.query(`SELECT public.admin_donations_report(NULL, NULL, NULL)`), /permission denied/)
+  await reset(db)
+  await as(db, 'authenticated', '00000000-0000-0000-0000-000000000001')
+  await assert.rejects(db.query(`SELECT public.admin_donations_report(NULL, NULL, NULL)`), /permission denied/)
+  await reset(db)
   await db.close()
 })

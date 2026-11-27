@@ -10,6 +10,7 @@ import {
   buildReceiptText,
   formatCurrencyBRL,
   getDonationDestinationLabel,
+  getDonationStatusBadgeMeta,
   getDonationStatusLabelPTBR,
   getRecognizedDonationAmountBrl,
   normalizePaymentMethodLabel,
@@ -23,7 +24,7 @@ export default function DoacoesPage() {
   const [donations, setDonations] = useState<Donation[]>([])
   const [userStats, setUserStats] = useState<{ totalDonated: number; totalDonations: number } | null>(null)
   const [filter, setFilter] = useState<
-    'all' | 'completed' | 'pending' | 'partially_refunded' | 'recurring'
+    'all' | 'completed' | 'pending' | 'partially_refunded' | 'disputed' | 'refunded' | 'failed' | 'recurring'
   >('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedDonation, setSelectedDonation] = useState<Donation | null>(null)
@@ -68,10 +69,8 @@ export default function DoacoesPage() {
 
   const filteredDonations = donations.filter((donation) => {
     let matchesFilter = true
-    if (filter === 'completed') matchesFilter = donation.status === 'completed'
-    else if (filter === 'pending') matchesFilter = donation.status === 'pending'
-    else if (filter === 'partially_refunded') matchesFilter = donation.status === 'partially_refunded'
-    else if (filter === 'recurring') matchesFilter = donation.is_recurring === true
+    if (filter === 'recurring') matchesFilter = donation.is_recurring === true
+    else if (filter !== 'all') matchesFilter = donation.status === filter
 
     const q = searchTerm.trim().toLowerCase()
     const matchesSearch =
@@ -123,22 +122,7 @@ export default function DoacoesPage() {
     URL.revokeObjectURL(url)
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-700'
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'partially_refunded':
-        return 'bg-amber-100 text-amber-800'
-      case 'failed':
-        return 'bg-red-100 text-red-700'
-      case 'refunded':
-        return 'bg-gray-200 text-gray-700'
-      default:
-        return 'bg-gray-100 text-gray-700'
-    }
-  }
+  const getStatusBadge = (status: string) => getDonationStatusBadgeMeta(status).className
 
   if (loading) {
     return (
@@ -227,6 +211,9 @@ export default function DoacoesPage() {
                 <option value="completed">Confirmadas</option>
                 <option value="pending">Em processamento</option>
                 <option value="partially_refunded">Estornadas parcialmente</option>
+                <option value="disputed">Em disputa</option>
+                <option value="refunded">Estornadas</option>
+                <option value="failed">Não concluídas</option>
                 <option value="recurring">Recorrentes</option>
               </select>
             </div>
@@ -349,7 +336,7 @@ export default function DoacoesPage() {
             <button
               type="button"
               onClick={() => setSelectedDonation(null)}
-              className="btn-secondary"
+              className="btn-secondary h-11 !py-0 inline-flex items-center justify-center"
             >
               Fechar
             </button>
@@ -357,7 +344,7 @@ export default function DoacoesPage() {
               <button
                 type="button"
                 onClick={() => generateReceipt(selectedDonation)}
-                className="btn-primary"
+                className="btn-primary h-11 !py-0 inline-flex items-center justify-center"
               >
                 Baixar Recibo (.txt)
               </button>

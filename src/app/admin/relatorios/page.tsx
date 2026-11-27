@@ -4,15 +4,13 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getProjects } from '@/lib/database'
-import { fetchAllAdminDonations } from '@/lib/admin-api'
+import { fetchAdminDonationsReport, type AdminDonationsReport } from '@/lib/admin-api'
 import {
   formatCurrencyBRL,
   getDonationDestinationLabel,
-  getRecognizedDonationAmountBrl,
   getSaoPauloDateParts,
+  normalizePaymentMethodLabel,
   saoPauloMidnightUtc,
-  sumDonationsBrl,
-  sumRecognizedDonationsBrl,
 } from '@/lib/payments'
 
 import ExportDropdown from '@/components/ExportDropdown'
@@ -22,11 +20,12 @@ import type { User } from '@supabase/supabase-js'
 
 export default function AdminRelatoriosPage() {
   const [, setUser] = useState<User | null>(null)
-  const [allDonations, setAllDonations] = useState<any[]>([])
+  const [report, setReport] = useState<AdminDonationsReport | null>(null)
   const [projects, setProjects] = useState<any[]>([])
   const [totalVolunteers, setTotalVolunteers] = useState(0)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [exportError, setExportError] = useState('')
 
   // Métricas, gráficos e tabelas usam o mesmo escopo do seletor: começa em "Últimos 30 dias".
   const [dateStart, setDateStart] = useState<Date | undefined>(() => getPresetRange('last30Days').start)
@@ -59,37 +58,42 @@ export default function AdminRelatoriosPage() {
     return new Date(dateString).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
   }
 
+  const spBounds = useMemo(() => {
+    const now = new Date()
+    const endDate = dateEnd || now
+    const startDate =
+      dateStart || new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() - 29)
+    return {
+      startDate,
+      endDate,
+      startUtc: new Date(saoPauloMidnightUtc(startDate)),
+      endUtc: new Date(saoPauloMidnightUtc(endDate) + 86400000 - 1),
+    }
+  }, [dateStart, dateEnd])
+
   const loadBaseData = useCallback(async () => {
     setLoading(true)
     setLoadError('')
     try {
-      const [projectsData, donationsPayload, volsRes] = await Promise.all([
+      const [projectsData, reportData, volsRes] = await Promise.all([
         getProjects(),
-        fetchAllAdminDonations('/api/admin/donations', { maskAnonymous: 'true' }),
+        fetchAdminDonationsReport({
+          start: spBounds.startUtc,
+          end: spBounds.endUtc,
+          projectId: selectedProjectId,
+        }),
         supabase
           .from('profiles')
           .select('id', { count: 'exact', head: true })
           .eq('role', 'volunteer'),
       ])
 
-      const mappedDonations = (donationsPayload.data || []).map((item: any) => ({
-        id: item.id,
-        user_id: item.userId,
-        project_id: item.projectId,
-        campaign_slug: item.campaignSlug,
-        projectTitle: item.projectTitle,
-        donorName: item.donorName,
-        donorEmail: item.donorEmail,
-        hasValidEmail: item.hasValidEmail,
-        amount: item.amount,
-        refundedAmount: item.refundedAmount || 0,
-        status: item.status,
-        anonymous: item.anonymous,
-        created_at: item.createdAt,
-      }))
+      if (volsRes.error) {
+        throw volsRes.error
+      }
 
       setProjects(projectsData)
-      setAllDonations(mappedDonations)
+      setReport(reportData)
       setTotalVolunteers(volsRes.count ?? 0)
     } catch (err) {
       console.error('[AdminRelatorios] Erro ao carregar relatórios:', err)
@@ -97,69 +101,35 @@ export default function AdminRelatoriosPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [spBounds.startUtc.getTime(), spBounds.endUtc.getTime(), selectedProjectId])
 
   useEffect(() => {
     void loadBaseData()
   }, [loadBaseData])
 
   const { reports, topDonors } = useMemo(() => {
-    const now = new Date()
-    const endDate = dateEnd || now
-    const startDate =
-      dateStart || new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() - 29)
-
-    let filteredDonations =
-      selectedProjectId === 'all'
-        ? allDonations
-        : allDonations.filter((d: any) => d.project_id === selectedProjectId)
-
-    const startTs = dateStart ? saoPauloMidnightUtc(startDate) : null
-    const endTs = dateEnd ? saoPauloMidnightUtc(endDate) + 86400000 - 1 : null
-    if (startTs !== null) {
-      filteredDonations = filteredDonations.filter(
-        (d: any) => new Date(d.created_at).getTime() >= startTs
-      )
-    }
-    if (endTs !== null) {
-      filteredDonations = filteredDonations.filter(
-        (d: any) => new Date(d.created_at).getTime() <= endTs
-      )
-    }
-
+    const { startDate, endDate } = spBounds
     const activeProjects = projects.filter((p: any) => p.status === 'active')
     const completedProjects = projects.filter((p: any) => p.status === 'completed')
-    const recognizedDonations = filteredDonations.filter(
-      (d: any) => getRecognizedDonationAmountBrl(d) > 0
-    )
 
-    const totalDonations = sumRecognizedDonationsBrl(recognizedDonations)
-    const totalDonors = new Set(
-      recognizedDonations.map((d: any) =>
-        d.anonymous
-          ? `anon:${d.id}`
-          : d.user_id
-            ? `user:${d.user_id}`
-            : d.hasValidEmail
-              ? `email:${String(d.donorEmail).toLowerCase()}`
-              : `guest:${d.id}`
-      )
-    ).size
-    const avgDonation =
-      recognizedDonations.length > 0 ? totalDonations / recognizedDonations.length : 0
+    const overviewRaw = report?.overview
+    const totalDonations = Number(overviewRaw?.net_total) || 0
+    const totalDonors = Number(overviewRaw?.unique_donors) || 0
+    const avgDonation = Number(overviewRaw?.average_donation) || 0
+    const monthlyGrowth = Number(overviewRaw?.growth_pct) || 0
 
-    // Dados do período para o gráfico (últimos 30 dias como janela padrão quando sem seleção)
+    // Dados do período para o gráfico (série agregada no Postgres em America/Sao_Paulo)
     const fillHours = () =>
       Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}h`)
     const fillDays = () => {
-      const labels: string[] = []
+      const keys: string[] = []
       const from = saoPauloMidnightUtc(startDate)
       const to = saoPauloMidnightUtc(endDate)
       for (let t = from; t <= to; t += 86400000) {
-        const { day, month } = getSaoPauloDateParts(new Date(t))
-        labels.push(`${day}/${month}`)
+        const { year, month, day } = getSaoPauloDateParts(new Date(t))
+        keys.push(`${year}-${month}-${day}`)
       }
-      return labels
+      return keys
     }
     const fillMonths = () => {
       const startParts = getSaoPauloDateParts(startDate)
@@ -168,71 +138,62 @@ export default function AdminRelatoriosPage() {
       let month = Number(startParts.month)
       const endYear = Number(endParts.year)
       const endMonth = Number(endParts.month)
-      const labels: string[] = []
+      const keys: string[] = []
       while (year < endYear || (year === endYear && month <= endMonth)) {
-        labels.push(`${year}-${String(month).padStart(2, '0')}`)
+        keys.push(`${year}-${String(month).padStart(2, '0')}`)
         month += 1
         if (month > 12) {
           month = 1
           year += 1
         }
       }
-      return labels
+      return keys
     }
 
     const diffDays = Math.round(
       (saoPauloMidnightUtc(endDate) - saoPauloMidnightUtc(startDate)) / (1000 * 60 * 60 * 24)
     )
-
-    const labels =
+    const keys =
       diffDays === 0 ? fillHours() : diffDays > 90 ? fillMonths() : fillDays()
 
-    const chartStartTs = saoPauloMidnightUtc(startDate)
-    const chartEndTs = saoPauloMidnightUtc(endDate) + 86400000 - 1
-    const buckets = new Map<string, number>(labels.map((l) => [l, 0]))
-    for (const d of recognizedDonations) {
-      const recognized = getRecognizedDonationAmountBrl(d)
-      if (recognized <= 0 || !d.created_at) continue
-      const dt = new Date(d.created_at)
-      if (dt.getTime() < chartStartTs || dt.getTime() > chartEndTs) continue
-      const parts = getSaoPauloDateParts(dt)
-      const key =
-        diffDays === 0
-          ? `${parts.hour}h`
-          : diffDays > 90
-            ? `${parts.year}-${parts.month}`
-            : `${parts.day}/${parts.month}`
-      buckets.set(key, sumDonationsBrl([buckets.get(key) || 0, recognized]))
+    const buckets = new Map<string, number>()
+    for (const item of report?.series ?? []) {
+      buckets.set(item.bucket, Number(item.net) || 0)
     }
 
-    const monthlyData = labels.map((label) => ({
-      month: diffDays > 90 ? label.split('-').reverse().join('/') : label,
-      donations: buckets.get(label) || 0,
-    }))
+    const monthlyData = keys.map((key) => {
+      let label = key
+      if (diffDays > 90) {
+        label = key.split('-').reverse().join('/')
+      } else if (diffDays !== 0) {
+        const [, mm, dd] = key.split('-')
+        label = `${dd}/${mm}`
+      }
+      return {
+        month: label,
+        donations: buckets.get(key) || 0,
+      }
+    })
 
     // Top projects
-    const byProject = new Map<string, { amount: number; donors: Set<string> }>()
-    for (const d of recognizedDonations) {
-      const key = d.project_id
-      if (!key) continue
-      if (!byProject.has(key)) byProject.set(key, { amount: 0, donors: new Set() })
-      const agg = byProject.get(key)!
-      agg.amount = sumDonationsBrl([agg.amount, getRecognizedDonationAmountBrl(d)])
-      const donorKey = d.anonymous
-        ? `anon:${d.id}`
-        : d.user_id
-          ? `user:${d.user_id}`
-          : d.hasValidEmail
-            ? `email:${String(d.donorEmail).toLowerCase()}`
-            : `guest:${d.id}`
-      agg.donors.add(donorKey)
+    const byProject = new Map<string, { amount: number; donors: number }>()
+    for (const row of report?.top_projects ?? []) {
+      byProject.set(row.project_id, {
+        amount: Number(row.net) || 0,
+        donors: Number(row.donors) || 0,
+      })
     }
 
-    const topProjects = projects
+    const visibleProjects =
+      selectedProjectId === 'all'
+        ? projects
+        : projects.filter((p: any) => p.id === selectedProjectId)
+
+    const topProjects = visibleProjects
       .map((p: any) => {
         const agg = byProject.get(p.id)
         const amount = agg?.amount || 0
-        const donors = agg ? agg.donors.size : 0
+        const donors = agg?.donors || 0
         const progress = p.target_amount
           ? Math.round(Math.min((p.current_amount / p.target_amount) * 100, 100))
           : 0
@@ -241,32 +202,43 @@ export default function AdminRelatoriosPage() {
       .sort((a: any, b: any) => b.amount - a.amount)
       .slice(0, 5)
 
-    // Top Doadores
-    const byDonor = new Map<string, { amount: number; count: number; label: string }>()
-    for (const d of recognizedDonations) {
-      const recognized = getRecognizedDonationAmountBrl(d)
-      if (recognized <= 0) continue
-      const key = d.anonymous
-        ? `anon:${d.id}`
-        : d.hasValidEmail
-          ? `email:${String(d.donorEmail).toLowerCase()}`
-          : d.user_id
-            ? `user:${d.user_id}`
-            : `guest:${d.id}`
-      const label = d.anonymous
-        ? 'Doador Anônimo'
-        : d.donorName && d.donorName !== 'Não identificado'
-          ? d.donorName
-          : 'Não identificado'
-      if (!byDonor.has(key)) byDonor.set(key, { amount: 0, count: 0, label })
-      const agg = byDonor.get(key)!
-      agg.amount = sumDonationsBrl([agg.amount, recognized])
-      agg.count += 1
+    // Segmentação de doadores (D9 via SQL)
+    const donorSegments = (report?.donor_segments ?? []).map((seg) => {
+      const count = Number(seg.count) || 0
+      const percentage = totalDonors > 0 ? Math.round((count / totalDonors) * 100) : 0
+      return {
+        segment: seg.segment,
+        count,
+        amount: Number(seg.net) || 0,
+        percentage,
+      }
+    })
+
+    // Métodos de pagamento agregados (mescla variantes para o rótulo amigável)
+    const methodAgg = new Map<string, { amount: number; count: number }>()
+    for (const item of report?.payment_methods ?? []) {
+      const label = normalizePaymentMethodLabel(item.method)
+      const prev = methodAgg.get(label) || { amount: 0, count: 0 }
+      prev.amount += Number(item.net) || 0
+      prev.count += Number(item.count) || 0
+      methodAgg.set(label, prev)
     }
-    const donorsArray = Array.from(byDonor.entries())
-      .map(([userId, info]) => ({ userId, ...info }))
+    const paymentMethods = Array.from(methodAgg.entries())
+      .map(([method, info]) => ({
+        method,
+        amount: info.amount,
+        count: info.count,
+        percentage: totalDonations > 0 ? Math.round((info.amount / totalDonations) * 100) : 0,
+      }))
       .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5)
+
+    // Top Doadores (D6/D9 via SQL)
+    const donorsArray = (report?.top_donors ?? []).map((d) => ({
+      userId: d.key,
+      label: d.label,
+      amount: Number(d.amount) || 0,
+      count: Number(d.count) || 0,
+    }))
 
     return {
       topDonors: donorsArray,
@@ -276,39 +248,35 @@ export default function AdminRelatoriosPage() {
           totalDonors,
           activeProjects: activeProjects.length,
           completedProjects: completedProjects.length,
-          monthlyGrowth: 0,
+          monthlyGrowth,
           averageDonation: avgDonation,
           totalVolunteers,
         },
         monthlyData,
         topProjects,
-        donorSegments: [] as any[],
-        paymentMethods: [] as any[],
-        recentDonations: recognizedDonations.slice(0, 10).map((d: any) => ({
+        donorSegments,
+        paymentMethods,
+        recentDonations: (report?.recent_donations ?? []).map((d) => ({
           id: d.id,
-          donor: d.anonymous
-            ? 'Doador Anônimo'
-            : d.donorName && d.donorName !== 'Não identificado'
-              ? d.donorName
-              : 'Não identificado',
+          donor: d.donor,
           project: getDonationDestinationLabel({
-            projectTitle: d.projectTitle || d.projects?.title || null,
+            projectTitle: d.project_title || null,
             campaignSlug: d.campaign_slug || null,
             projectId: d.project_id || null,
           }),
-          amount: getRecognizedDonationAmountBrl(d),
+          amount: Number(d.amount) || 0,
           date: d.created_at,
         })),
       },
     }
-  }, [allDonations, projects, totalVolunteers, selectedProjectId, dateStart, dateEnd, presetId])
+  }, [report, projects, totalVolunteers, selectedProjectId, spBounds, presetId])
 
   return (
     <div className="max-w-7xl mx-auto">
       <main>
         {/* Page Header */}
         <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
                 Relatórios e Análises
@@ -317,7 +285,7 @@ export default function AdminRelatoriosPage() {
                 Visualize métricas, relatórios de impacto e dados financeiros com análises avançadas.
               </p>
             </div>
-            <div className="mt-4 sm:mt-0">
+            <div>
               <ExportDropdown
                 data={{
                   ...reports,
@@ -328,11 +296,25 @@ export default function AdminRelatoriosPage() {
                       : undefined,
                 }}
                 filename="relatorio_completo"
-                disabled={Boolean(loadError)}
+                disabled={loading || Boolean(loadError)}
+                onError={(msg) => setExportError(msg)}
               />
             </div>
           </div>
         </div>
+
+        {exportError && (
+          <div role="alert" className="card p-4 mb-6 border-red-200 bg-red-50 flex items-center justify-between gap-4">
+            <p className="text-sm text-red-700">{exportError}</p>
+            <button
+              type="button"
+              onClick={() => setExportError('')}
+              className="text-xs font-medium text-red-800 hover:underline"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
 
         {loadError && (
           <div className="card p-6 mb-8 border-red-200 bg-red-50 flex flex-wrap items-center justify-between gap-4">
@@ -352,10 +334,14 @@ export default function AdminRelatoriosPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="rel-periodo"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Período de Análise
               </label>
               <DateRangePickerWithPresets
+                id="rel-periodo"
                 start={dateStart ?? undefined}
                 end={dateEnd ?? undefined}
                 onChange={({ start, end, presetId: nextPreset }) => {
@@ -429,7 +415,9 @@ export default function AdminRelatoriosPage() {
                     {loading ? '—' : formatCurrencyBRL(reports.overview.totalDonations)}
                   </p>
                   <p className="text-xs text-gray-500 mt-1 tabular-nums">
-                    +{reports.overview.monthlyGrowth}% vs mês anterior
+                    {reports.overview.monthlyGrowth >= 0
+                      ? `+${reports.overview.monthlyGrowth}`
+                      : reports.overview.monthlyGrowth}% vs período anterior
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -586,56 +574,68 @@ export default function AdminRelatoriosPage() {
           </div>
         </div>
 
-        {/* Donor Analysis */}
-        {selectedReport === 'donors' && (
+        {/* Donor Analysis & Payment Methods */}
+        {(selectedReport === 'donors' || selectedReport === 'donations' || selectedReport === 'overview') && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div className="card p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Segmentação de Doadores
               </h3>
-              <div className="space-y-4">
-                {reports.donorSegments.map((segment, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-900">
-                      {segment.segment}
-                    </span>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full"
-                          style={{ width: `${segment.percentage}%` }}
-                        />
-                      </div>
-                      <span className="text-sm text-gray-600 w-12 text-right tabular-nums">
-                        {segment.count}
+              {reports.donorSegments.length > 0 ? (
+                <div className="space-y-4">
+                  {reports.donorSegments.map((segment, index) => (
+                    <div key={index} className="flex items-center justify-between gap-4">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {segment.segment}
                       </span>
+                      <div className="flex items-center space-x-3 flex-shrink-0">
+                        <div className="w-20 bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full"
+                            style={{ width: `${segment.percentage}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-gray-600 w-12 text-right tabular-nums">
+                          {segment.count}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 py-4 text-center">
+                  Nenhuma segmentação disponível para o período selecionado.
+                </p>
+              )}
             </div>
 
             <div className="card p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Métodos de Pagamento
               </h3>
-              <div className="space-y-4">
-                {reports.paymentMethods.map((method, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-900">
-                      {method.method}
-                    </span>
-                    <div className="text-right tabular-nums">
-                      <div className="text-sm font-medium text-gray-900">
-                        {method.percentage}%
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {formatCurrencyBRL(method.amount)}
+              {reports.paymentMethods.length > 0 ? (
+                <div className="space-y-4">
+                  {reports.paymentMethods.map((method, index) => (
+                    <div key={index} className="flex items-center justify-between gap-4">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {method.method}
+                      </span>
+                      <div className="text-right tabular-nums flex-shrink-0">
+                        <div className="text-sm font-medium text-gray-900">
+                          {method.percentage}%
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {formatCurrencyBRL(method.amount)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 py-4 text-center">
+                  Nenhum método de pagamento registrado no período.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -685,42 +685,48 @@ export default function AdminRelatoriosPage() {
             </Link>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Doador
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Projeto
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Valor
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Data
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {reports.recentDonations.map((donation) => (
-                  <tr key={donation.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium text-gray-900">
-                      {donation.donor}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-left text-sm text-gray-500">
-                      {donation.project}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right tabular-nums text-sm font-semibold text-gray-900">
-                      {formatCurrencyBRL(donation.amount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-left tabular-nums text-sm text-gray-500">
-                      {formatDate(donation.date)}
-                    </td>
+            {reports.recentDonations.length > 0 ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Doador
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Projeto
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Valor
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Data
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {reports.recentDonations.map((donation) => (
+                    <tr key={donation.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium text-gray-900">
+                        {donation.donor}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-left text-sm text-gray-500">
+                        {donation.project}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right tabular-nums text-sm font-semibold text-gray-900">
+                        {formatCurrencyBRL(donation.amount)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-left tabular-nums text-sm text-gray-500">
+                        {formatDate(donation.date)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-8">
+                Nenhuma doação confirmada no período selecionado.
+              </p>
+            )}
           </div>
         </div>
         </>

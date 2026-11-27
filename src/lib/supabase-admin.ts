@@ -7,6 +7,18 @@ function getSupabaseCredentials() {
   return { supabaseUrl, supabaseServiceKey }
 }
 
+const ADMIN_FETCH_TIMEOUT_MS = 8_000
+
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const timeoutSignal = AbortSignal.timeout(ADMIN_FETCH_TIMEOUT_MS)
+  const signalAny = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any
+  const signal =
+    init?.signal && typeof signalAny === 'function'
+      ? signalAny([init.signal, timeoutSignal])
+      : init?.signal || timeoutSignal
+  return fetch(input, { ...init, signal })
+}
+
 let cachedClient: SupabaseClient | null = null
 
 function getAdminClient(): SupabaseClient {
@@ -23,6 +35,9 @@ function getAdminClient(): SupabaseClient {
   cachedClient = createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       persistSession: false,
+    },
+    global: {
+      fetch: fetchWithTimeout,
     },
   })
   return cachedClient

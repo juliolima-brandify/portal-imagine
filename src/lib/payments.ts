@@ -23,6 +23,7 @@ export type DonationStatus =
   | 'failed'
   | 'refunded'
   | 'partially_refunded'
+  | 'disputed'
 export type RecurringFrequency = 'monthly' | 'quarterly' | 'yearly'
 export type AsaasCycle = 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
 
@@ -231,8 +232,32 @@ export function getDonationStatusLabelPTBR(status?: string | null): string {
       return 'Estornada'
     case 'partially_refunded':
       return 'Estornada parcialmente'
+    case 'disputed':
+      return 'Em disputa'
     default:
       return 'Em processamento'
+  }
+}
+
+export function getDonationStatusBadgeMeta(status?: string | null): {
+  label: string
+  className: string
+} {
+  switch (status) {
+    case 'completed':
+      return { label: 'Confirmada', className: 'bg-green-100 text-green-700' }
+    case 'pending':
+      return { label: 'Em processamento', className: 'bg-yellow-100 text-yellow-800' }
+    case 'partially_refunded':
+      return { label: 'Estornada parcialmente', className: 'bg-amber-100 text-amber-800' }
+    case 'disputed':
+      return { label: 'Em disputa', className: 'bg-orange-100 text-orange-800' }
+    case 'failed':
+      return { label: 'Não concluída', className: 'bg-red-100 text-red-700' }
+    case 'refunded':
+      return { label: 'Estornada', className: 'bg-gray-200 text-gray-700' }
+    default:
+      return { label: getDonationStatusLabelPTBR(status), className: 'bg-gray-100 text-gray-700' }
   }
 }
 
@@ -281,21 +306,63 @@ export function escapeHtml(raw: string | null | undefined): string {
 const CONTROL_OR_FORMAT_CHARS = new RegExp('[\\x00-\\x1F\\x7F\\p{Cf}]', 'gu')
 
 /**
- * Previne CSV / Excel Formula Injection neutralizando células iniciadas com =, +, -, @, \t ou \r.
+ * Previne CSV / Excel Formula Injection neutralizando células iniciadas com =, +, -, @, \t ou \r,
+ * bem como prefixos de fórmula logo após `;` (separador padrão do Excel em pt-BR).
  * Remove quebras de linha (\r, \n, \u2028, \u2029), caracteres de controle e marcas invisíveis/bidi.
  */
 export function sanitizeSpreadsheetCell(value: unknown): string {
   if (value === null || value === undefined) return ''
-  const str = String(value)
+  let str = String(value)
     .replace(/[\r\n\t\u2028\u2029]+/g, ' ')
     .replace(CONTROL_OR_FORMAT_CHARS, '')
     .trim()
   if (!str) return ''
-  // Inclui os equivalentes de largura total (\uFF1D \uFF0B \uFF0D \uFF20), que o Excel tamb\u00E9m trata como f\u00F3rmula.
+  // Em Excel pt-BR, `;` abre nova coluna ao abrir .csv; neutraliza fórmulas após `;` (inclui largura total).
+  str = str.replace(/;\s*([=+\-@\uFF1D\uFF0B\uFF0D\uFF20])/g, ";'$1")
+  // Inclui os equivalentes de largura total (\uFF1D \uFF0B \uFF0D \uFF20), que o Excel também trata como fórmula.
   if (/^[=+\-@\t\r\uFF1D\uFF0B\uFF0D\uFF20]/.test(str)) {
     return `'${str}`
   }
   return str
+}
+
+/** Valida dígitos verificadores (mod-11) de CPF (11 dígitos). */
+export function isValidCpf(raw: string | null | undefined): boolean {
+  const digits = String(raw ?? '').replace(/\D/g, '')
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false
+  const calc = (len: number, startWeight: number) => {
+    let sum = 0
+    for (let i = 0; i < len; i++) {
+      sum += Number(digits[i]) * (startWeight - i)
+    }
+    const rem = (sum * 10) % 11
+    return rem === 10 ? 0 : rem
+  }
+  return calc(9, 10) === Number(digits[9]) && calc(10, 11) === Number(digits[10])
+}
+
+/** Valida dígitos verificadores (mod-11/mod-14) de CNPJ (14 dígitos). */
+export function isValidCnpj(raw: string | null | undefined): boolean {
+  const digits = String(raw ?? '').replace(/\D/g, '')
+  if (digits.length !== 14 || /^(\d)\1{13}$/.test(digits)) return false
+  const calc = (weights: number[]) => {
+    let sum = 0
+    for (let i = 0; i < weights.length; i++) {
+      sum += Number(digits[i]) * weights[i]
+    }
+    const rem = sum % 11
+    return rem < 2 ? 0 : 11 - rem
+  }
+  const w1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  const w2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  return calc(w1) === Number(digits[12]) && calc(w2) === Number(digits[13])
+}
+
+export function isValidCpfOrCnpj(raw: string | null | undefined): boolean {
+  const digits = String(raw ?? '').replace(/\D/g, '')
+  if (digits.length === 11) return isValidCpf(digits)
+  if (digits.length === 14) return isValidCnpj(digits)
+  return false
 }
 
 export const checkoutRequestSchema = z.object({
@@ -623,7 +690,7 @@ export function buildAsaasCheckoutPayload(params: BuildAsaasCheckoutParams): Asa
     const cd: NonNullable<AsaasCheckoutPayload['customerData']> = {}
     if (cleanName.length >= 2) cd.name = cleanName.slice(0, 100)
     if (cleanEmail.includes('@')) cd.email = cleanEmail.slice(0, 120)
-    if (cleanCpf.length === 11 || cleanCpf.length === 14) cd.cpfCnpj = cleanCpf
+    if (isValidCpfOrCnpj(cleanCpf)) cd.cpfCnpj = cleanCpf
     if (cleanPhone.length >= 10 && cleanPhone.length <= 13) cd.phone = cleanPhone
 
     if (Object.keys(cd).length > 0) {
@@ -685,8 +752,11 @@ export function classifyAsaasWebhookEvent(rawPayload: unknown): ClassifiedAsaasW
       break
     case 'PAYMENT_REFUNDED':
     case 'PAYMENT_CHARGEBACK_REQUESTED':
-    case 'PAYMENT_CHARGEBACK_DISPUTE':
       targetStatus = 'refunded'
+      shouldNotifyFailureOrRefund = true
+      break
+    case 'PAYMENT_CHARGEBACK_DISPUTE':
+      targetStatus = 'disputed'
       shouldNotifyFailureOrRefund = true
       break
     case 'PAYMENT_PARTIALLY_REFUNDED':
@@ -823,7 +893,7 @@ export function classifyAsaasWebhookEvent(rawPayload: unknown): ClassifiedAsaasW
 }
 
 /**
- * Espelho TypeScript de `public.asaas_donation_transition` (migração 20261128).
+ * Espelho TypeScript de `public.asaas_donation_transition` (migração 20261129).
  * Mesma regra de status e de valor estornado; o teste SQL compara as duas implementações.
  */
 export function transitionDonationState(input: {
@@ -838,10 +908,11 @@ export function transitionDonationState(input: {
   const current = clamp(input.refundedCurrent ?? 0)
   const incoming = clamp(input.refundedIn ?? 0)
   const target = input.target
-  const known = ['pending', 'completed', 'failed', 'refunded', 'partially_refunded']
+  const known = ['pending', 'completed', 'failed', 'refunded', 'partially_refunded', 'disputed']
 
   if (!target || !known.includes(target)) return { status: input.status, refunded: current }
   if (input.status === 'refunded' || target === 'refunded') return { status: 'refunded', refunded: amount }
+  if (target === 'disputed') return { status: 'disputed', refunded: current }
 
   if (target === 'partially_refunded') {
     const refunded = Math.max(current, incoming)
@@ -860,6 +931,9 @@ export function transitionDonationState(input: {
   }
 
   // pending / failed
+  if (input.status === 'disputed') {
+    return { status: 'disputed', refunded: current }
+  }
   if (input.status === 'completed' || input.status === 'partially_refunded') {
     return { status: current > 0 ? 'partially_refunded' : 'completed', refunded: current }
   }
@@ -893,7 +967,8 @@ export function sanitizePublicSessionResponse(row: {
     row.status === 'completed' ||
     row.status === 'failed' ||
     row.status === 'refunded' ||
-    row.status === 'partially_refunded'
+    row.status === 'partially_refunded' ||
+    row.status === 'disputed'
       ? row.status
       : 'pending'
 
@@ -1043,10 +1118,17 @@ export function buildDonorReceiptEmail(
     status: input.status,
   })
   const safeAmount = escapeHtml(formatCurrencyBRL(receiptAmounts.grossBrl))
-  const refundRowsHtml = receiptAmounts.hasRefund
-    ? `<tr><td style="padding:4px 0;color:#4B5563;">Valor estornado:</td><td style="padding:4px 0;font-weight:600;color:#B45309;text-align:right;">${escapeHtml(formatCurrencyBRL(receiptAmounts.refundedBrl))}</td></tr>
-        <tr><td style="padding:4px 0;color:#4B5563;">Valor líquido reconhecido:</td><td style="padding:4px 0;font-weight:700;text-align:right;">${escapeHtml(formatCurrencyBRL(receiptAmounts.netBrl))}</td></tr>`
-    : ''
+  const isPartialRefund = input.status === 'partially_refunded' || receiptAmounts.hasRefund
+  const safeStatusLabel = escapeHtml(
+    getDonationStatusLabelPTBR(input.status || (receiptAmounts.hasRefund ? 'partially_refunded' : 'completed'))
+  )
+  const amountRowsHtml = isPartialRefund
+    ? `<tr><td style="padding:4px 0;color:#4B5563;">Valor líquido reconhecido:</td><td style="padding:4px 0;font-weight:700;color:#059669;font-size:16px;text-align:right;">${escapeHtml(formatCurrencyBRL(receiptAmounts.netBrl))}</td></tr>
+        <tr><td style="padding:4px 0;color:#4B5563;">Valor doado:</td><td style="padding:4px 0;font-weight:600;text-align:right;">${safeAmount}</td></tr>
+        <tr><td style="padding:4px 0;color:#4B5563;">Valor estornado:</td><td style="padding:4px 0;font-weight:600;color:#B45309;text-align:right;">-${escapeHtml(formatCurrencyBRL(receiptAmounts.refundedBrl))}</td></tr>`
+    : `<tr><td style="padding:4px 0;color:#4B5563;">Valor doado:</td><td style="padding:4px 0;font-weight:700;color:#059669;font-size:16px;text-align:right;">${safeAmount}</td></tr>`
+  const headingTitle = isPartialRefund ? 'Doação Confirmada (Reembolso Parcial)' : 'Doação Confirmada!'
+  const headingColor = isPartialRefund ? '#B45309' : '#059669'
   const safeDonationId = escapeHtml(input.donationId)
   const safeTxId = input.transactionId ? escapeHtml(input.transactionId) : ''
   const safeMethod = escapeHtml(normalizePaymentMethodLabel(input.paymentMethod))
@@ -1108,7 +1190,7 @@ export function buildDonorReceiptEmail(
   <div style="max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:14px;padding:32px 28px;border:1px solid #E5E7EB;">
     <div style="text-align:center;margin-bottom:24px;">
       <img src="${logoUrl}" alt="${INSTITUTE_NAME}" style="height:48px;width:auto;margin-bottom:12px;" />
-      <h1 style="margin:0;color:#059669;font-size:24px;">Doação Confirmada!</h1>
+      <h1 style="margin:0;color:${headingColor};font-size:24px;">${headingTitle}</h1>
       <p style="margin:6px 0 0 0;color:#6B7280;font-size:14px;">Recibo oficial · CNPJ ${INSTITUTE_CNPJ}</p>
     </div>
 
@@ -1123,13 +1205,13 @@ export function buildDonorReceiptEmail(
         <tr><td style="padding:4px 0;color:#4B5563;">Instituição:</td><td style="padding:4px 0;font-weight:600;text-align:right;">${INSTITUTE_NAME}</td></tr>
         <tr><td style="padding:4px 0;color:#4B5563;">CNPJ:</td><td style="padding:4px 0;font-weight:600;text-align:right;">${INSTITUTE_CNPJ}</td></tr>
         <tr><td style="padding:4px 0;color:#4B5563;">Destino / Projeto:</td><td style="padding:4px 0;font-weight:600;text-align:right;">${safeProject}</td></tr>
-        <tr><td style="padding:4px 0;color:#4B5563;">Valor doado:</td><td style="padding:4px 0;font-weight:700;color:#059669;font-size:16px;text-align:right;">${safeAmount}</td></tr>
-        ${refundRowsHtml}
+        ${amountRowsHtml}
+        <tr><td style="padding:4px 0;color:#4B5563;">Status:</td><td style="padding:4px 0;font-weight:600;text-align:right;">${safeStatusLabel}</td></tr>
         <tr><td style="padding:4px 0;color:#4B5563;">Modalidade:</td><td style="padding:4px 0;text-align:right;">${safeModality}</td></tr>
         <tr><td style="padding:4px 0;color:#4B5563;">Meio de pagamento:</td><td style="padding:4px 0;text-align:right;">${safeMethod}</td></tr>
         <tr><td style="padding:4px 0;color:#4B5563;">Data:</td><td style="padding:4px 0;text-align:right;">${escapeHtml(dateFormatted)}</td></tr>
-        <tr><td style="padding:4px 0;color:#4B5563;">ID da Doação:</td><td style="padding:4px 0;font-family:monospace;font-size:12px;text-align:right;">${safeDonationId}</td></tr>
-        ${safeTxId ? `<tr><td style="padding:4px 0;color:#4B5563;">Ref. Transação:</td><td style="padding:4px 0;font-family:monospace;font-size:12px;text-align:right;">${safeTxId}</td></tr>` : ''}
+        <tr><td style="padding:4px 0;color:#4B5563;">ID da Doação:</td><td style="padding:4px 0;font-family:monospace;font-size:12px;text-align:right;word-break:break-all;">${safeDonationId}</td></tr>
+        ${safeTxId ? `<tr><td style="padding:4px 0;color:#4B5563;">Ref. Transação:</td><td style="padding:4px 0;font-family:monospace;font-size:12px;text-align:right;word-break:break-all;">${safeTxId}</td></tr>` : ''}
       </table>
       ${safeMessage ? `<p style="margin:12px 0 0 0;padding-top:10px;border-top:1px dashed #A7F3D0;font-size:13px;color:#374151;"><strong>Sua mensagem:</strong> ${safeMessage}</p>` : ''}
     </div>
